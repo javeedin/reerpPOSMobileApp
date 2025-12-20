@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Dimensions,
   RefreshControl,
   StatusBar,
@@ -17,6 +16,84 @@ import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 60) / 2;
+
+// Icon mapping based on menu item names
+const getMenuIcon = (name) => {
+  const lowerName = (name || '').toLowerCase();
+
+  // Sales related
+  if (lowerName.includes('sales') || lowerName.includes('sell')) return 'cart';
+  if (lowerName.includes('order')) return 'receipt';
+  if (lowerName.includes('pos') || lowerName.includes('point of sale')) return 'card';
+
+  // Purchase related
+  if (lowerName.includes('purchase') || lowerName.includes('buy')) return 'bag';
+  if (lowerName.includes('vendor') || lowerName.includes('supplier')) return 'business';
+
+  // Inventory related
+  if (lowerName.includes('inventory') || lowerName.includes('stock')) return 'cube';
+  if (lowerName.includes('warehouse')) return 'home';
+  if (lowerName.includes('transfer')) return 'swap-horizontal';
+  if (lowerName.includes('receiving') || lowerName.includes('receive')) return 'arrow-down-circle';
+  if (lowerName.includes('shipping') || lowerName.includes('ship')) return 'airplane';
+  if (lowerName.includes('cycle count') || lowerName.includes('count')) return 'sync';
+  if (lowerName.includes('adjustment')) return 'create';
+
+  // Customer related
+  if (lowerName.includes('customer') || lowerName.includes('client')) return 'people';
+  if (lowerName.includes('contact')) return 'call';
+
+  // Financial
+  if (lowerName.includes('price') || lowerName.includes('pricing')) return 'pricetag';
+  if (lowerName.includes('payment')) return 'wallet';
+  if (lowerName.includes('invoice')) return 'document-text';
+  if (lowerName.includes('discount')) return 'gift';
+  if (lowerName.includes('tax')) return 'calculator';
+
+  // Reports
+  if (lowerName.includes('report')) return 'bar-chart';
+  if (lowerName.includes('analytics') || lowerName.includes('dashboard')) return 'analytics';
+  if (lowerName.includes('summary')) return 'list';
+
+  // Returns
+  if (lowerName.includes('return') || lowerName.includes('refund')) return 'return-down-back';
+
+  // Miscellaneous
+  if (lowerName.includes('setting')) return 'settings';
+  if (lowerName.includes('user') || lowerName.includes('account')) return 'person';
+  if (lowerName.includes('search') || lowerName.includes('find')) return 'search';
+  if (lowerName.includes('scan') || lowerName.includes('barcode')) return 'barcode';
+  if (lowerName.includes('print')) return 'print';
+  if (lowerName.includes('notification') || lowerName.includes('alert')) return 'notifications';
+  if (lowerName.includes('location')) return 'location';
+  if (lowerName.includes('item') || lowerName.includes('product')) return 'cube-outline';
+  if (lowerName.includes('category')) return 'folder';
+  if (lowerName.includes('lodgment') || lowerName.includes('deposit')) return 'cash';
+  if (lowerName.includes('delivery')) return 'car';
+  if (lowerName.includes('pick') || lowerName.includes('picking')) return 'hand-left';
+  if (lowerName.includes('pack') || lowerName.includes('packing')) return 'archive';
+
+  // Default
+  return 'apps';
+};
+
+// Module icon mapping
+const getModuleIcon = (moduleName) => {
+  const lowerName = (moduleName || '').toLowerCase();
+
+  if (lowerName.includes('sales')) return 'cart';
+  if (lowerName.includes('purchase')) return 'bag';
+  if (lowerName.includes('inventory')) return 'cube';
+  if (lowerName.includes('warehouse')) return 'home';
+  if (lowerName.includes('customer')) return 'people';
+  if (lowerName.includes('report')) return 'bar-chart';
+  if (lowerName.includes('setting')) return 'settings';
+  if (lowerName.includes('order')) return 'receipt';
+  if (lowerName.includes('finance') || lowerName.includes('accounting')) return 'wallet';
+  if (lowerName.includes('admin')) return 'shield';
+
+  return 'grid';
+};
 
 // KPI Card Component
 const KPICard = ({ title, value, icon, color, trend, trendValue }) => (
@@ -52,7 +129,7 @@ const ModuleCard = ({ module, onPress, isExpanded }) => (
   >
     <View style={styles.moduleContent}>
       <View style={styles.moduleIconContainer}>
-        <Ionicons name="grid" size={28} color={colors.accent} />
+        <Ionicons name={getModuleIcon(module.Menu)} size={28} color={colors.accent} />
       </View>
       <View style={styles.moduleInfo}>
         <Text style={styles.moduleName}>{module.Menu}</Text>
@@ -73,13 +150,9 @@ const ModuleCard = ({ module, onPress, isExpanded }) => (
 const MenuItem = ({ item, onPress }) => (
   <TouchableOpacity style={styles.menuItem} onPress={() => onPress(item)} activeOpacity={0.7}>
     <View style={styles.menuItemContent}>
-      {item.src ? (
-        <Image source={{ uri: item.src }} style={styles.menuItemImage} />
-      ) : (
-        <View style={styles.menuItemIconFallback}>
-          <Ionicons name="document-text" size={24} color={colors.accent} />
-        </View>
-      )}
+      <View style={styles.menuItemIconContainer}>
+        <Ionicons name={getMenuIcon(item.name)} size={24} color={colors.accent} />
+      </View>
       <View style={styles.menuItemInfo}>
         <Text style={styles.menuItemName} numberOfLines={2}>
           {item.name}
@@ -120,13 +193,9 @@ const QuickLinks = ({ menuData, onItemPress }) => {
             style={styles.quickLinkItem}
             onPress={() => onItemPress(item)}
           >
-            {item.src ? (
-              <Image source={{ uri: item.src }} style={styles.quickLinkImage} />
-            ) : (
-              <View style={styles.quickLinkIconFallback}>
-                <Ionicons name="flash" size={28} color={colors.accent} />
-              </View>
-            )}
+            <View style={styles.quickLinkIconContainer}>
+              <Ionicons name={getMenuIcon(item.name)} size={28} color={colors.accent} />
+            </View>
             <Text style={styles.quickLinkName} numberOfLines={2}>
               {item.name}
             </Text>
@@ -386,13 +455,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  quickLinkImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  quickLinkIconFallback: {
+  quickLinkIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 12,
@@ -473,13 +536,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  menuItemImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    marginRight: 14,
-  },
-  menuItemIconFallback: {
+  menuItemIconContainer: {
     width: 44,
     height: 44,
     borderRadius: 10,
