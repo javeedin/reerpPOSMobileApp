@@ -6,3 +6,5 @@ export { default as MenuDetailScreen } from './MenuDetailScreen';
 export { default as OrdersScreen } from './OrdersScreen';
 export { default as InventoryScreen } from './InventoryScreen';
 export { default as ReportsScreen } from './ReportsScreen';
+export { default as SyncDataScreen } from './SyncDataScreen';
+export { default as SyncedDataViewScreen } from './SyncedDataViewScreen';

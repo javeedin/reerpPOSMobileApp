@@ -114,8 +114,11 @@ const AccountDetailsScreen = ({ navigation }) => {
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="sync-outline" size={22} color={colors.textPrimary} />
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('SyncData')}
+          >
+            <Ionicons name="sync-outline" size={22} color={colors.accent} />
             <Text style={styles.actionButtonText}>Sync Data</Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>

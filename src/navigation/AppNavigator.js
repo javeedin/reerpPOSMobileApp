@@ -2,7 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
-import { SplashScreen, LoginScreen, AccountDetailsScreen, MenuDetailScreen } from '../screens';
+import {
+  SplashScreen,
+  LoginScreen,
+  AccountDetailsScreen,
+  MenuDetailScreen,
+  SyncDataScreen,
+  SyncedDataViewScreen,
+} from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
 
@@ -24,6 +31,8 @@ const MainStack = () => {
       <Stack.Screen name="MainTabs" component={BottomTabs} />
       <Stack.Screen name="AccountDetails" component={AccountDetailsScreen} />
       <Stack.Screen name="MenuDetail" component={MenuDetailScreen} />
+      <Stack.Screen name="SyncData" component={SyncDataScreen} />
+      <Stack.Screen name="SyncedDataView" component={SyncedDataViewScreen} />
     </Stack.Navigator>
   );
 };
