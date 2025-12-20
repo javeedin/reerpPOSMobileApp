@@ -1,6 +1,6 @@
-// Dark Blue Theme Colors for ReERP POS
+// Light Theme with Blue Header for ReERP POS
 export const colors = {
-  // Primary colors
+  // Primary colors (for header)
   primary: '#1E3A5F',
   primaryDark: '#0A1628',
   primaryLight: '#2E5A8F',
@@ -10,38 +10,41 @@ export const colors = {
   secondaryDark: '#2980B9',
   secondaryLight: '#5DADE2',
 
-  // Background colors
-  background: '#0A1628',
-  backgroundLight: '#132238',
-  backgroundCard: '#1A2F4A',
+  // Background colors (WHITE theme)
+  background: '#FFFFFF',
+  backgroundLight: '#F5F7FA',
+  backgroundCard: '#FFFFFF',
 
   // Surface colors
-  surface: '#1E3A5F',
-  surfaceLight: '#2A4A6F',
+  surface: '#F0F4F8',
+  surfaceLight: '#E8EEF4',
 
-  // Text colors
-  textPrimary: '#FFFFFF',
-  textSecondary: '#B0BEC5',
-  textMuted: '#78909C',
+  // Text colors (DARK for white background)
+  textPrimary: '#1A1A2E',
+  textSecondary: '#4A4A68',
+  textMuted: '#8E8EA0',
+
+  // Header text (WHITE for blue header)
+  headerText: '#FFFFFF',
 
   // Accent colors
-  accent: '#00D9FF',
-  accentGreen: '#00E676',
-  accentOrange: '#FF9800',
-  accentRed: '#FF5252',
-  accentPurple: '#7C4DFF',
+  accent: '#3498DB',
+  accentGreen: '#27AE60',
+  accentOrange: '#F39C12',
+  accentRed: '#E74C3C',
+  accentPurple: '#9B59B6',
 
   // Status colors
-  success: '#00E676',
-  warning: '#FFB300',
-  error: '#FF5252',
-  info: '#29B6F6',
+  success: '#27AE60',
+  warning: '#F39C12',
+  error: '#E74C3C',
+  info: '#3498DB',
 
   // Border colors
-  border: '#2A4A6F',
-  borderLight: '#3A5A7F',
+  border: '#E0E6ED',
+  borderLight: '#F0F4F8',
 
-  // Gradient colors
+  // Gradient colors (for header)
   gradientStart: '#1E3A5F',
   gradientEnd: '#0A1628',
 
@@ -50,7 +53,7 @@ export const colors = {
 
   // Transparent
   transparent: 'transparent',
-  overlay: 'rgba(0, 0, 0, 0.5)',
+  overlay: 'rgba(0, 0, 0, 0.3)',
 };
 
 export default colors;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Image,
   Dimensions,
   RefreshControl,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,11 +22,11 @@ const cardWidth = (width - 60) / 2;
 const KPICard = ({ title, value, icon, color, trend, trendValue }) => (
   <View style={[styles.kpiCard, { borderLeftColor: color }]}>
     <View style={styles.kpiHeader}>
-      <View style={[styles.kpiIconContainer, { backgroundColor: `${color}20` }]}>
+      <View style={[styles.kpiIconContainer, { backgroundColor: `${color}15` }]}>
         <Ionicons name={icon} size={24} color={color} />
       </View>
       {trend && (
-        <View style={[styles.trendBadge, { backgroundColor: trend === 'up' ? colors.accentGreen + '20' : colors.accentRed + '20' }]}>
+        <View style={[styles.trendBadge, { backgroundColor: trend === 'up' ? colors.accentGreen + '15' : colors.accentRed + '15' }]}>
           <Ionicons
             name={trend === 'up' ? 'trending-up' : 'trending-down'}
             size={14}
@@ -49,27 +50,22 @@ const ModuleCard = ({ module, onPress, isExpanded }) => (
     onPress={onPress}
     activeOpacity={0.8}
   >
-    <LinearGradient
-      colors={[colors.surfaceLight, colors.surface]}
-      style={styles.moduleGradient}
-    >
-      <View style={styles.moduleHeader}>
-        <View style={styles.moduleIconContainer}>
-          <Ionicons name="grid" size={28} color={colors.accent} />
-        </View>
-        <View style={styles.moduleInfo}>
-          <Text style={styles.moduleName}>{module.Menu}</Text>
-          <Text style={styles.moduleCount}>
-            {module.SubMenuItems?.length || 0} items
-          </Text>
-        </View>
-        <Ionicons
-          name={isExpanded ? 'chevron-up' : 'chevron-down'}
-          size={24}
-          color={colors.textSecondary}
-        />
+    <View style={styles.moduleContent}>
+      <View style={styles.moduleIconContainer}>
+        <Ionicons name="grid" size={28} color={colors.accent} />
       </View>
-    </LinearGradient>
+      <View style={styles.moduleInfo}>
+        <Text style={styles.moduleName}>{module.Menu}</Text>
+        <Text style={styles.moduleCount}>
+          {module.SubMenuItems?.length || 0} items
+        </Text>
+      </View>
+      <Ionicons
+        name={isExpanded ? 'chevron-up' : 'chevron-down'}
+        size={24}
+        color={colors.textMuted}
+      />
+    </View>
   </TouchableOpacity>
 );
 
@@ -157,11 +153,10 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleMenuItemPress = (item) => {
-    // Navigate to the appropriate screen based on PageName
     navigation.navigate('MenuDetail', { item });
   };
 
-  // Sample KPI data - can be replaced with real data from API
+  // Sample KPI data
   const kpiData = [
     { title: "Today's Sales", value: '$12,450', icon: 'cart', color: colors.accent, trend: 'up', trendValue: '12%' },
     { title: 'Orders', value: '48', icon: 'receipt', color: colors.accentGreen, trend: 'up', trendValue: '8%' },
@@ -171,78 +166,79 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[colors.primaryDark, colors.background]} style={styles.gradient}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
-            <Ionicons name="person-circle" size={28} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.welcomeText}>Welcome back,</Text>
-            <Text style={styles.userName}>{user?.username || 'User'}</Text>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+
+      {/* Blue Header Only */}
+      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
+          <Ionicons name="person-circle" size={32} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.welcomeText}>Welcome back,</Text>
+          <Text style={styles.userName}>{user?.username || 'User'}</Text>
+        </View>
+        <TouchableOpacity style={styles.notificationButton}>
+          <Ionicons name="notifications-outline" size={26} color="#FFFFFF" />
+          <View style={styles.notificationBadge}>
+            <Text style={styles.notificationCount}>3</Text>
           </View>
-          <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications-outline" size={26} color={colors.textPrimary} />
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationCount}>3</Text>
-            </View>
-          </TouchableOpacity>
+        </TouchableOpacity>
+      </LinearGradient>
+
+      {/* White Content Area */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
+      >
+        {/* KPI Cards Section */}
+        <View style={styles.kpiSection}>
+          <Text style={styles.sectionTitle}>Dashboard</Text>
+          <View style={styles.kpiGrid}>
+            {kpiData.map((kpi, index) => (
+              <KPICard key={index} {...kpi} />
+            ))}
+          </View>
         </View>
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-          }
-        >
-          {/* KPI Cards Section */}
-          <View style={styles.kpiSection}>
-            <Text style={styles.sectionTitle}>Dashboard</Text>
-            <View style={styles.kpiGrid}>
-              {kpiData.map((kpi, index) => (
-                <KPICard key={index} {...kpi} />
-              ))}
-            </View>
-          </View>
+        {/* Quick Links */}
+        <QuickLinks menuData={menuData} onItemPress={handleMenuItemPress} />
 
-          {/* Quick Links */}
-          <QuickLinks menuData={menuData} onItemPress={handleMenuItemPress} />
-
-          {/* Modules Section */}
-          <View style={styles.modulesSection}>
-            <Text style={styles.sectionTitle}>Modules</Text>
-            {menuData && menuData.length > 0 ? (
-              menuData.map((module) => (
-                <View key={module.Id}>
-                  <ModuleCard
-                    module={module}
-                    onPress={() => handleModulePress(module.Id)}
-                    isExpanded={expandedModule === module.Id}
-                  />
-                  {expandedModule === module.Id && (
-                    <View style={styles.menuItemsContainer}>
-                      {module.SubMenuItems?.map((item, index) => (
-                        <MenuItem
-                          key={`${module.Id}-${index}`}
-                          item={item}
-                          onPress={handleMenuItemPress}
-                        />
-                      ))}
-                    </View>
-                  )}
-                </View>
-              ))
-            ) : (
-              <View style={styles.emptyState}>
-                <Ionicons name="folder-open-outline" size={48} color={colors.textMuted} />
-                <Text style={styles.emptyStateText}>No modules available</Text>
+        {/* Modules Section */}
+        <View style={styles.modulesSection}>
+          <Text style={styles.sectionTitle}>Modules</Text>
+          {menuData && menuData.length > 0 ? (
+            menuData.map((module) => (
+              <View key={module.Id}>
+                <ModuleCard
+                  module={module}
+                  onPress={() => handleModulePress(module.Id)}
+                  isExpanded={expandedModule === module.Id}
+                />
+                {expandedModule === module.Id && (
+                  <View style={styles.menuItemsContainer}>
+                    {module.SubMenuItems?.map((item, index) => (
+                      <MenuItem
+                        key={`${module.Id}-${index}`}
+                        item={item}
+                        onPress={handleMenuItemPress}
+                      />
+                    ))}
+                  </View>
+                )}
               </View>
-            )}
-          </View>
-        </ScrollView>
-      </LinearGradient>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="folder-open-outline" size={48} color={colors.textMuted} />
+              <Text style={styles.emptyStateText}>No modules available</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </View>
   );
 };
@@ -250,33 +246,32 @@ const HomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
-  gradient: {
-    flex: 1,
-  },
+  // Header Styles (Blue)
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 50,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   menuButton: {
-    padding: 8,
+    padding: 4,
   },
   headerCenter: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: 12,
   },
   welcomeText: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.8)',
   },
   userName: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
     textTransform: 'capitalize',
   },
   notificationButton: {
@@ -295,12 +290,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   notificationCount: {
-    color: colors.textPrimary,
+    color: '#FFFFFF',
     fontSize: 10,
     fontWeight: 'bold',
   },
+  // Content Styles (White)
   scrollView: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   scrollContent: {
     paddingBottom: 100,
@@ -314,7 +311,7 @@ const styles = StyleSheet.create({
   },
   // KPI Styles
   kpiSection: {
-    marginTop: 10,
+    marginTop: 20,
   },
   kpiGrid: {
     flexDirection: 'row',
@@ -324,10 +321,15 @@ const styles = StyleSheet.create({
   },
   kpiCard: {
     width: cardWidth,
-    backgroundColor: colors.backgroundCard,
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 16,
     borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   kpiHeader: {
     flexDirection: 'row',
@@ -370,15 +372,19 @@ const styles = StyleSheet.create({
   },
   quickLinksContainer: {
     paddingHorizontal: 16,
-    gap: 12,
   },
   quickLinkItem: {
     width: 90,
     alignItems: 'center',
-    backgroundColor: colors.backgroundCard,
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 12,
     marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   quickLinkImage: {
     width: 48,
@@ -407,27 +413,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   moduleCard: {
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     marginBottom: 12,
-    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   moduleCardExpanded: {
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     marginBottom: 0,
   },
-  moduleGradient: {
-    padding: 16,
-  },
-  moduleHeader: {
+  moduleContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
   },
   moduleIconContainer: {
     width: 50,
     height: 50,
-    borderRadius: 14,
-    backgroundColor: colors.backgroundCard,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -447,15 +456,18 @@ const styles = StyleSheet.create({
   },
   // Menu Items Styles
   menuItemsContainer: {
-    backgroundColor: colors.backgroundCard,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
     marginBottom: 12,
-    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   menuItem: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   menuItemContent: {
     flexDirection: 'row',

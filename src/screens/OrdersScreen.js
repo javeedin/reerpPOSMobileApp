@@ -5,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -61,18 +62,21 @@ const OrderCard = ({ order }) => (
 const OrdersScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[colors.primaryDark, colors.background]} style={styles.gradient}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
-            <Ionicons name="person-circle" size={28} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Orders</Text>
-          <TouchableOpacity style={styles.addButton}>
-            <Ionicons name="add-circle" size={28} color={colors.accent} />
-          </TouchableOpacity>
-        </View>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
 
+      {/* Blue Header Only */}
+      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
+          <Ionicons name="person-circle" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Orders</Text>
+        <TouchableOpacity style={styles.addButton}>
+          <Ionicons name="add-circle" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+      </LinearGradient>
+
+      {/* White Content Area */}
+      <View style={styles.content}>
         {/* Filter Tabs */}
         <View style={styles.filterContainer}>
           {['All', 'Pending', 'Processing', 'Completed'].map((filter, index) => (
@@ -99,7 +103,7 @@ const OrdersScreen = ({ navigation }) => {
             </View>
           }
         />
-      </LinearGradient>
+      </View>
     </View>
   );
 };
@@ -107,9 +111,7 @@ const OrdersScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  gradient: {
-    flex: 1,
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -117,7 +119,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 50,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   menuButton: {
     padding: 8,
@@ -125,22 +127,26 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
   addButton: {
     padding: 8,
   },
+  content: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    marginBottom: 16,
+    paddingVertical: 16,
     gap: 10,
   },
   filterTab: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: colors.surface,
   },
   filterTabActive: {
     backgroundColor: colors.accent,
@@ -150,7 +156,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   filterTextActive: {
-    color: colors.textPrimary,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
   listContent: {
@@ -158,10 +164,15 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   orderCard: {
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   orderHeader: {
     flexDirection: 'row',

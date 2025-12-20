@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,105 +39,106 @@ const AccountDetailsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[colors.primaryDark, colors.background]} style={styles.gradient}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Account Details</Text>
-          <View style={styles.headerSpacer} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+
+      {/* Blue Header Only */}
+      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Account Details</Text>
+        <View style={styles.headerSpacer} />
+      </LinearGradient>
+
+      {/* White Content Area */}
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Profile Section */}
+        <View style={styles.profileSection}>
+          <View style={styles.avatarContainer}>
+            <LinearGradient
+              colors={[colors.secondary, colors.secondaryDark]}
+              style={styles.avatarGradient}
+            >
+              <Text style={styles.avatarText}>
+                {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+              </Text>
+            </LinearGradient>
+            <View style={styles.onlineIndicator} />
+          </View>
+          <Text style={styles.userName}>{user?.username || 'User'}</Text>
+          <View style={styles.roleBadge}>
+            <Ionicons name="shield-checkmark" size={14} color={colors.accentGreen} />
+            <Text style={styles.roleText}>Active User</Text>
+          </View>
         </View>
 
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          {/* Profile Section */}
-          <View style={styles.profileSection}>
-            <View style={styles.avatarContainer}>
-              <LinearGradient
-                colors={[colors.secondary, colors.secondaryDark]}
-                style={styles.avatarGradient}
-              >
-                <Text style={styles.avatarText}>
-                  {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-                </Text>
-              </LinearGradient>
-              <View style={styles.onlineIndicator} />
-            </View>
-            <Text style={styles.userName}>{user?.username || 'User'}</Text>
-            <View style={styles.roleBadge}>
-              <Ionicons name="shield-checkmark" size={14} color={colors.accentGreen} />
-              <Text style={styles.roleText}>Active User</Text>
-            </View>
-          </View>
+        {/* Account Information Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Account Information</Text>
+          <InfoRow icon="person-outline" label="Username" value={user?.username} />
+          <InfoRow icon="server-outline" label="Instance" value={user?.instance} />
+          <InfoRow icon="time-outline" label="Login Time" value={formatDate(user?.loginTime)} />
+        </View>
 
-          {/* Account Information Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Account Information</Text>
-            <InfoRow icon="person-outline" label="Username" value={user?.username} />
-            <InfoRow icon="server-outline" label="Instance" value={user?.instance} />
-            <InfoRow icon="time-outline" label="Login Time" value={formatDate(user?.loginTime)} />
-          </View>
+        {/* Warehouse Details Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Warehouse Details</Text>
+          <InfoRow icon="business-outline" label="Organization" value={user?.ORGANIZATION_NAME || user?.organization_name} />
+          <InfoRow icon="cube-outline" label="Warehouse" value={user?.WAREHOUSE || user?.warehouse} />
+          <InfoRow icon="layers-outline" label="Subinventory" value={user?.SUBINVENTORY || user?.subinventory} />
+          <InfoRow icon="location-outline" label="Location" value={user?.LOCATION || user?.location} />
+        </View>
 
-          {/* Warehouse Details Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Warehouse Details</Text>
-            <InfoRow icon="business-outline" label="Organization" value={user?.ORGANIZATION_NAME || user?.organization_name} />
-            <InfoRow icon="cube-outline" label="Warehouse" value={user?.WAREHOUSE || user?.warehouse} />
-            <InfoRow icon="layers-outline" label="Subinventory" value={user?.SUBINVENTORY || user?.subinventory} />
-            <InfoRow icon="location-outline" label="Location" value={user?.LOCATION || user?.location} />
-          </View>
+        {/* User Details Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>User Details</Text>
+          <InfoRow icon="mail-outline" label="Email" value={user?.EMAIL || user?.email} />
+          <InfoRow icon="call-outline" label="Phone" value={user?.PHONE || user?.phone} />
+          <InfoRow icon="briefcase-outline" label="Department" value={user?.DEPARTMENT || user?.department} />
+          <InfoRow icon="people-outline" label="Role" value={user?.ROLE || user?.role} />
+        </View>
 
-          {/* User Details Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>User Details</Text>
-            <InfoRow icon="mail-outline" label="Email" value={user?.EMAIL || user?.email} />
-            <InfoRow icon="call-outline" label="Phone" value={user?.PHONE || user?.phone} />
-            <InfoRow icon="briefcase-outline" label="Department" value={user?.DEPARTMENT || user?.department} />
-            <InfoRow icon="people-outline" label="Role" value={user?.ROLE || user?.role} />
-          </View>
+        {/* System Information Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>System Information</Text>
+          <InfoRow icon="finger-print-outline" label="User ID" value={user?.USER_ID || user?.user_id} />
+          <InfoRow icon="key-outline" label="Responsibility" value={user?.RESPONSIBILITY || user?.responsibility} />
+          <InfoRow icon="calendar-outline" label="Last Sync" value={formatDate(user?.LAST_SYNC || user?.last_sync)} />
+        </View>
 
-          {/* System Information Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>System Information</Text>
-            <InfoRow icon="finger-print-outline" label="User ID" value={user?.USER_ID || user?.user_id} />
-            <InfoRow icon="key-outline" label="Responsibility" value={user?.RESPONSIBILITY || user?.responsibility} />
-            <InfoRow icon="calendar-outline" label="Last Sync" value={formatDate(user?.LAST_SYNC || user?.last_sync)} />
-          </View>
+        {/* Actions */}
+        <View style={styles.actionsSection}>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="settings-outline" size={22} color={colors.textPrimary} />
+            <Text style={styles.actionButtonText}>Settings</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
 
-          {/* Actions */}
-          <View style={styles.actionsSection}>
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="settings-outline" size={22} color={colors.textPrimary} />
-              <Text style={styles.actionButtonText}>Settings</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="sync-outline" size={22} color={colors.textPrimary} />
+            <Text style={styles.actionButtonText}>Sync Data</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="sync-outline" size={22} color={colors.textPrimary} />
-              <Text style={styles.actionButtonText}>Sync Data</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="help-circle-outline" size={22} color={colors.textPrimary} />
+            <Text style={styles.actionButtonText}>Help & Support</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="help-circle-outline" size={22} color={colors.textPrimary} />
-              <Text style={styles.actionButtonText}>Help & Support</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionButton, styles.logoutButton]} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={22} color={colors.accentRed} />
+            <Text style={[styles.actionButtonText, styles.logoutText]}>Logout</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.accentRed} />
+          </TouchableOpacity>
+        </View>
 
-            <TouchableOpacity style={[styles.actionButton, styles.logoutButton]} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={22} color={colors.accentRed} />
-              <Text style={[styles.actionButtonText, styles.logoutText]}>Logout</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.accentRed} />
-            </TouchableOpacity>
-          </View>
-
-          {/* App Version */}
-          <View style={styles.versionSection}>
-            <Text style={styles.versionText}>ReERP POS v1.0.0</Text>
-            <Text style={styles.copyrightText}>Powered by Oracle Fusion</Text>
-          </View>
-        </ScrollView>
-      </LinearGradient>
+        {/* App Version */}
+        <View style={styles.versionSection}>
+          <Text style={styles.versionText}>ReERP POS v1.0.0</Text>
+          <Text style={styles.copyrightText}>Powered by Oracle Fusion</Text>
+        </View>
+      </ScrollView>
     </View>
   );
 };
@@ -144,9 +146,7 @@ const AccountDetailsScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  gradient: {
-    flex: 1,
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 50,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   backButton: {
     padding: 8,
@@ -162,13 +162,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
   headerSpacer: {
     width: 40,
   },
   scrollView: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   profileSection: {
     alignItems: 'center',
@@ -188,7 +189,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 40,
     fontWeight: 'bold',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
   onlineIndicator: {
     position: 'absolute',
@@ -211,11 +212,16 @@ const styles = StyleSheet.create({
   roleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   roleText: {
     fontSize: 13,
@@ -223,11 +229,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   card: {
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   cardTitle: {
     fontSize: 16,
@@ -271,10 +282,15 @@ const styles = StyleSheet.create({
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   actionButtonText: {
     flex: 1,

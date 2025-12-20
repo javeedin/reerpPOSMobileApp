@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -63,18 +64,21 @@ const InventoryScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[colors.primaryDark, colors.background]} style={styles.gradient}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
-            <Ionicons name="person-circle" size={28} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Inventory</Text>
-          <TouchableOpacity style={styles.scanButton}>
-            <Ionicons name="barcode-outline" size={26} color={colors.textPrimary} />
-          </TouchableOpacity>
-        </View>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
 
+      {/* Blue Header Only */}
+      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
+          <Ionicons name="person-circle" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Inventory</Text>
+        <TouchableOpacity style={styles.scanButton}>
+          <Ionicons name="barcode-outline" size={26} color="#FFFFFF" />
+        </TouchableOpacity>
+      </LinearGradient>
+
+      {/* White Content Area */}
+      <View style={styles.content}>
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color={colors.textMuted} />
@@ -122,7 +126,7 @@ const InventoryScreen = ({ navigation }) => {
             </View>
           }
         />
-      </LinearGradient>
+      </View>
     </View>
   );
 };
@@ -130,9 +134,7 @@ const InventoryScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  gradient: {
-    flex: 1,
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -140,7 +142,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 50,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   menuButton: {
     padding: 8,
@@ -148,20 +150,29 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
   scanButton: {
     padding: 8,
   },
+  content: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginVertical: 16,
     paddingHorizontal: 16,
     borderRadius: 12,
     height: 48,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   searchInput: {
     flex: 1,
@@ -177,10 +188,15 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 12,
     borderLeftWidth: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   summaryValue: {
     fontSize: 20,
@@ -198,10 +214,15 @@ const styles = StyleSheet.create({
   },
   inventoryCard: {
     flexDirection: 'row',
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   cardLeft: {
     marginRight: 14,

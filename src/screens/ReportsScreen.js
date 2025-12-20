@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -53,68 +54,69 @@ const ReportsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[colors.primaryDark, colors.background]} style={styles.gradient}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
-            <Ionicons name="person-circle" size={28} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Reports</Text>
-          <TouchableOpacity style={styles.filterButton}>
-            <Ionicons name="filter" size={24} color={colors.textPrimary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+
+      {/* Blue Header Only */}
+      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
+          <Ionicons name="person-circle" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Reports</Text>
+        <TouchableOpacity style={styles.filterButton}>
+          <Ionicons name="filter" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </LinearGradient>
+
+      {/* White Content Area */}
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Date Range Selector */}
+        <View style={styles.dateRangeContainer}>
+          <TouchableOpacity style={styles.dateRangeButton}>
+            <Ionicons name="calendar-outline" size={18} color={colors.accent} />
+            <Text style={styles.dateRangeText}>Jan 1 - Jan 31, 2024</Text>
+            <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          {/* Date Range Selector */}
-          <View style={styles.dateRangeContainer}>
-            <TouchableOpacity style={styles.dateRangeButton}>
-              <Ionicons name="calendar-outline" size={18} color={colors.accent} />
-              <Text style={styles.dateRangeText}>Jan 1 - Jan 31, 2024</Text>
-              <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+        {/* Quick Stats */}
+        <View style={styles.quickStatsContainer}>
+          <QuickStatCard title="Revenue" value="$45.2K" change="12%" isPositive={true} />
+          <QuickStatCard title="Orders" value="328" change="8%" isPositive={true} />
+          <QuickStatCard title="Returns" value="12" change="3%" isPositive={false} />
+        </View>
+
+        {/* Report Types Grid */}
+        <Text style={styles.sectionTitle}>Reports</Text>
+        <View style={styles.reportsGrid}>
+          {reportTypes.map((report, index) => (
+            <ReportCard
+              key={index}
+              title={report.title}
+              icon={report.icon}
+              value={report.value}
+              subtitle={report.subtitle}
+              color={report.color}
+              onPress={() => {}}
+            />
+          ))}
+        </View>
+
+        {/* Recent Reports */}
+        <Text style={styles.sectionTitle}>Recent Reports</Text>
+        <View style={styles.recentReportsContainer}>
+          {['Sales Report - Jan 15', 'Inventory Audit - Jan 14', 'Daily Summary - Jan 13'].map((report, index) => (
+            <TouchableOpacity key={index} style={styles.recentReportItem}>
+              <View style={styles.recentReportLeft}>
+                <Ionicons name="document-text-outline" size={22} color={colors.accent} />
+                <Text style={styles.recentReportText}>{report}</Text>
+              </View>
+              <Ionicons name="download-outline" size={22} color={colors.textSecondary} />
             </TouchableOpacity>
-          </View>
+          ))}
+        </View>
 
-          {/* Quick Stats */}
-          <View style={styles.quickStatsContainer}>
-            <QuickStatCard title="Revenue" value="$45.2K" change="12%" isPositive={true} />
-            <QuickStatCard title="Orders" value="328" change="8%" isPositive={true} />
-            <QuickStatCard title="Returns" value="12" change="3%" isPositive={false} />
-          </View>
-
-          {/* Report Types Grid */}
-          <Text style={styles.sectionTitle}>Reports</Text>
-          <View style={styles.reportsGrid}>
-            {reportTypes.map((report, index) => (
-              <ReportCard
-                key={index}
-                title={report.title}
-                icon={report.icon}
-                value={report.value}
-                subtitle={report.subtitle}
-                color={report.color}
-                onPress={() => {}}
-              />
-            ))}
-          </View>
-
-          {/* Recent Reports */}
-          <Text style={styles.sectionTitle}>Recent Reports</Text>
-          <View style={styles.recentReportsContainer}>
-            {['Sales Report - Jan 15', 'Inventory Audit - Jan 14', 'Daily Summary - Jan 13'].map((report, index) => (
-              <TouchableOpacity key={index} style={styles.recentReportItem}>
-                <View style={styles.recentReportLeft}>
-                  <Ionicons name="document-text-outline" size={22} color={colors.accent} />
-                  <Text style={styles.recentReportText}>{report}</Text>
-                </View>
-                <Ionicons name="download-outline" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={styles.bottomSpacer} />
-        </ScrollView>
-      </LinearGradient>
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
     </View>
   );
 };
@@ -122,9 +124,7 @@ const ReportsScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  gradient: {
-    flex: 1,
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 50,
-    paddingBottom: 16,
+    paddingBottom: 20,
   },
   menuButton: {
     padding: 8,
@@ -140,26 +140,33 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
   filterButton: {
     padding: 8,
   },
   scrollView: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   dateRangeContainer: {
     paddingHorizontal: 16,
+    marginTop: 16,
     marginBottom: 20,
   },
   dateRangeButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
     gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   dateRangeText: {
     flex: 1,
@@ -174,9 +181,14 @@ const styles = StyleSheet.create({
   },
   quickStatCard: {
     flex: 1,
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   quickStatTitle: {
     fontSize: 12,
@@ -214,10 +226,15 @@ const styles = StyleSheet.create({
   },
   reportCard: {
     width: (width - 44) / 2,
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   reportIconContainer: {
     width: 56,
@@ -251,10 +268,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.backgroundCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   recentReportLeft: {
     flexDirection: 'row',
