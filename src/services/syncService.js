@@ -13,8 +13,8 @@ const STORAGE_KEYS = {
 };
 
 // Batch size for fetching data
-const BATCH_SIZE = 3000;
-const MAX_RECORDS_TEST = 10000; // For testing, limit to 10,000 records
+const BATCH_SIZE = 500;
+const MAX_RECORDS_TEST = 2000; // For testing, limit to 2,000 records (storage limit)
 
 // API endpoints
 const ENDPOINTS = {
@@ -23,6 +23,37 @@ const ENDPOINTS = {
   AGENTS: '/ALLAGENTS/ALL',
   PRICE_LIST: '/PRICELIST/ALL',
 };
+
+// Extract only essential fields to reduce storage size
+const extractCustomerFields = (customer) => ({
+  id: customer.CUST_ACCOUNT_ID || customer.cust_account_id || customer.ID,
+  name: customer.CUSTOMER_NAME || customer.customer_name || customer.PARTY_NAME || customer.party_name,
+  number: customer.CUSTOMER_NUMBER || customer.customer_number || customer.ACCOUNT_NUMBER,
+  email: customer.EMAIL || customer.email_address,
+  phone: customer.PHONE || customer.phone_number || customer.MOBILE,
+  address: customer.ADDRESS || customer.address1 || customer.CITY,
+});
+
+const extractItemFields = (item) => ({
+  id: item.INVENTORY_ITEM_ID || item.inventory_item_id || item.ID,
+  name: item.ITEM_NAME || item.item_name || item.DESCRIPTION || item.description,
+  number: item.ITEM_NUMBER || item.item_number || item.ITEM_CODE,
+  uom: item.UOM || item.uom_code || item.PRIMARY_UOM_CODE,
+  price: item.PRICE || item.list_price,
+  category: item.CATEGORY || item.category_name,
+});
+
+const extractAgentFields = (agent) => ({
+  id: agent.AGENT_ID || agent.agent_id || agent.RESOURCE_ID || agent.ID,
+  name: agent.AGENT_NAME || agent.agent_name || agent.NAME || agent.name,
+});
+
+const extractPriceListFields = (priceList) => ({
+  id: priceList.PRICE_LIST_ID || priceList.price_list_id || priceList.ID,
+  name: priceList.PRICE_LIST_NAME || priceList.name,
+  currency: priceList.CURRENCY_CODE || priceList.currency,
+  price: priceList.OPERAND || priceList.price,
+});
 
 // Fetch data with pagination
 const fetchWithPagination = async (endpoint, onProgress, maxRecords = MAX_RECORDS_TEST) => {
@@ -182,11 +213,17 @@ const updateSyncMetadata = async (type, count) => {
 // Sync Customers
 export const syncCustomers = async (onProgress) => {
   try {
-    const data = await fetchWithPagination(ENDPOINTS.CUSTOMERS, onProgress);
+    // Clear existing data first to free up space
+    await clearFromStorage(STORAGE_KEYS.CUSTOMERS);
+
+    const rawData = await fetchWithPagination(ENDPOINTS.CUSTOMERS, onProgress);
+    // Extract only essential fields to reduce storage size
+    const data = rawData.map(extractCustomerFields);
     await saveToStorage(STORAGE_KEYS.CUSTOMERS, data);
     await updateSyncMetadata('customers', data.length);
     return { success: true, count: data.length };
   } catch (error) {
+    console.error('Sync customers error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -194,11 +231,15 @@ export const syncCustomers = async (onProgress) => {
 // Sync Items
 export const syncItems = async (onProgress) => {
   try {
-    const data = await fetchWithPagination(ENDPOINTS.ITEMS, onProgress);
+    await clearFromStorage(STORAGE_KEYS.ITEMS);
+
+    const rawData = await fetchWithPagination(ENDPOINTS.ITEMS, onProgress);
+    const data = rawData.map(extractItemFields);
     await saveToStorage(STORAGE_KEYS.ITEMS, data);
     await updateSyncMetadata('items', data.length);
     return { success: true, count: data.length };
   } catch (error) {
+    console.error('Sync items error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -206,11 +247,15 @@ export const syncItems = async (onProgress) => {
 // Sync Agents
 export const syncAgents = async (onProgress) => {
   try {
-    const data = await fetchWithPagination(ENDPOINTS.AGENTS, onProgress);
+    await clearFromStorage(STORAGE_KEYS.AGENTS);
+
+    const rawData = await fetchWithPagination(ENDPOINTS.AGENTS, onProgress);
+    const data = rawData.map(extractAgentFields);
     await saveToStorage(STORAGE_KEYS.AGENTS, data);
     await updateSyncMetadata('agents', data.length);
     return { success: true, count: data.length };
   } catch (error) {
+    console.error('Sync agents error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -218,11 +263,15 @@ export const syncAgents = async (onProgress) => {
 // Sync Price List
 export const syncPriceList = async (onProgress) => {
   try {
-    const data = await fetchWithPagination(ENDPOINTS.PRICE_LIST, onProgress);
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST);
+
+    const rawData = await fetchWithPagination(ENDPOINTS.PRICE_LIST, onProgress);
+    const data = rawData.map(extractPriceListFields);
     await saveToStorage(STORAGE_KEYS.PRICE_LIST, data);
     await updateSyncMetadata('priceList', data.length);
     return { success: true, count: data.length };
   } catch (error) {
+    console.error('Sync price list error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -252,9 +301,8 @@ export const searchCustomers = async (query) => {
   const customers = await getCustomers();
   const lowerQuery = query.toLowerCase();
   return customers.filter(c =>
-    (c.CUSTOMER_NAME || c.customer_name || '').toLowerCase().includes(lowerQuery) ||
-    (c.CUSTOMER_NUMBER || c.customer_number || '').toLowerCase().includes(lowerQuery) ||
-    (c.PARTY_NAME || c.party_name || '').toLowerCase().includes(lowerQuery)
+    (c.name || '').toLowerCase().includes(lowerQuery) ||
+    (c.number || '').toLowerCase().includes(lowerQuery)
   ).slice(0, 50); // Limit results
 };
 
@@ -262,7 +310,7 @@ export const searchItems = async (query) => {
   const items = await getItems();
   const lowerQuery = query.toLowerCase();
   return items.filter(i =>
-    (i.ITEM_NAME || i.item_name || i.DESCRIPTION || '').toLowerCase().includes(lowerQuery) ||
-    (i.ITEM_NUMBER || i.item_number || i.ITEM_CODE || '').toLowerCase().includes(lowerQuery)
+    (i.name || '').toLowerCase().includes(lowerQuery) ||
+    (i.number || '').toLowerCase().includes(lowerQuery)
   ).slice(0, 50);
 };

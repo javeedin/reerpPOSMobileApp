@@ -72,44 +72,40 @@ const CustomerCard = ({ item }) => (
     <View style={styles.cardHeader}>
       <View style={[styles.avatar, { backgroundColor: colors.accent + '20' }]}>
         <Text style={styles.avatarText}>
-          {(item.CUSTOMER_NAME || item.customer_name || item.PARTY_NAME || 'C')
-            .charAt(0)
-            .toUpperCase()}
+          {(item.name || 'C').charAt(0).toUpperCase()}
         </Text>
       </View>
       <View style={styles.cardInfo}>
         <Text style={styles.cardTitle} numberOfLines={1}>
-          {item.CUSTOMER_NAME || item.customer_name || item.PARTY_NAME || 'Unknown'}
+          {item.name || 'Unknown'}
         </Text>
         <Text style={styles.cardSubtitle}>
-          #{item.CUSTOMER_NUMBER || item.customer_number || item.CUST_ACCOUNT_ID || 'N/A'}
+          #{item.number || item.id || 'N/A'}
         </Text>
       </View>
     </View>
-    <View style={styles.cardDetails}>
-      {(item.EMAIL || item.email_address) && (
-        <View style={styles.detailRow}>
-          <Ionicons name="mail-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText}>{item.EMAIL || item.email_address}</Text>
-        </View>
-      )}
-      {(item.PHONE || item.phone_number || item.MOBILE) && (
-        <View style={styles.detailRow}>
-          <Ionicons name="call-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText}>
-            {item.PHONE || item.phone_number || item.MOBILE}
-          </Text>
-        </View>
-      )}
-      {(item.ADDRESS || item.address1 || item.CITY) && (
-        <View style={styles.detailRow}>
-          <Ionicons name="location-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText} numberOfLines={1}>
-            {item.ADDRESS || item.address1 || item.CITY || 'N/A'}
-          </Text>
-        </View>
-      )}
-    </View>
+    {(item.email || item.phone || item.address) && (
+      <View style={styles.cardDetails}>
+        {item.email && (
+          <View style={styles.detailRow}>
+            <Ionicons name="mail-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.detailText}>{item.email}</Text>
+          </View>
+        )}
+        {item.phone && (
+          <View style={styles.detailRow}>
+            <Ionicons name="call-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.detailText}>{item.phone}</Text>
+          </View>
+        )}
+        {item.address && (
+          <View style={styles.detailRow}>
+            <Ionicons name="location-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.detailText} numberOfLines={1}>{item.address}</Text>
+          </View>
+        )}
+      </View>
+    )}
   </View>
 );
 
@@ -122,37 +118,35 @@ const ItemCard = ({ item }) => (
       </View>
       <View style={styles.cardInfo}>
         <Text style={styles.cardTitle} numberOfLines={1}>
-          {item.ITEM_NAME || item.item_name || item.DESCRIPTION || 'Unknown Item'}
+          {item.name || 'Unknown Item'}
         </Text>
         <Text style={styles.cardSubtitle}>
-          {item.ITEM_NUMBER || item.item_number || item.ITEM_CODE || 'N/A'}
+          {item.number || item.id || 'N/A'}
         </Text>
       </View>
     </View>
-    <View style={styles.cardDetails}>
-      {(item.UOM || item.uom_code || item.PRIMARY_UOM_CODE) && (
-        <View style={styles.detailRow}>
-          <Ionicons name="resize-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText}>
-            UOM: {item.UOM || item.uom_code || item.PRIMARY_UOM_CODE}
-          </Text>
-        </View>
-      )}
-      {(item.PRICE || item.list_price) && (
-        <View style={styles.detailRow}>
-          <Ionicons name="pricetag-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText}>
-            Price: ${item.PRICE || item.list_price || '0.00'}
-          </Text>
-        </View>
-      )}
-      {(item.CATEGORY || item.category_name) && (
-        <View style={styles.detailRow}>
-          <Ionicons name="folder-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText}>{item.CATEGORY || item.category_name}</Text>
-        </View>
-      )}
-    </View>
+    {(item.uom || item.price || item.category) && (
+      <View style={styles.cardDetails}>
+        {item.uom && (
+          <View style={styles.detailRow}>
+            <Ionicons name="resize-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.detailText}>UOM: {item.uom}</Text>
+          </View>
+        )}
+        {item.price && (
+          <View style={styles.detailRow}>
+            <Ionicons name="pricetag-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.detailText}>Price: ${item.price}</Text>
+          </View>
+        )}
+        {item.category && (
+          <View style={styles.detailRow}>
+            <Ionicons name="folder-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.detailText}>{item.category}</Text>
+          </View>
+        )}
+      </View>
+    )}
   </View>
 );
 
@@ -165,10 +159,10 @@ const AgentCard = ({ item }) => (
       </View>
       <View style={styles.cardInfo}>
         <Text style={styles.cardTitle} numberOfLines={1}>
-          {item.AGENT_NAME || item.agent_name || item.NAME || 'Unknown Agent'}
+          {item.name || 'Unknown Agent'}
         </Text>
         <Text style={styles.cardSubtitle}>
-          {item.AGENT_ID || item.agent_id || item.RESOURCE_ID || 'N/A'}
+          #{item.id || 'N/A'}
         </Text>
       </View>
     </View>
@@ -184,18 +178,18 @@ const PriceListCard = ({ item }) => (
       </View>
       <View style={styles.cardInfo}>
         <Text style={styles.cardTitle} numberOfLines={1}>
-          {item.PRICE_LIST_NAME || item.name || 'Unknown Price List'}
+          {item.name || 'Unknown Price List'}
         </Text>
         <Text style={styles.cardSubtitle}>
-          {item.CURRENCY_CODE || item.currency || 'USD'}
+          {item.currency || 'USD'}
         </Text>
       </View>
     </View>
-    {item.OPERAND && (
+    {item.price && (
       <View style={styles.cardDetails}>
         <View style={styles.detailRow}>
           <Ionicons name="cash-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText}>Price: ${item.OPERAND}</Text>
+          <Text style={styles.detailText}>Price: ${item.price}</Text>
         </View>
       </View>
     )}
