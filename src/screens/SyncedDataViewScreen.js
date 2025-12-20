@@ -188,7 +188,7 @@ const CustomerCard = ({ item, onViewDetails }) => (
         </Text>
       </View>
       <View style={styles.cardInfo}>
-        <Text style={styles.cardTitle} numberOfLines={1}>
+        <Text style={styles.customerName} numberOfLines={2}>
           {item.name || 'Unknown'}
         </Text>
         <Text style={styles.cardSubtitle}>
@@ -605,6 +605,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: 2,
+  },
+  customerName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+    lineHeight: 18,
   },
   cardSubtitle: {
     fontSize: 13,
