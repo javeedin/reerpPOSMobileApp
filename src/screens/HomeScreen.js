@@ -167,17 +167,15 @@ const MenuItem = ({ item, onPress }) => (
 );
 
 // Quick Links Section
-const QuickLinks = ({ menuData, onItemPress }) => {
+const QuickLinks = ({ menuData, onItemPress, onSyncPress }) => {
   const quickLinkItems = [];
   menuData?.forEach(module => {
     module.SubMenuItems?.forEach(item => {
-      if (item.quicklink === 'yes' && quickLinkItems.length < 6) {
+      if (item.quicklink === 'yes' && quickLinkItems.length < 5) {
         quickLinkItems.push({ ...item, moduleName: module.Menu });
       }
     });
   });
-
-  if (quickLinkItems.length === 0) return null;
 
   return (
     <View style={styles.quickLinksSection}>
@@ -187,6 +185,19 @@ const QuickLinks = ({ menuData, onItemPress }) => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.quickLinksContainer}
       >
+        {/* Sync Data - Static Quick Action */}
+        <TouchableOpacity
+          style={styles.quickLinkItem}
+          onPress={onSyncPress}
+        >
+          <View style={[styles.quickLinkIconContainer, { backgroundColor: colors.accentGreen + '15' }]}>
+            <Ionicons name="sync" size={28} color={colors.accentGreen} />
+          </View>
+          <Text style={styles.quickLinkName} numberOfLines={2}>
+            Sync Data
+          </Text>
+        </TouchableOpacity>
+
         {quickLinkItems.map((item, index) => (
           <TouchableOpacity
             key={`quick-${index}`}
@@ -274,7 +285,11 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
         {/* Quick Links */}
-        <QuickLinks menuData={menuData} onItemPress={handleMenuItemPress} />
+        <QuickLinks
+          menuData={menuData}
+          onItemPress={handleMenuItemPress}
+          onSyncPress={() => navigation.navigate('SyncData')}
+        />
 
         {/* Modules Section */}
         <View style={styles.modulesSection}>
