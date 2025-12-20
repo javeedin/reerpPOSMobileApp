@@ -8,6 +8,8 @@ import {
   StatusBar,
   TextInput,
   ActivityIndicator,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -66,8 +68,118 @@ const getIcon = (type) => {
   }
 };
 
+// Format currency
+const formatCurrency = (value) => {
+  if (!value) return null;
+  const num = parseFloat(value);
+  if (isNaN(num)) return value;
+  return num.toLocaleString('en-US', { minimumFractionDigits: 0 });
+};
+
+// Customer Detail Modal
+const CustomerDetailModal = ({ visible, customer, onClose }) => {
+  if (!customer) return null;
+
+  const DetailRow = ({ label, value, icon }) => (
+    value ? (
+      <View style={modalStyles.detailRow}>
+        <View style={modalStyles.detailIcon}>
+          <Ionicons name={icon} size={18} color={colors.accent} />
+        </View>
+        <View style={modalStyles.detailContent}>
+          <Text style={modalStyles.detailLabel}>{label}</Text>
+          <Text style={modalStyles.detailValue}>{value}</Text>
+        </View>
+      </View>
+    ) : null
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={modalStyles.overlay}>
+        <View style={modalStyles.container}>
+          <View style={modalStyles.header}>
+            <Text style={modalStyles.headerTitle}>Customer Details</Text>
+            <TouchableOpacity onPress={onClose} style={modalStyles.closeButton}>
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={modalStyles.content} showsVerticalScrollIndicator={false}>
+            {/* Customer Name */}
+            <View style={modalStyles.nameSection}>
+              <View style={modalStyles.avatarLarge}>
+                <Text style={modalStyles.avatarTextLarge}>
+                  {(customer.name || 'C').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <Text style={modalStyles.customerName}>{customer.name || 'Unknown'}</Text>
+              <Text style={modalStyles.accountNumber}>#{customer.accountNumber}</Text>
+              <View style={[
+                modalStyles.statusBadge,
+                { backgroundColor: customer.status === 'A' ? colors.accentGreen + '20' : colors.accentRed + '20' }
+              ]}>
+                <Text style={[
+                  modalStyles.statusText,
+                  { color: customer.status === 'A' ? colors.accentGreen : colors.accentRed }
+                ]}>
+                  {customer.status === 'A' ? 'Active' : 'Inactive'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Main Details */}
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Contact Information</Text>
+              <DetailRow label="Email" value={customer.email} icon="mail-outline" />
+              <DetailRow label="Phone" value={customer.phone} icon="call-outline" />
+              <DetailRow label="Address" value={customer.address} icon="location-outline" />
+            </View>
+
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Business Information</Text>
+              <DetailRow label="Price List" value={customer.priceList} icon="pricetag-outline" />
+              <DetailRow
+                label="Credit Limit"
+                value={customer.creditLimit ? `MUR ${formatCurrency(customer.creditLimit)}` : null}
+                icon="wallet-outline"
+              />
+              <DetailRow label="Payment Term" value={customer.paymentTerm} icon="time-outline" />
+              <DetailRow label="Salesperson" value={customer.salesperson} icon="person-outline" />
+            </View>
+
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Classification</Text>
+              <DetailRow label="Customer Class" value={customer.customerClass} icon="albums-outline" />
+              <DetailRow label="Category" value={customer.customerCategory} icon="folder-outline" />
+              <DetailRow label="MRA Category" value={customer.mraCategory} icon="business-outline" />
+            </View>
+
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Tax & Registration</Text>
+              <DetailRow label="BRN" value={customer.brn} icon="document-text-outline" />
+              <DetailRow label="VAT No" value={customer.vatNo} icon="receipt-outline" />
+            </View>
+
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Status</Text>
+              <DetailRow
+                label="Hold Status"
+                value={customer.holdStatus === 'N' ? 'No Hold' : 'On Hold'}
+                icon={customer.holdStatus === 'N' ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+              />
+            </View>
+
+            <View style={{ height: 30 }} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // Customer Card
-const CustomerCard = ({ item }) => (
+const CustomerCard = ({ item, onViewDetails }) => (
   <View style={styles.dataCard}>
     <View style={styles.cardHeader}>
       <View style={[styles.avatar, { backgroundColor: colors.accent + '20' }]}>
@@ -80,32 +192,38 @@ const CustomerCard = ({ item }) => (
           {item.name || 'Unknown'}
         </Text>
         <Text style={styles.cardSubtitle}>
-          #{item.number || item.id || 'N/A'}
+          #{item.accountNumber || 'N/A'}
         </Text>
       </View>
+      <TouchableOpacity onPress={() => onViewDetails(item)} style={styles.moreButton}>
+        <Ionicons name="information-circle-outline" size={24} color={colors.accent} />
+      </TouchableOpacity>
     </View>
-    {(item.email || item.phone || item.address) && (
-      <View style={styles.cardDetails}>
-        {item.email && (
-          <View style={styles.detailRow}>
-            <Ionicons name="mail-outline" size={14} color={colors.textMuted} />
-            <Text style={styles.detailText}>{item.email}</Text>
+
+    <View style={styles.cardDetails}>
+      {item.address && (
+        <View style={styles.detailRow}>
+          <Ionicons name="location-outline" size={14} color={colors.textMuted} />
+          <Text style={styles.detailText} numberOfLines={1}>{item.address}</Text>
+        </View>
+      )}
+      <View style={styles.tagsRow}>
+        {item.priceList && (
+          <View style={styles.tag}>
+            <Ionicons name="pricetag" size={12} color={colors.accentPurple} />
+            <Text style={styles.tagText}>{item.priceList}</Text>
           </View>
         )}
-        {item.phone && (
-          <View style={styles.detailRow}>
-            <Ionicons name="call-outline" size={14} color={colors.textMuted} />
-            <Text style={styles.detailText}>{item.phone}</Text>
-          </View>
-        )}
-        {item.address && (
-          <View style={styles.detailRow}>
-            <Ionicons name="location-outline" size={14} color={colors.textMuted} />
-            <Text style={styles.detailText} numberOfLines={1}>{item.address}</Text>
+        {item.creditLimit && (
+          <View style={[styles.tag, { backgroundColor: colors.accentGreen + '15' }]}>
+            <Ionicons name="wallet" size={12} color={colors.accentGreen} />
+            <Text style={[styles.tagText, { color: colors.accentGreen }]}>
+              {formatCurrency(item.creditLimit)}
+            </Text>
           </View>
         )}
       </View>
-    )}
+    </View>
   </View>
 );
 
@@ -204,6 +322,8 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -214,7 +334,6 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
   }, [searchQuery, data]);
 
   useEffect(() => {
-    // Load first page of filtered data
     setDisplayData(filteredData.slice(0, PAGE_SIZE));
     setPage(1);
   }, [filteredData]);
@@ -254,10 +373,15 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     }
   };
 
+  const handleViewDetails = (customer) => {
+    setSelectedCustomer(customer);
+    setModalVisible(true);
+  };
+
   const renderItem = ({ item }) => {
     switch (type) {
       case 'customers':
-        return <CustomerCard item={item} />;
+        return <CustomerCard item={item} onViewDetails={handleViewDetails} />;
       case 'items':
         return <ItemCard item={item} />;
       case 'agents':
@@ -272,6 +396,13 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+
+      {/* Customer Detail Modal */}
+      <CustomerDetailModal
+        visible={modalVisible}
+        customer={selectedCustomer}
+        onClose={() => setModalVisible(false)}
+      />
 
       {/* Blue Header */}
       <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
@@ -479,12 +610,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
   },
+  moreButton: {
+    padding: 8,
+  },
   cardDetails: {
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    gap: 6,
+    gap: 8,
   },
   detailRow: {
     flexDirection: 'row',
@@ -492,8 +626,29 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   detailText: {
+    flex: 1,
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accentPurple + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    gap: 5,
+  },
+  tagText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.accentPurple,
   },
   loadMoreContainer: {
     flexDirection: 'row',
@@ -511,6 +666,117 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  content: {
+    paddingHorizontal: 20,
+  },
+  nameSection: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  avatarLarge: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: colors.accent + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  avatarTextLarge: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.accent,
+  },
+  customerName: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  accountNumber: {
+    fontSize: 14,
+    color: colors.textMuted,
+    marginBottom: 8,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textMuted,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  detailIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.accent + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  detailContent: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  detailValue: {
+    fontSize: 15,
+    color: colors.textPrimary,
   },
 });
 

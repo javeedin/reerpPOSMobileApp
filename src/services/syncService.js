@@ -26,12 +26,25 @@ const ENDPOINTS = {
 
 // Extract only essential fields to reduce storage size
 const extractCustomerFields = (customer) => ({
-  id: customer.CUST_ACCOUNT_ID || customer.cust_account_id || customer.ID,
-  name: customer.CUSTOMER_NAME || customer.customer_name || customer.PARTY_NAME || customer.party_name,
-  number: customer.CUSTOMER_NUMBER || customer.customer_number || customer.ACCOUNT_NUMBER,
-  email: customer.EMAIL || customer.email_address,
-  phone: customer.PHONE || customer.phone_number || customer.MOBILE,
-  address: customer.ADDRESS || customer.address1 || customer.CITY,
+  id: customer.cust_account_id || customer.party_id,
+  accountNumber: customer.account_number || customer.party_number,
+  name: customer.account_name || customer.party_name,
+  address: [customer.address1, customer.address2, customer.city, customer.country]
+    .filter(a => a && a !== '.' && a !== null)
+    .join(', '),
+  priceList: customer.price_list,
+  creditLimit: customer.credit_limit,
+  email: customer.email_address,
+  phone: customer.phone,
+  status: customer.status,
+  holdStatus: customer.hold_status,
+  paymentTerm: customer.payment_term,
+  customerClass: customer.customer_class_code,
+  customerCategory: customer.cust_cat_code || customer.customer_main_cat,
+  salesperson: customer.salesperon,
+  brn: customer.brn,
+  vatNo: customer.vatregno,
+  mraCategory: customer.mra_customer_cat,
 });
 
 const extractItemFields = (item) => ({
