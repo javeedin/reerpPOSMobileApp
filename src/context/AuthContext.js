@@ -43,27 +43,34 @@ export const AuthProvider = ({ children }) => {
 
       console.log('=== LOGIN RESPONSE IN CONTEXT ===');
       console.log('Success:', loginResponse.success);
-      console.log('Data:', JSON.stringify(loginResponse.data, null, 2));
 
       if (loginResponse.success && loginResponse.data) {
-        // Check if login was successful based on response
-        const userData = Array.isArray(loginResponse.data)
-          ? loginResponse.data[0]
-          : loginResponse.data;
+        // API returns { items: [...], hasMore: false, ... }
+        // User data is in items[0]
+        let userData = null;
+
+        if (loginResponse.data.items && loginResponse.data.items.length > 0) {
+          // Oracle ORDS format: { items: [{...}] }
+          userData = loginResponse.data.items[0];
+        } else if (Array.isArray(loginResponse.data) && loginResponse.data.length > 0) {
+          // Direct array format: [{...}]
+          userData = loginResponse.data[0];
+        } else if (loginResponse.data.username || loginResponse.data.user_name) {
+          // Direct object format: {...}
+          userData = loginResponse.data;
+        }
 
         console.log('=== PARSED USER DATA ===');
         console.log('UserData:', JSON.stringify(userData, null, 2));
-        console.log('Has USERNAME:', !!userData?.USERNAME);
-        console.log('Has username:', !!userData?.username);
 
-        if (userData && (userData.USERNAME || userData.username)) {
+        if (userData && (userData.username || userData.user_name || userData.USERNAME)) {
           console.log('=== LOGIN SUCCESS - Fetching menu ===');
           // Login successful, now fetch menu options
           const menuResponse = await getMenuOptions(username);
 
           const fullUserData = {
             ...userData,
-            username: username,
+            username: userData.username || userData.user_name || username,
             instance: instance,
             loginTime: new Date().toISOString(),
           };
