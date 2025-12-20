@@ -43,20 +43,27 @@ export const AuthProvider = ({ children }) => {
 
       console.log('=== LOGIN RESPONSE IN CONTEXT ===');
       console.log('Success:', loginResponse.success);
+      console.log('Raw Data:', JSON.stringify(loginResponse.data, null, 2));
+      console.log('Has items?:', !!loginResponse.data?.items);
+      console.log('Items length:', loginResponse.data?.items?.length);
 
       if (loginResponse.success && loginResponse.data) {
         // API returns { items: [...], hasMore: false, ... }
         // User data is in items[0]
         let userData = null;
 
-        if (loginResponse.data.items && loginResponse.data.items.length > 0) {
+        // Check all possible formats
+        if (loginResponse.data.items && Array.isArray(loginResponse.data.items) && loginResponse.data.items.length > 0) {
           // Oracle ORDS format: { items: [{...}] }
+          console.log('Found items array format');
           userData = loginResponse.data.items[0];
         } else if (Array.isArray(loginResponse.data) && loginResponse.data.length > 0) {
           // Direct array format: [{...}]
+          console.log('Found direct array format');
           userData = loginResponse.data[0];
-        } else if (loginResponse.data.username || loginResponse.data.user_name) {
+        } else if (typeof loginResponse.data === 'object' && (loginResponse.data.username || loginResponse.data.user_name)) {
           // Direct object format: {...}
+          console.log('Found direct object format');
           userData = loginResponse.data;
         }
 
