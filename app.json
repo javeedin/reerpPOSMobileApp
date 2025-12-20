@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "ReERP POS",
+    "slug": "reerpPOSMobileApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F2027"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.reerp.pos"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F2027"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.reerp.pos"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
