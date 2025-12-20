@@ -64,8 +64,8 @@ const OrdersScreen = ({ navigation }) => {
       <LinearGradient colors={[colors.primaryDark, colors.background]} style={styles.gradient}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.openDrawer()} style={styles.menuButton}>
-            <Ionicons name="menu" size={28} color={colors.textPrimary} />
+          <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
+            <Ionicons name="person-circle" size={28} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Orders</Text>
           <TouchableOpacity style={styles.addButton}>
