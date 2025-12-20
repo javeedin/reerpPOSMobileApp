@@ -34,10 +34,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (username, password, instance) => {
+    console.log('=== AUTH CONTEXT LOGIN ===');
+    console.log('Attempting login for:', username);
     setIsLoading(true);
     try {
       // Call login API
       const loginResponse = await loginUser(username, password);
+
+      console.log('=== LOGIN RESPONSE IN CONTEXT ===');
+      console.log('Success:', loginResponse.success);
+      console.log('Data:', JSON.stringify(loginResponse.data, null, 2));
 
       if (loginResponse.success && loginResponse.data) {
         // Check if login was successful based on response
@@ -45,7 +51,13 @@ export const AuthProvider = ({ children }) => {
           ? loginResponse.data[0]
           : loginResponse.data;
 
+        console.log('=== PARSED USER DATA ===');
+        console.log('UserData:', JSON.stringify(userData, null, 2));
+        console.log('Has USERNAME:', !!userData?.USERNAME);
+        console.log('Has username:', !!userData?.username);
+
         if (userData && (userData.USERNAME || userData.username)) {
+          console.log('=== LOGIN SUCCESS - Fetching menu ===');
           // Login successful, now fetch menu options
           const menuResponse = await getMenuOptions(username);
 
@@ -68,10 +80,13 @@ export const AuthProvider = ({ children }) => {
           setIsLoading(false);
           return { success: true };
         } else {
+          console.log('=== LOGIN FAILED - No username in response ===');
           setIsLoading(false);
           return { success: false, error: 'Invalid credentials' };
         }
       } else {
+        console.log('=== LOGIN FAILED - API error ===');
+        console.log('Error:', loginResponse.error);
         setIsLoading(false);
         return { success: false, error: loginResponse.error || 'Login failed' };
       }

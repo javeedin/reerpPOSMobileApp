@@ -13,6 +13,12 @@ const api = axios.create({
 
 // Login API - Validate user credentials
 export const loginUser = async (username, password) => {
+  const url = `${BASE_URL}/LOGIN/user/?username=${username}&password=${password}`;
+  console.log('=== LOGIN API CALL ===');
+  console.log('URL:', url);
+  console.log('Username:', username);
+  console.log('Password:', password);
+
   try {
     const response = await api.get(`/LOGIN/user/`, {
       params: {
@@ -20,9 +26,15 @@ export const loginUser = async (username, password) => {
         password: password,
       },
     });
+    console.log('=== LOGIN RESPONSE ===');
+    console.log('Status:', response.status);
+    console.log('Data:', JSON.stringify(response.data, null, 2));
     return { success: true, data: response.data };
   } catch (error) {
-    console.error('Login error:', error);
+    console.log('=== LOGIN ERROR ===');
+    console.log('Error:', error.message);
+    console.log('Response:', error.response?.data);
+    console.log('Status:', error.response?.status);
     return {
       success: false,
       error: error.response?.data?.message || 'Login failed. Please check your credentials.',
@@ -32,11 +44,20 @@ export const loginUser = async (username, password) => {
 
 // Get Menu Options for the logged-in user
 export const getMenuOptions = async (username) => {
+  const url = `${BASE_URL}/APPMENU/MENU/${username}`;
+  console.log('=== MENU API CALL ===');
+  console.log('URL:', url);
+
   try {
     const response = await api.get(`/APPMENU/MENU/${username}`);
+    console.log('=== MENU RESPONSE ===');
+    console.log('Status:', response.status);
+    console.log('Data:', JSON.stringify(response.data, null, 2));
     return { success: true, data: response.data };
   } catch (error) {
-    console.error('Menu fetch error:', error);
+    console.log('=== MENU ERROR ===');
+    console.log('Error:', error.message);
+    console.log('Response:', error.response?.data);
     return {
       success: false,
       error: error.response?.data?.message || 'Failed to fetch menu options.',
