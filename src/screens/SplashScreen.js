@@ -17,6 +17,7 @@ const SplashScreen = ({ onFinish }) => {
   const scaleAnim = useRef(new Animated.Value(0.3)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const slideUpAnim = useRef(new Animated.Value(50)).current;
+  const loadingAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Start animations
@@ -47,6 +48,13 @@ const SplashScreen = ({ onFinish }) => {
         }),
       ]),
     ]).start();
+
+    // Loading bar animation (separate, uses scaleX)
+    Animated.timing(loadingAnim, {
+      toValue: 1,
+      duration: 2500,
+      useNativeDriver: true,
+    }).start();
 
     // Navigate after splash
     const timer = setTimeout(() => {
@@ -117,10 +125,14 @@ const SplashScreen = ({ onFinish }) => {
               style={[
                 styles.loadingProgress,
                 {
-                  width: fadeAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0%', '100%'],
-                  }),
+                  transform: [
+                    {
+                      translateX: loadingAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-200, 0],
+                      }),
+                    },
+                  ],
                 },
               ]}
             />
@@ -233,6 +245,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   loadingProgress: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 200,
     height: '100%',
     backgroundColor: colors.accent,
     borderRadius: 2,
