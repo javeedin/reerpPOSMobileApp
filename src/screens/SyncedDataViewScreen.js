@@ -435,6 +435,19 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         )}
       </View>
 
+      {/* Pagination Info */}
+      {!loading && filteredData.length > 0 && (
+        <View style={styles.paginationBar}>
+          <Text style={styles.paginationText}>
+            Showing <Text style={styles.paginationHighlight}>1-{displayData.length.toLocaleString()}</Text> of{' '}
+            <Text style={styles.paginationHighlight}>{filteredData.length.toLocaleString()}</Text> records
+          </Text>
+          {displayData.length < filteredData.length && (
+            <Text style={styles.paginationHint}>Scroll down to load more</Text>
+          )}
+        </View>
+      )}
+
       {/* Content */}
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -536,6 +549,30 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     color: colors.textPrimary,
     fontSize: 15,
+  },
+  paginationBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: colors.surface,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+  },
+  paginationText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  paginationHighlight: {
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  paginationHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontStyle: 'italic',
   },
   loadingContainer: {
     flex: 1,
