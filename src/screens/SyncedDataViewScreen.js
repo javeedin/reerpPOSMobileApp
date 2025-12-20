@@ -314,6 +314,30 @@ const PriceListCard = ({ item }) => (
   </View>
 );
 
+// Highlight matching text component
+const HighlightText = ({ text, highlight, style }) => {
+  if (!highlight.trim() || !text) {
+    return <Text style={style}>{text}</Text>;
+  }
+
+  const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const parts = text.split(regex);
+
+  return (
+    <Text style={style}>
+      {parts.map((part, index) =>
+        part.toLowerCase() === highlight.toLowerCase() ? (
+          <Text key={index} style={[style, { backgroundColor: colors.accent + '30', fontWeight: '700' }]}>
+            {part}
+          </Text>
+        ) : (
+          <Text key={index}>{part}</Text>
+        )
+      )}
+    </Text>
+  );
+};
+
 const SyncedDataViewScreen = ({ navigation, route }) => {
   const { type } = route.params;
   const [data, setData] = useState([]);
@@ -324,6 +348,8 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
   const [page, setPage] = useState(1);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => {
     loadData();
@@ -347,6 +373,38 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     setLoading(false);
   };
 
+  // Generate suggestions based on search query
+  const generateSuggestions = useCallback((query) => {
+    if (!query.trim() || query.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const lowerQuery = query.toLowerCase();
+    const matchedSuggestions = [];
+
+    for (const item of data) {
+      if (matchedSuggestions.length >= 6) break;
+
+      // Get the display name based on type
+      const name = item.name || '';
+      const secondary = item.accountNumber || item.number || item.id || '';
+
+      if (name.toLowerCase().includes(lowerQuery) || secondary.toString().toLowerCase().includes(lowerQuery)) {
+        matchedSuggestions.push({
+          id: item.id || secondary,
+          name: name,
+          secondary: secondary,
+          item: item,
+        });
+      }
+    }
+
+    setSuggestions(matchedSuggestions);
+    setShowSuggestions(matchedSuggestions.length > 0);
+  }, [data]);
+
   const filterData = useCallback(() => {
     if (!searchQuery.trim()) {
       setFilteredData(data);
@@ -363,6 +421,24 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     });
     setFilteredData(filtered);
   }, [searchQuery, data]);
+
+  const handleSearchChange = (text) => {
+    setSearchQuery(text);
+    generateSuggestions(text);
+  };
+
+  const handleSuggestionSelect = (suggestion) => {
+    setSearchQuery(suggestion.name);
+    setShowSuggestions(false);
+    // Filter to show selected item
+    setFilteredData([suggestion.item]);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setShowSuggestions(false);
+    setSuggestions([]);
+  };
 
   const loadMore = () => {
     if (displayData.length < filteredData.length) {
@@ -418,20 +494,64 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         </View>
       </LinearGradient>
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={colors.textMuted} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder={`Search ${getTitle(type).toLowerCase()}...`}
-          placeholderTextColor={colors.textMuted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
+      {/* Search Bar with Autocomplete */}
+      <View style={styles.searchWrapper}>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color={colors.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={`Search ${getTitle(type).toLowerCase()}...`}
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+            onFocus={() => searchQuery.length >= 2 && generateSuggestions(searchQuery)}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={handleClearSearch}>
+              <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Autocomplete Suggestions Dropdown */}
+        {showSuggestions && suggestions.length > 0 && (
+          <View style={styles.suggestionsContainer}>
+            {suggestions.map((suggestion, index) => (
+              <TouchableOpacity
+                key={`suggestion-${suggestion.id}-${index}`}
+                style={[
+                  styles.suggestionItem,
+                  index === suggestions.length - 1 && styles.suggestionItemLast,
+                ]}
+                onPress={() => handleSuggestionSelect(suggestion)}
+              >
+                <View style={styles.suggestionIcon}>
+                  <Ionicons name={getIcon(type)} size={18} color={colors.accent} />
+                </View>
+                <View style={styles.suggestionContent}>
+                  <HighlightText
+                    text={suggestion.name}
+                    highlight={searchQuery}
+                    style={styles.suggestionName}
+                  />
+                  <HighlightText
+                    text={`#${suggestion.secondary}`}
+                    highlight={searchQuery}
+                    style={styles.suggestionSecondary}
+                  />
+                </View>
+                <Ionicons name="arrow-forward" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.viewAllButton}
+              onPress={() => setShowSuggestions(false)}
+            >
+              <Text style={styles.viewAllText}>
+                View all {filteredData.length} results
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -529,12 +649,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  searchWrapper: {
+    position: 'relative',
+    zIndex: 100,
+    marginHorizontal: 16,
+    marginVertical: 12,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
     height: 48,
@@ -549,6 +673,64 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     color: colors.textPrimary,
     fontSize: 15,
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 1000,
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  suggestionItemLast: {
+    borderBottomWidth: 0,
+  },
+  suggestionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.accent + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  suggestionContent: {
+    flex: 1,
+  },
+  suggestionName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  suggestionSecondary: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  viewAllButton: {
+    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  viewAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
   },
   paginationBar: {
     flexDirection: 'row',
