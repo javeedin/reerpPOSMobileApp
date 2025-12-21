@@ -227,10 +227,6 @@ const InventoryScreen = ({ navigation }) => {
   const lastScrollY = useRef(0);
   const isUserScrolling = useRef(false);
 
-  // Autocomplete
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   // Lot modal states
   const [lotModalVisible, setLotModalVisible] = useState(false);
@@ -310,37 +306,6 @@ const InventoryScreen = ({ navigation }) => {
     }
   };
 
-  // Generate suggestions for autocomplete
-  const generateSuggestions = useCallback((query) => {
-    if (!query.trim() || query.length < 2) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-
-    const lowerQuery = query.toLowerCase();
-    const matchedSuggestions = [];
-
-    for (const item of onhandData) {
-      if (matchedSuggestions.length >= 6) break;
-
-      const itemNumber = item.itemNumber || '';
-      const itemDesc = item.itemDescription || '';
-
-      if (itemNumber.toLowerCase().includes(lowerQuery) || itemDesc.toLowerCase().includes(lowerQuery)) {
-        matchedSuggestions.push({
-          id: item.inventoryItemId,
-          name: itemDesc,
-          secondary: itemNumber,
-          item: item,
-        });
-      }
-    }
-
-    setSuggestions(matchedSuggestions);
-    setShowSuggestions(matchedSuggestions.length > 0);
-  }, [onhandData]);
-
   const filterAndSortData = useCallback(() => {
     let result = [...onhandData];
 
@@ -402,40 +367,8 @@ const InventoryScreen = ({ navigation }) => {
     setFilteredData(result);
   }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo]);
 
-  const handleSearchChange = (text) => {
-    setSearchQuery(text);
-    generateSuggestions(text);
-  };
-
-  const handleSearchFocus = () => {
-    setIsSearchFocused(true);
-    if (searchQuery.length >= 2) {
-      generateSuggestions(searchQuery);
-    }
-    // Expand filter section when focusing on search
-    if (!isFilterExpanded) {
-      animateFilterSection(true);
-    }
-  };
-
-  const handleSearchBlur = () => {
-    // Delay hiding suggestions to allow tap on suggestion
-    setTimeout(() => {
-      setIsSearchFocused(false);
-    }, 200);
-  };
-
-  const handleSuggestionSelect = (suggestion) => {
-    setSearchQuery(suggestion.name);
-    setShowSuggestions(false);
-    setFilteredData([suggestion.item]);
-    Keyboard.dismiss();
-  };
-
   const handleClearSearch = () => {
     setSearchQuery('');
-    setShowSuggestions(false);
-    setSuggestions([]);
   };
 
   const handleFetchOnhand = async (skipConfirm = false) => {
@@ -619,65 +552,20 @@ const InventoryScreen = ({ navigation }) => {
                 },
               ]}
             >
-              {/* Search Bar with Autocomplete */}
-              <View style={styles.searchWrapper}>
-                <View style={styles.searchContainer}>
-                  <Ionicons name="search" size={20} color={colors.textMuted} />
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search items..."
-                    placeholderTextColor={colors.textMuted}
-                    value={searchQuery}
-                    onChangeText={handleSearchChange}
-                    onFocus={handleSearchFocus}
-                    onBlur={handleSearchBlur}
-                  />
-                  {searchQuery.length > 0 && (
-                    <TouchableOpacity onPress={handleClearSearch}>
-                      <Ionicons name="close-circle" size={20} color={colors.textMuted} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {/* Autocomplete Suggestions */}
-                {showSuggestions && suggestions.length > 0 && (
-                  <View style={styles.suggestionsContainer}>
-                    {suggestions.map((suggestion, index) => (
-                      <TouchableOpacity
-                        key={`suggestion-${suggestion.id}-${index}`}
-                        style={[
-                          styles.suggestionItem,
-                          index === suggestions.length - 1 && styles.suggestionItemLast,
-                        ]}
-                        onPress={() => handleSuggestionSelect(suggestion)}
-                      >
-                        <View style={styles.suggestionIcon}>
-                          <Ionicons name="cube" size={18} color={colors.accent} />
-                        </View>
-                        <View style={styles.suggestionContent}>
-                          <HighlightText
-                            text={suggestion.name}
-                            highlight={searchQuery}
-                            style={styles.suggestionName}
-                          />
-                          <HighlightText
-                            text={suggestion.secondary}
-                            highlight={searchQuery}
-                            style={styles.suggestionSecondary}
-                          />
-                        </View>
-                        <Ionicons name="arrow-forward" size={16} color={colors.textMuted} />
-                      </TouchableOpacity>
-                    ))}
-                    <TouchableOpacity
-                      style={styles.viewAllButton}
-                      onPress={() => setShowSuggestions(false)}
-                    >
-                      <Text style={styles.viewAllText}>
-                        View all {filteredData.length} results
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+              {/* Search Bar */}
+              <View style={styles.searchContainer}>
+                <Ionicons name="search" size={20} color={colors.textMuted} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search items..."
+                  placeholderTextColor={colors.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={handleClearSearch}>
+                    <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
                 )}
               </View>
 
@@ -984,88 +872,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  searchWrapper: {
-    position: 'relative',
-    zIndex: 100,
-    marginHorizontal: 16,
-    marginVertical: 8,
-  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     borderRadius: 12,
-    height: 48,
+    height: 44,
+    marginHorizontal: 16,
+    marginVertical: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   searchInput: {
     flex: 1,
     marginLeft: 10,
     color: colors.textPrimary,
-    fontSize: 15,
-  },
-  suggestionsContainer: {
-    position: 'absolute',
-    top: 52,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    zIndex: 1000,
-    overflow: 'hidden',
-  },
-  suggestionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  suggestionItemLast: {
-    borderBottomWidth: 0,
-  },
-  suggestionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: colors.accent + '15',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  suggestionContent: {
-    flex: 1,
-  },
-  suggestionName: {
     fontSize: 14,
-    fontWeight: '500',
-    color: colors.textPrimary,
-    marginBottom: 2,
-  },
-  suggestionSecondary: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  viewAllButton: {
-    paddingVertical: 12,
-    backgroundColor: colors.surface || '#F5F5F5',
-    alignItems: 'center',
-  },
-  viewAllText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.accent,
   },
   sortFilterRow: {
     flexDirection: 'row',
