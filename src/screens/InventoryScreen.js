@@ -601,7 +601,7 @@ const InventoryScreen = ({ navigation }) => {
                 >
                   <Ionicons name="swap-vertical" size={16} color={sortColumn !== 'none' ? '#FFFFFF' : colors.accent} />
                   <Text style={[styles.sortButtonText, sortColumn !== 'none' && styles.sortButtonTextActive]}>
-                    {getSortLabel()}
+                    {sortColumn === 'none' ? 'Sort By' : getSortLabel().split(' ')[0]}
                   </Text>
                   <Ionicons
                     name="chevron-down"
@@ -610,18 +610,24 @@ const InventoryScreen = ({ navigation }) => {
                   />
                 </TouchableOpacity>
 
-                {/* Sort Direction Toggle */}
+                {/* Sort Direction Buttons - Asc / Desc */}
                 {sortColumn !== 'none' && (
-                  <TouchableOpacity
-                    style={styles.directionToggle}
-                    onPress={toggleSortDirection}
-                  >
-                    <Ionicons
-                      name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
-                      size={18}
-                      color={colors.accent}
-                    />
-                  </TouchableOpacity>
+                  <View style={styles.directionButtons}>
+                    <TouchableOpacity
+                      style={[styles.directionBtn, sortDirection === 'asc' && styles.directionBtnActive]}
+                      onPress={() => setSortDirection('asc')}
+                    >
+                      <Ionicons name="arrow-up" size={16} color={sortDirection === 'asc' ? '#FFFFFF' : colors.accent} />
+                      <Text style={[styles.directionBtnText, sortDirection === 'asc' && styles.directionBtnTextActive]}>Asc</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.directionBtn, sortDirection === 'desc' && styles.directionBtnActive]}
+                      onPress={() => setSortDirection('desc')}
+                    >
+                      <Ionicons name="arrow-down" size={16} color={sortDirection === 'desc' ? '#FFFFFF' : colors.accent} />
+                      <Text style={[styles.directionBtnText, sortDirection === 'desc' && styles.directionBtnTextActive]}>Desc</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
 
                 {/* Clear Filters */}
@@ -770,7 +776,7 @@ const InventoryScreen = ({ navigation }) => {
           onPress={() => setShowSortDropdown(false)}
         >
           <View style={styles.sortModalContent}>
-            <Text style={styles.sortModalTitle}>Sort By</Text>
+            <Text style={styles.sortModalTitle}>Sort By Column</Text>
             <TouchableOpacity
               style={[styles.sortModalOption, sortColumn === 'none' && styles.sortModalOptionActive]}
               onPress={() => handleSortColumnSelect('none')}
@@ -783,27 +789,21 @@ const InventoryScreen = ({ navigation }) => {
               onPress={() => handleSortColumnSelect('itemNumber')}
             >
               <Text style={[styles.sortModalOptionText, sortColumn === 'itemNumber' && styles.sortModalOptionTextActive]}>Item Number</Text>
-              {sortColumn === 'itemNumber' && (
-                <Ionicons name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'} size={20} color={colors.accent} />
-              )}
+              {sortColumn === 'itemNumber' && <Ionicons name="checkmark" size={20} color={colors.accent} />}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.sortModalOption, sortColumn === 'itemDescription' && styles.sortModalOptionActive]}
               onPress={() => handleSortColumnSelect('itemDescription')}
             >
               <Text style={[styles.sortModalOptionText, sortColumn === 'itemDescription' && styles.sortModalOptionTextActive]}>Description</Text>
-              {sortColumn === 'itemDescription' && (
-                <Ionicons name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'} size={20} color={colors.accent} />
-              )}
+              {sortColumn === 'itemDescription' && <Ionicons name="checkmark" size={20} color={colors.accent} />}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.sortModalOption, sortColumn === 'primaryQuantity' && styles.sortModalOptionActive]}
               onPress={() => handleSortColumnSelect('primaryQuantity')}
             >
               <Text style={[styles.sortModalOptionText, sortColumn === 'primaryQuantity' && styles.sortModalOptionTextActive]}>Quantity</Text>
-              {sortColumn === 'primaryQuantity' && (
-                <Ionicons name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'} size={20} color={colors.accent} />
-              )}
+              {sortColumn === 'primaryQuantity' && <Ionicons name="checkmark" size={20} color={colors.accent} />}
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -992,13 +992,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  directionToggle: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.accent + '15',
-    justifyContent: 'center',
+  directionButtons: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  directionBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  directionBtnActive: {
+    backgroundColor: colors.accent,
+  },
+  directionBtnText: {
+    fontSize: 12,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+  directionBtnTextActive: {
+    color: '#FFFFFF',
   },
   qtyRangeContainer: {
     flexDirection: 'row',
