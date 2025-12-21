@@ -181,7 +181,7 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
         <View style={styles.itemCodeRow}>
           <Text style={styles.itemCode}>{item.itemNumber}</Text>
           <View style={[styles.onhandBadge, { backgroundColor: stockColor + '20' }]}>
-            <Ionicons name="cube-outline" size={10} color={stockColor} />
+            <Ionicons name="cube-outline" size={12} color={stockColor} />
             <Text style={[styles.onhandText, { color: stockColor }]}>
               {onhandQty > 0 ? onhandQty : 'Out'}
             </Text>
@@ -291,6 +291,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   const [showQtyPicker, setShowQtyPicker] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [onhandMap, setOnhandMap] = useState({});
+  const [showOnlyAvailable, setShowOnlyAvailable] = useState(false);
 
   const priceListName = customer?.priceList || menuConfig?.priceList || '';
 
@@ -357,18 +358,28 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   useEffect(() => {
+    let result = [...items];
+
+    // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      const filtered = items.filter(item =>
+      result = result.filter(item =>
         (item.itemNumber || '').toLowerCase().includes(query) ||
         (item.itemDesc || '').toLowerCase().includes(query) ||
         (item.barcode || '').toLowerCase().includes(query)
       );
-      setFilteredItems(filtered);
-    } else {
-      setFilteredItems(items);
     }
-  }, [searchQuery, items]);
+
+    // Filter by availability
+    if (showOnlyAvailable) {
+      result = result.filter(item => {
+        const qty = onhandMap[item.itemNumber];
+        return qty !== undefined && qty > 0;
+      });
+    }
+
+    setFilteredItems(result);
+  }, [searchQuery, items, showOnlyAvailable, onhandMap]);
 
   const getCartQty = (item) => {
     const cartItem = cart.find(c => c.itemNumber === item.itemNumber);
@@ -551,10 +562,19 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
         <View style={styles.infoBar}>
           <Text style={styles.countText}>{filteredItems.length.toLocaleString()} items</Text>
-          <View style={styles.tipContainer}>
-            <Ionicons name="finger-print" size={12} color={colors.secondary} />
-            <Text style={styles.tipText}>Long press for bulk add</Text>
-          </View>
+          <TouchableOpacity
+            style={[styles.availableFilter, showOnlyAvailable && styles.availableFilterActive]}
+            onPress={() => setShowOnlyAvailable(!showOnlyAvailable)}
+          >
+            <Ionicons
+              name={showOnlyAvailable ? "checkmark-circle" : "ellipse-outline"}
+              size={14}
+              color={showOnlyAvailable ? colors.accentGreen || '#4CAF50' : colors.textMuted}
+            />
+            <Text style={[styles.availableFilterText, showOnlyAvailable && styles.availableFilterTextActive]}>
+              In Stock Only
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {loading ? (
@@ -791,6 +811,30 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
+  availableFilter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  availableFilterActive: {
+    backgroundColor: (colors.accentGreen || '#4CAF50') + '15',
+    borderColor: (colors.accentGreen || '#4CAF50') + '50',
+  },
+  availableFilterText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  availableFilterTextActive: {
+    color: colors.accentGreen || '#4CAF50',
+    fontWeight: '600',
+  },
   tipContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -861,13 +905,13 @@ const styles = StyleSheet.create({
   onhandBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 6,
-    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
   },
   onhandText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '600',
   },
   itemMeta: {
