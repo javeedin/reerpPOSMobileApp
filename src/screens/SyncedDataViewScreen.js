@@ -495,25 +495,22 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     filterData();
-  }, [searchQuery, data, selectedPriceListFilter, activeTab]);
+  }, [searchQuery, data, selectedPriceListFilter, activeTab, allPriceListItems, type]);
 
   useEffect(() => {
     setDisplayData(filteredData.slice(0, PAGE_SIZE));
     setPage(1);
   }, [filteredData]);
 
-  // Reset search when switching tabs
+  // Reset search when switching tabs (but not the filter)
   useEffect(() => {
     if (type === 'priceList') {
       setSearchQuery('');
       setSuggestions([]);
       setShowSuggestions(false);
-      if (activeTab === 'items') {
-        setFilteredData(allPriceListItems);
-        setSelectedPriceListFilter(null);
-      }
+      setShowPriceListDropdown(false);
     }
-  }, [activeTab]);
+  }, [activeTab, type]);
 
   const loadData = async () => {
     setLoading(true);
@@ -556,18 +553,8 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     setSearchQuery('');
     setSuggestions([]);
     setShowSuggestions(false);
-
-    if (!priceListName) {
-      // Show all items
-      setFilteredData(allPriceListItems);
-    } else {
-      // Filter by price list
-      const filtered = allPriceListItems.filter(
-        (item) => item.priceListName === priceListName || item.listName === priceListName
-      );
-      setFilteredData(filtered);
-    }
-  }, [allPriceListItems]);
+    // The useEffect will handle updating filteredData based on selectedPriceListFilter
+  }, []);
 
   // Generate suggestions based on search query
   const generateSuggestions = useCallback((query) => {
@@ -887,8 +874,8 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
             <TouchableOpacity
               style={styles.priceListNameCard}
               onPress={() => {
+                setSelectedPriceListFilter(item.name);
                 setActiveTab('items');
-                setTimeout(() => filterByPriceList(item.name), 100);
               }}
             >
               <View style={[styles.avatar, { backgroundColor: colors.accentOrange + '20' }]}>
