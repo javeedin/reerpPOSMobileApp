@@ -221,6 +221,7 @@ const InventoryScreen = ({ navigation }) => {
   const [qtyFrom, setQtyFrom] = useState('');
   const [qtyTo, setQtyTo] = useState('');
   const [quickFilter, setQuickFilter] = useState('none'); // 'none', 'top20', 'low20'
+  const [quickFilterLimit, setQuickFilterLimit] = useState(20); // How many items to show for quick filter
 
   // Collapsible filter section
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
@@ -330,13 +331,13 @@ const InventoryScreen = ({ navigation }) => {
       result = result.filter(item => (item.primaryQuantity || 0) <= toQty);
     }
 
-    // Quick filter: Top 20 or Low 20
+    // Quick filter: Top N or Low N
     if (quickFilter === 'top20') {
       result.sort((a, b) => (b.primaryQuantity || 0) - (a.primaryQuantity || 0));
-      result = result.slice(0, 20);
+      result = result.slice(0, quickFilterLimit);
     } else if (quickFilter === 'low20') {
       result.sort((a, b) => (a.primaryQuantity || 0) - (b.primaryQuantity || 0));
-      result = result.slice(0, 20);
+      result = result.slice(0, quickFilterLimit);
     } else if (sortColumn !== 'none') {
       // Column-based sorting with direction (only if no quick filter)
       result.sort((a, b) => {
@@ -372,7 +373,7 @@ const InventoryScreen = ({ navigation }) => {
     }
 
     setFilteredData(result);
-  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter]);
+  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter, quickFilterLimit]);
 
   const handleClearSearch = () => {
     setSearchQuery('');
@@ -447,6 +448,12 @@ const InventoryScreen = ({ navigation }) => {
     setSortColumn('none');
     setSortDirection('asc');
     setQuickFilter('none');
+    setQuickFilterLimit(20);
+  };
+
+  // Load more for quick filter
+  const loadMoreQuickFilter = () => {
+    setQuickFilterLimit(prev => prev + 20);
   };
 
   // Toggle sort direction
@@ -663,7 +670,12 @@ const InventoryScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[styles.quickFilterBtn, quickFilter === 'top20' && styles.quickFilterBtnActive]}
                   onPress={() => {
-                    setQuickFilter(quickFilter === 'top20' ? 'none' : 'top20');
+                    if (quickFilter === 'top20') {
+                      setQuickFilter('none');
+                    } else {
+                      setQuickFilter('top20');
+                      setQuickFilterLimit(20);
+                    }
                     setQtyFrom('');
                     setQtyTo('');
                   }}
@@ -675,7 +687,12 @@ const InventoryScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[styles.quickFilterBtn, quickFilter === 'low20' && styles.quickFilterBtnActive]}
                   onPress={() => {
-                    setQuickFilter(quickFilter === 'low20' ? 'none' : 'low20');
+                    if (quickFilter === 'low20') {
+                      setQuickFilter('none');
+                    } else {
+                      setQuickFilter('low20');
+                      setQuickFilterLimit(20);
+                    }
                     setQtyFrom('');
                     setQtyTo('');
                   }}
@@ -752,6 +769,17 @@ const InventoryScreen = ({ navigation }) => {
                     <ActivityIndicator size="small" color={colors.accent} />
                     <Text style={styles.loadMoreText}>Loading more...</Text>
                   </View>
+                ) : quickFilter !== 'none' && filteredData.length === quickFilterLimit && onhandData.length > quickFilterLimit ? (
+                  <TouchableOpacity style={styles.getMoreBtn} onPress={loadMoreQuickFilter}>
+                    <Ionicons
+                      name={quickFilter === 'top20' ? 'arrow-up-circle-outline' : 'arrow-down-circle-outline'}
+                      size={20}
+                      color={colors.accent}
+                    />
+                    <Text style={styles.getMoreBtnText}>
+                      {quickFilter === 'top20' ? 'Get another Top 20' : 'Get another Low 20'}
+                    </Text>
+                  </TouchableOpacity>
                 ) : displayData.length > 0 ? (
                   <Text style={styles.endText}>
                     Showing all {displayData.length.toLocaleString()} items
@@ -1339,6 +1367,22 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  getMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent + '15',
+    marginHorizontal: 16,
+    marginVertical: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  getMoreBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accent,
   },
   modalOverlay: {
     flex: 1,
