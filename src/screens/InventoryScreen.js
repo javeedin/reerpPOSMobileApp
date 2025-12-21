@@ -245,7 +245,7 @@ const InventoryScreen = ({ navigation }) => {
 
   useEffect(() => {
     filterAndSortData();
-  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter]);
+  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter, quickFilterLimit]);
 
   // Animate filter section collapse/expand
   const animateFilterSection = useCallback((expand) => {
