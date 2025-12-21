@@ -21,6 +21,7 @@ import {
   getPriceList,
   getPriceListNames,
   getPriceListItems,
+  getOnhand,
 } from '../services/syncService';
 
 const PAGE_SIZE = 50;
@@ -35,6 +36,8 @@ const getDataLoader = (type) => {
       return getAgents;
     case 'priceList':
       return getPriceList;
+    case 'onhand':
+      return getOnhand;
     default:
       return () => [];
   }
@@ -50,6 +53,8 @@ const getTitle = (type) => {
       return 'Agents';
     case 'priceList':
       return 'Price List';
+    case 'onhand':
+      return 'Fusion Onhand';
     default:
       return 'Data';
   }
@@ -65,6 +70,8 @@ const getIcon = (type) => {
       return 'person';
     case 'priceList':
       return 'pricetag';
+    case 'onhand':
+      return 'layers';
     default:
       return 'list';
   }
@@ -435,6 +442,59 @@ const PriceListCard = ({ item, onViewDetails }) => (
   </View>
 );
 
+// Onhand Card
+const OnhandCard = ({ item }) => {
+  const getStockStatus = (quantity) => {
+    if (quantity === 0) return { label: 'Out of Stock', color: colors.accentRed || '#E53935' };
+    if (quantity < 10) return { label: 'Low Stock', color: colors.accentOrange };
+    return { label: 'In Stock', color: colors.accentGreen };
+  };
+
+  const stockStatus = getStockStatus(item.primaryQuantity);
+
+  return (
+    <View style={styles.dataCard}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.avatar, { backgroundColor: stockStatus.color + '20' }]}>
+          <Ionicons name="cube" size={24} color={stockStatus.color} />
+        </View>
+        <View style={styles.cardInfo}>
+          <Text style={styles.priceListItemName} numberOfLines={2}>
+            {item.itemDescription || 'Unknown Item'}
+          </Text>
+          <Text style={styles.cardSubtitle}>
+            {item.itemNumber || 'N/A'}
+          </Text>
+        </View>
+        <View style={styles.onhandQtyContainer}>
+          <Text style={styles.onhandQty}>{item.primaryQuantity || 0}</Text>
+          <Text style={styles.onhandUom}>{item.primaryUOMCode || 'EA'}</Text>
+        </View>
+      </View>
+
+      <View style={styles.cardDetails}>
+        <View style={styles.tagsRow}>
+          <View style={[styles.tag, { backgroundColor: stockStatus.color + '15' }]}>
+            <Text style={[styles.tagText, { color: stockStatus.color }]}>{stockStatus.label}</Text>
+          </View>
+          {item.organizationCode && (
+            <View style={styles.tag}>
+              <Ionicons name="business" size={12} color={colors.accentPurple} />
+              <Text style={styles.tagText}>{item.organizationCode}</Text>
+            </View>
+          )}
+          {item.subinventoryCode && (
+            <View style={[styles.tag, { backgroundColor: colors.accent + '15' }]}>
+              <Ionicons name="layers" size={12} color={colors.accent} />
+              <Text style={[styles.tagText, { color: colors.accent }]}>{item.subinventoryCode}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+};
+
 // Highlight matching text component
 const HighlightText = ({ text, highlight, style }) => {
   if (!highlight.trim() || !text) {
@@ -673,6 +733,8 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         return <AgentCard item={item} />;
       case 'priceList':
         return <PriceListCard item={item} onViewDetails={handleViewPriceListDetails} />;
+      case 'onhand':
+        return <OnhandCard item={item} />;
       default:
         return null;
     }
@@ -1382,6 +1444,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: colors.accentPurple,
+  },
+  onhandQtyContainer: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  onhandQty: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+  },
+  onhandUom: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
   loadMoreContainer: {
     flexDirection: 'row',

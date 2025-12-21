@@ -26,6 +26,30 @@ const getStockStatus = (quantity) => {
   return { label: 'In Stock', color: colors.accentGreen };
 };
 
+// Highlight matching text component
+const HighlightText = ({ text, highlight, style }) => {
+  if (!highlight.trim() || !text) {
+    return <Text style={style}>{text}</Text>;
+  }
+
+  const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const parts = text.split(regex);
+
+  return (
+    <Text style={style}>
+      {parts.map((part, index) =>
+        part.toLowerCase() === highlight.toLowerCase() ? (
+          <Text key={index} style={[style, { backgroundColor: colors.accent + '30', fontWeight: '700' }]}>
+            {part}
+          </Text>
+        ) : (
+          <Text key={index}>{part}</Text>
+        )
+      )}
+    </Text>
+  );
+};
+
 // Lot Detail Modal
 const LotDetailModal = ({ visible, lots, itemDescription, loading, onClose }) => {
   return (
@@ -99,7 +123,7 @@ const LotDetailModal = ({ visible, lots, itemDescription, loading, onClose }) =>
 };
 
 // Onhand Item Card
-const OnhandCard = ({ item, onViewLots }) => {
+const OnhandCard = ({ item, onViewLots, searchQuery }) => {
   const stockStatus = getStockStatus(item.primaryQuantity);
 
   return (
@@ -110,8 +134,16 @@ const OnhandCard = ({ item, onViewLots }) => {
         </View>
       </View>
       <View style={styles.cardCenter}>
-        <Text style={styles.productName} numberOfLines={2}>{item.itemDescription || 'Unknown Item'}</Text>
-        <Text style={styles.sku}>{item.itemNumber || 'N/A'}</Text>
+        <HighlightText
+          text={item.itemDescription || 'Unknown Item'}
+          highlight={searchQuery}
+          style={styles.productName}
+        />
+        <HighlightText
+          text={item.itemNumber || 'N/A'}
+          highlight={searchQuery}
+          style={styles.sku}
+        />
         <View style={styles.tagsRow}>
           <View style={[styles.statusBadge, { backgroundColor: stockStatus.color + '20' }]}>
             <Text style={[styles.statusText, { color: stockStatus.color }]}>{stockStatus.label}</Text>
@@ -172,6 +204,21 @@ const InventoryScreen = ({ navigation }) => {
   const [page, setPage] = useState(1);
   const [lastSync, setLastSync] = useState(null);
 
+  // Organization info
+  const [orgCode, setOrgCode] = useState('');
+  const [subinvCode, setSubinvCode] = useState('');
+
+  // Sorting and filtering
+  const [sortOrder, setSortOrder] = useState('none'); // 'none', 'qty_asc', 'qty_desc'
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [qtyFrom, setQtyFrom] = useState('');
+  const [qtyTo, setQtyTo] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Autocomplete
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
   // Lot modal states
   const [lotModalVisible, setLotModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -183,8 +230,8 @@ const InventoryScreen = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    filterData();
-  }, [searchQuery, onhandData]);
+    filterAndSortData();
+  }, [searchQuery, onhandData, sortOrder, qtyFrom, qtyTo]);
 
   useEffect(() => {
     setDisplayData(filteredData.slice(0, PAGE_SIZE));
@@ -198,6 +245,12 @@ const InventoryScreen = ({ navigation }) => {
       setOnhandData(data || []);
       setFilteredData(data || []);
 
+      // Get org code and subinventory from first item
+      if (data && data.length > 0) {
+        setOrgCode(data[0].organizationCode || '');
+        setSubinvCode(data[0].subinventoryCode || '');
+      }
+
       // Get last sync time
       const meta = await getSyncMetadata();
       if (meta?.onhand?.lastSync) {
@@ -210,22 +263,102 @@ const InventoryScreen = ({ navigation }) => {
     }
   };
 
-  const filterData = useCallback(() => {
-    if (!searchQuery.trim()) {
-      setFilteredData(onhandData);
+  // Generate suggestions for autocomplete
+  const generateSuggestions = useCallback((query) => {
+    if (!query.trim() || query.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
       return;
     }
 
-    const lowerQuery = searchQuery.toLowerCase();
-    const filtered = onhandData.filter((item) => {
-      const itemNumber = (item.itemNumber || '').toLowerCase();
-      const itemDesc = (item.itemDescription || '').toLowerCase();
-      return itemNumber.includes(lowerQuery) || itemDesc.includes(lowerQuery);
-    });
-    setFilteredData(filtered);
-  }, [searchQuery, onhandData]);
+    const lowerQuery = query.toLowerCase();
+    const matchedSuggestions = [];
 
-  const handleFetchOnhand = async () => {
+    for (const item of onhandData) {
+      if (matchedSuggestions.length >= 6) break;
+
+      const itemNumber = item.itemNumber || '';
+      const itemDesc = item.itemDescription || '';
+
+      if (itemNumber.toLowerCase().includes(lowerQuery) || itemDesc.toLowerCase().includes(lowerQuery)) {
+        matchedSuggestions.push({
+          id: item.inventoryItemId,
+          name: itemDesc,
+          secondary: itemNumber,
+          item: item,
+        });
+      }
+    }
+
+    setSuggestions(matchedSuggestions);
+    setShowSuggestions(matchedSuggestions.length > 0);
+  }, [onhandData]);
+
+  const filterAndSortData = useCallback(() => {
+    let result = [...onhandData];
+
+    // Text search filter
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      result = result.filter((item) => {
+        const itemNumber = (item.itemNumber || '').toLowerCase();
+        const itemDesc = (item.itemDescription || '').toLowerCase();
+        return itemNumber.includes(lowerQuery) || itemDesc.includes(lowerQuery);
+      });
+    }
+
+    // Quantity range filter
+    const fromQty = qtyFrom !== '' ? parseFloat(qtyFrom) : null;
+    const toQty = qtyTo !== '' ? parseFloat(qtyTo) : null;
+
+    if (fromQty !== null) {
+      result = result.filter(item => (item.primaryQuantity || 0) >= fromQty);
+    }
+    if (toQty !== null) {
+      result = result.filter(item => (item.primaryQuantity || 0) <= toQty);
+    }
+
+    // Sorting
+    if (sortOrder === 'qty_asc') {
+      result.sort((a, b) => (a.primaryQuantity || 0) - (b.primaryQuantity || 0));
+    } else if (sortOrder === 'qty_desc') {
+      result.sort((a, b) => (b.primaryQuantity || 0) - (a.primaryQuantity || 0));
+    }
+
+    setFilteredData(result);
+  }, [searchQuery, onhandData, sortOrder, qtyFrom, qtyTo]);
+
+  const handleSearchChange = (text) => {
+    setSearchQuery(text);
+    generateSuggestions(text);
+  };
+
+  const handleSuggestionSelect = (suggestion) => {
+    setSearchQuery(suggestion.name);
+    setShowSuggestions(false);
+    setFilteredData([suggestion.item]);
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setShowSuggestions(false);
+    setSuggestions([]);
+  };
+
+  const handleFetchOnhand = async (skipConfirm = false) => {
+    // If data exists and not skipping confirm, show confirmation
+    if (onhandData.length > 0 && !skipConfirm) {
+      Alert.alert(
+        'Re-sync Onhand',
+        'Onhand data already exists. Do you want to re-sync again?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Re-sync', onPress: () => handleFetchOnhand(true) },
+        ]
+      );
+      return;
+    }
+
     setIsFetching(true);
     setFetchProgress(null);
 
@@ -275,10 +408,24 @@ const InventoryScreen = ({ navigation }) => {
     }
   };
 
+  const clearFilters = () => {
+    setQtyFrom('');
+    setQtyTo('');
+    setSortOrder('none');
+  };
+
   // Calculate summary
   const totalItems = onhandData.length;
   const lowStockItems = onhandData.filter(item => item.primaryQuantity > 0 && item.primaryQuantity < 10).length;
   const outOfStockItems = onhandData.filter(item => item.primaryQuantity === 0).length;
+
+  const getSortLabel = () => {
+    switch (sortOrder) {
+      case 'qty_asc': return 'Qty: Low to High';
+      case 'qty_desc': return 'Qty: High to Low';
+      default: return 'Sort';
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -298,10 +445,17 @@ const InventoryScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
           <Ionicons name="person-circle" size={28} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Inventory</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Inventory</Text>
+          {(orgCode || subinvCode) && (
+            <Text style={styles.headerSubtitle}>
+              {orgCode}{orgCode && subinvCode ? ' / ' : ''}{subinvCode}
+            </Text>
+          )}
+        </View>
         <TouchableOpacity
           style={styles.syncButton}
-          onPress={handleFetchOnhand}
+          onPress={() => handleFetchOnhand(false)}
           disabled={isFetching}
         >
           {isFetching ? (
@@ -320,7 +474,7 @@ const InventoryScreen = ({ navigation }) => {
             <Text style={styles.loadingText}>Loading inventory...</Text>
           </View>
         ) : onhandData.length === 0 ? (
-          <EmptyStateWithFetch onFetch={handleFetchOnhand} isFetching={isFetching} />
+          <EmptyStateWithFetch onFetch={() => handleFetchOnhand(true)} isFetching={isFetching} />
         ) : (
           <>
             {/* Last Sync Info */}
@@ -333,22 +487,155 @@ const InventoryScreen = ({ navigation }) => {
               </View>
             )}
 
-            {/* Search Bar */}
-            <View style={styles.searchContainer}>
-              <Ionicons name="search" size={20} color={colors.textMuted} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search items..."
-                placeholderTextColor={colors.textMuted}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={20} color={colors.textMuted} />
-                </TouchableOpacity>
+            {/* Search Bar with Autocomplete */}
+            <View style={styles.searchWrapper}>
+              <View style={styles.searchContainer}>
+                <Ionicons name="search" size={20} color={colors.textMuted} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search items..."
+                  placeholderTextColor={colors.textMuted}
+                  value={searchQuery}
+                  onChangeText={handleSearchChange}
+                  onFocus={() => searchQuery.length >= 2 && generateSuggestions(searchQuery)}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={handleClearSearch}>
+                    <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Autocomplete Suggestions */}
+              {showSuggestions && suggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  {suggestions.map((suggestion, index) => (
+                    <TouchableOpacity
+                      key={`suggestion-${suggestion.id}-${index}`}
+                      style={[
+                        styles.suggestionItem,
+                        index === suggestions.length - 1 && styles.suggestionItemLast,
+                      ]}
+                      onPress={() => handleSuggestionSelect(suggestion)}
+                    >
+                      <View style={styles.suggestionIcon}>
+                        <Ionicons name="cube" size={18} color={colors.accent} />
+                      </View>
+                      <View style={styles.suggestionContent}>
+                        <HighlightText
+                          text={suggestion.name}
+                          highlight={searchQuery}
+                          style={styles.suggestionName}
+                        />
+                        <HighlightText
+                          text={suggestion.secondary}
+                          highlight={searchQuery}
+                          style={styles.suggestionSecondary}
+                        />
+                      </View>
+                      <Ionicons name="arrow-forward" size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={styles.viewAllButton}
+                    onPress={() => setShowSuggestions(false)}
+                  >
+                    <Text style={styles.viewAllText}>
+                      View all {filteredData.length} results
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
+
+            {/* Sort and Filter Row */}
+            <View style={styles.sortFilterRow}>
+              {/* Sort Dropdown */}
+              <View style={styles.sortContainer}>
+                <TouchableOpacity
+                  style={styles.sortButton}
+                  onPress={() => setShowSortDropdown(!showSortDropdown)}
+                >
+                  <Ionicons name="swap-vertical" size={16} color={colors.accent} />
+                  <Text style={styles.sortButtonText}>{getSortLabel()}</Text>
+                  <Ionicons
+                    name={showSortDropdown ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={colors.textMuted}
+                  />
+                </TouchableOpacity>
+
+                {showSortDropdown && (
+                  <View style={styles.sortDropdown}>
+                    <TouchableOpacity
+                      style={[styles.sortOption, sortOrder === 'none' && styles.sortOptionActive]}
+                      onPress={() => { setSortOrder('none'); setShowSortDropdown(false); }}
+                    >
+                      <Text style={styles.sortOptionText}>Default</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.sortOption, sortOrder === 'qty_asc' && styles.sortOptionActive]}
+                      onPress={() => { setSortOrder('qty_asc'); setShowSortDropdown(false); }}
+                    >
+                      <Text style={styles.sortOptionText}>Qty: Low to High</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.sortOption, sortOrder === 'qty_desc' && styles.sortOptionActive]}
+                      onPress={() => { setSortOrder('qty_desc'); setShowSortDropdown(false); }}
+                    >
+                      <Text style={styles.sortOptionText}>Qty: High to Low</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+
+              {/* Filter Toggle */}
+              <TouchableOpacity
+                style={[styles.filterToggle, showFilters && styles.filterToggleActive]}
+                onPress={() => setShowFilters(!showFilters)}
+              >
+                <Ionicons name="options" size={16} color={showFilters ? '#FFFFFF' : colors.accent} />
+                <Text style={[styles.filterToggleText, showFilters && styles.filterToggleTextActive]}>
+                  Qty Range
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Quantity Range Inputs */}
+            {showFilters && (
+              <View style={styles.filterContainer}>
+                <View style={styles.qtyInputRow}>
+                  <View style={styles.qtyInputWrapper}>
+                    <Text style={styles.qtyLabel}>From</Text>
+                    <TextInput
+                      style={styles.qtyInput}
+                      placeholder="Min"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      value={qtyFrom}
+                      onChangeText={setQtyFrom}
+                    />
+                  </View>
+                  <Text style={styles.qtyDivider}>-</Text>
+                  <View style={styles.qtyInputWrapper}>
+                    <Text style={styles.qtyLabel}>To</Text>
+                    <TextInput
+                      style={styles.qtyInput}
+                      placeholder="Max"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      value={qtyTo}
+                      onChangeText={setQtyTo}
+                    />
+                  </View>
+                  {(qtyFrom !== '' || qtyTo !== '') && (
+                    <TouchableOpacity style={styles.clearFilterBtn} onPress={clearFilters}>
+                      <Ionicons name="close" size={18} color={colors.accentRed} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
 
             {/* Summary Cards */}
             <View style={styles.summaryContainer}>
@@ -388,7 +675,9 @@ const InventoryScreen = ({ navigation }) => {
             <FlatList
               data={displayData}
               keyExtractor={(item, index) => `onhand-${item.inventoryItemId}-${index}`}
-              renderItem={({ item }) => <OnhandCard item={item} onViewLots={handleViewLots} />}
+              renderItem={({ item }) => (
+                <OnhandCard item={item} onViewLots={handleViewLots} searchQuery={searchQuery} />
+              )}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
               onEndReached={loadMore}
@@ -435,10 +724,18 @@ const styles = StyleSheet.create({
   menuButton: {
     padding: 8,
   },
+  headerCenter: {
+    alignItems: 'center',
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
   },
   syncButton: {
     padding: 8,
@@ -505,12 +802,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
   },
+  searchWrapper: {
+    position: 'relative',
+    zIndex: 100,
+    marginHorizontal: 16,
+    marginVertical: 8,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 12,
     height: 48,
@@ -525,6 +826,188 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     color: colors.textPrimary,
     fontSize: 15,
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 1000,
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  suggestionItemLast: {
+    borderBottomWidth: 0,
+  },
+  suggestionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.accent + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  suggestionContent: {
+    flex: 1,
+  },
+  suggestionName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  suggestionSecondary: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  viewAllButton: {
+    paddingVertical: 12,
+    backgroundColor: colors.surface || '#F5F5F5',
+    alignItems: 'center',
+  },
+  viewAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  sortFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 10,
+    zIndex: 50,
+  },
+  sortContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  sortButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  sortButtonText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  sortDropdown: {
+    position: 'absolute',
+    top: 44,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 100,
+  },
+  sortOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  sortOptionActive: {
+    backgroundColor: colors.accent + '10',
+  },
+  sortOptionText: {
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  filterToggleActive: {
+    backgroundColor: colors.accent,
+  },
+  filterToggleText: {
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  filterToggleTextActive: {
+    color: '#FFFFFF',
+  },
+  filterContainer: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  qtyInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  qtyInputWrapper: {
+    flex: 1,
+  },
+  qtyLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  qtyInput: {
+    backgroundColor: colors.surface || '#F5F5F5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  qtyDivider: {
+    fontSize: 16,
+    color: colors.textMuted,
+    marginTop: 16,
+  },
+  clearFilterBtn: {
+    padding: 8,
+    marginTop: 16,
   },
   summaryContainer: {
     flexDirection: 'row',
