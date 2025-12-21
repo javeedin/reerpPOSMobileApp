@@ -266,7 +266,6 @@ const InventoryScreen = ({ navigation }) => {
     if (currentScrollY > scrollThreshold && isFilterExpanded && scrollDiff > 0) {
       animateFilterSection(false);
       Keyboard.dismiss();
-      setShowSuggestions(false);
     }
     // Scrolling up near top - expand
     else if (currentScrollY < ITEM_HEIGHT && !isFilterExpanded && scrollDiff < 0) {
