@@ -132,7 +132,7 @@ const OnhandCard = ({ item, onViewLots, searchQuery }) => {
     <TouchableOpacity style={styles.inventoryCard} activeOpacity={0.7} onPress={() => onViewLots(item)}>
       <View style={styles.cardLeft}>
         <View style={[styles.iconContainer, { backgroundColor: stockStatus.color + '20' }]}>
-          <Ionicons name="cube" size={24} color={stockStatus.color} />
+          <Ionicons name="cube" size={20} color={stockStatus.color} />
         </View>
       </View>
       <View style={styles.cardCenter}>
@@ -152,8 +152,8 @@ const OnhandCard = ({ item, onViewLots, searchQuery }) => {
           </View>
           {item.lotsHref && (
             <View style={[styles.statusBadge, { backgroundColor: colors.accentPurple + '20' }]}>
-              <Ionicons name="layers" size={10} color={colors.accentPurple} />
-              <Text style={[styles.statusText, { color: colors.accentPurple, marginLeft: 4 }]}>Lots</Text>
+              <Ionicons name="layers" size={8} color={colors.accentPurple} />
+              <Text style={[styles.statusText, { color: colors.accentPurple, marginLeft: 3 }]}>Lots</Text>
             </View>
           )}
         </View>
@@ -194,8 +194,8 @@ const EmptyStateWithFetch = ({ onFetch, isFetching }) => (
   </View>
 );
 
-const FILTER_SECTION_HEIGHT = 180; // Approximate height of filter section
-const ITEM_HEIGHT = 90; // Approximate height of each list item
+const FILTER_SECTION_HEIGHT = 280; // Height includes search, filters, and KPI cards
+const ITEM_HEIGHT = 75; // Approximate height of each list item (reduced)
 const COLLAPSE_THRESHOLD = 5; // Number of items to scroll before collapsing
 
 const InventoryScreen = ({ navigation }) => {
@@ -575,6 +575,11 @@ const InventoryScreen = ({ navigation }) => {
               {orgCode}{orgCode && subinvCode ? ' / ' : ''}{subinvCode}
             </Text>
           )}
+          {lastSync && (
+            <Text style={styles.headerSyncTime}>
+              Synced: {lastSync.toLocaleDateString()} {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          )}
         </View>
         <TouchableOpacity
           style={styles.syncButton}
@@ -600,16 +605,6 @@ const InventoryScreen = ({ navigation }) => {
           <EmptyStateWithFetch onFetch={() => handleFetchOnhand(true)} isFetching={isFetching} />
         ) : (
           <>
-            {/* Last Sync Info */}
-            {lastSync && (
-              <View style={styles.lastSyncBar}>
-                <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-                <Text style={styles.lastSyncText}>
-                  Last synced: {lastSync.toLocaleString()}
-                </Text>
-              </View>
-            )}
-
             {/* Collapsible Filter Section */}
             <Animated.View
               style={[
@@ -804,6 +799,22 @@ const InventoryScreen = ({ navigation }) => {
                   </TouchableOpacity>
                 )}
               </View>
+
+              {/* Summary Cards - inside collapsible section */}
+              <View style={styles.summaryContainer}>
+                <View style={[styles.summaryCard, { borderLeftColor: colors.accent }]}>
+                  <Text style={styles.summaryValue}>{totalItems.toLocaleString()}</Text>
+                  <Text style={styles.summaryLabel}>Total</Text>
+                </View>
+                <View style={[styles.summaryCard, { borderLeftColor: colors.accentOrange }]}>
+                  <Text style={styles.summaryValue}>{lowStockItems.toLocaleString()}</Text>
+                  <Text style={styles.summaryLabel}>Low Stock</Text>
+                </View>
+                <View style={[styles.summaryCard, { borderLeftColor: colors.accentRed || '#E53935' }]}>
+                  <Text style={styles.summaryValue}>{outOfStockItems.toLocaleString()}</Text>
+                  <Text style={styles.summaryLabel}>Out</Text>
+                </View>
+              </View>
             </Animated.View>
 
             {/* Collapsed Filter Bar - shows when collapsed */}
@@ -814,34 +825,18 @@ const InventoryScreen = ({ navigation }) => {
               >
                 <Ionicons name="search" size={16} color={colors.textMuted} />
                 <Text style={styles.collapsedFilterText}>
-                  {hasActiveFilters ? 'Filters active' : 'Tap to search & filter'}
+                  {hasActiveFilters ? 'Filters active' : 'Tap to expand'}
                 </Text>
-                {hasActiveFilters && (
-                  <View style={styles.filterBadge}>
-                    <Text style={styles.filterBadgeText}>
-                      {(searchQuery.trim() ? 1 : 0) + (sortColumn !== 'none' ? 1 : 0) + ((qtyFrom || qtyTo) ? 1 : 0)}
-                    </Text>
-                  </View>
-                )}
+                <View style={styles.collapsedKpiRow}>
+                  <Text style={styles.collapsedKpiText}>{totalItems}</Text>
+                  <Text style={styles.collapsedKpiDivider}>|</Text>
+                  <Text style={[styles.collapsedKpiText, { color: colors.accentOrange }]}>{lowStockItems}</Text>
+                  <Text style={styles.collapsedKpiDivider}>|</Text>
+                  <Text style={[styles.collapsedKpiText, { color: colors.accentRed || '#E53935' }]}>{outOfStockItems}</Text>
+                </View>
                 <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
               </TouchableOpacity>
             )}
-
-            {/* Summary Cards */}
-            <View style={styles.summaryContainer}>
-              <View style={[styles.summaryCard, { borderLeftColor: colors.accent }]}>
-                <Text style={styles.summaryValue}>{totalItems.toLocaleString()}</Text>
-                <Text style={styles.summaryLabel}>Total Items</Text>
-              </View>
-              <View style={[styles.summaryCard, { borderLeftColor: colors.accentOrange }]}>
-                <Text style={styles.summaryValue}>{lowStockItems.toLocaleString()}</Text>
-                <Text style={styles.summaryLabel}>Low Stock</Text>
-              </View>
-              <View style={[styles.summaryCard, { borderLeftColor: colors.accentRed || '#E53935' }]}>
-                <Text style={styles.summaryValue}>{outOfStockItems.toLocaleString()}</Text>
-                <Text style={styles.summaryLabel}>Out of Stock</Text>
-              </View>
-            </View>
 
             {/* Fetch Progress */}
             {isFetching && fetchProgress && (
@@ -930,6 +925,11 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
+  headerSyncTime: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 2,
+  },
   syncButton: {
     padding: 8,
   },
@@ -983,17 +983,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
-  },
-  lastSyncBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    gap: 6,
-  },
-  lastSyncText: {
-    fontSize: 12,
-    color: colors.textMuted,
   },
   searchWrapper: {
     position: 'relative',
@@ -1204,7 +1193,21 @@ const styles = StyleSheet.create({
   },
   collapsedFilterText: {
     flex: 1,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  collapsedKpiRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  collapsedKpiText: {
     fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  collapsedKpiDivider: {
+    fontSize: 12,
     color: colors.textMuted,
   },
   filterBadge: {
@@ -1288,31 +1291,31 @@ const styles = StyleSheet.create({
   },
   summaryContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    gap: 8,
+    paddingHorizontal: 16,
+    marginTop: 8,
+    gap: 6,
   },
   summaryCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     borderLeftWidth: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   summaryValue: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
     color: colors.textPrimary,
   },
   summaryLabel: {
-    fontSize: 11,
+    fontSize: 9,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
   progressContainer: {
     flexDirection: 'row',
@@ -1344,22 +1347,22 @@ const styles = StyleSheet.create({
   inventoryCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   cardLeft: {
-    marginRight: 14,
+    marginRight: 10,
   },
   iconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1367,30 +1370,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   productName: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: 2,
-    lineHeight: 18,
+    marginBottom: 1,
+    lineHeight: 16,
   },
   sku: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textMuted,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   tagsRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '500',
   },
   cardRight: {
@@ -1398,12 +1401,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   quantity: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.textPrimary,
   },
   quantityLabel: {
-    fontSize: 11,
+    fontSize: 9,
     color: colors.textMuted,
   },
   emptyState: {
