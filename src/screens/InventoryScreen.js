@@ -590,74 +590,18 @@ const InventoryScreen = ({ navigation }) => {
                 <View style={styles.sortContainer}>
                   <TouchableOpacity
                     style={[styles.sortButton, sortColumn !== 'none' && styles.sortButtonActive]}
-                    onPress={() => setShowSortDropdown(!showSortDropdown)}
+                    onPress={() => setShowSortDropdown(true)}
                   >
                     <Ionicons name="swap-vertical" size={16} color={sortColumn !== 'none' ? '#FFFFFF' : colors.accent} />
                     <Text style={[styles.sortButtonText, sortColumn !== 'none' && styles.sortButtonTextActive]}>
                       {getSortLabel()}
                     </Text>
                     <Ionicons
-                      name={showSortDropdown ? 'chevron-up' : 'chevron-down'}
+                      name="chevron-down"
                       size={16}
                       color={sortColumn !== 'none' ? '#FFFFFF' : colors.textMuted}
                     />
                   </TouchableOpacity>
-
-                  {showSortDropdown && (
-                    <View style={styles.sortDropdown}>
-                      <TouchableOpacity
-                        style={[styles.sortOption, sortColumn === 'none' && styles.sortOptionActive]}
-                        onPress={() => handleSortColumnSelect('none')}
-                      >
-                        <Text style={styles.sortOptionText}>Default</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.sortOption, sortColumn === 'itemNumber' && styles.sortOptionActive]}
-                        onPress={() => handleSortColumnSelect('itemNumber')}
-                      >
-                        <View style={styles.sortOptionRow}>
-                          <Text style={styles.sortOptionText}>Item Number</Text>
-                          {sortColumn === 'itemNumber' && (
-                            <Ionicons
-                              name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
-                              size={14}
-                              color={colors.accent}
-                            />
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.sortOption, sortColumn === 'itemDescription' && styles.sortOptionActive]}
-                        onPress={() => handleSortColumnSelect('itemDescription')}
-                      >
-                        <View style={styles.sortOptionRow}>
-                          <Text style={styles.sortOptionText}>Description</Text>
-                          {sortColumn === 'itemDescription' && (
-                            <Ionicons
-                              name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
-                              size={14}
-                              color={colors.accent}
-                            />
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.sortOption, sortColumn === 'primaryQuantity' && styles.sortOptionActive]}
-                        onPress={() => handleSortColumnSelect('primaryQuantity')}
-                      >
-                        <View style={styles.sortOptionRow}>
-                          <Text style={styles.sortOptionText}>Quantity</Text>
-                          {sortColumn === 'primaryQuantity' && (
-                            <Ionicons
-                              name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
-                              size={14}
-                              color={colors.accent}
-                            />
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    </View>
-                  )}
                 </View>
 
                 {/* Sort Direction Toggle */}
@@ -678,7 +622,7 @@ const InventoryScreen = ({ navigation }) => {
                 <View style={styles.qtyRangeContainer}>
                   <TextInput
                     style={styles.qtyInputSmall}
-                    placeholder="Min"
+                    placeholder="Min Qty"
                     placeholderTextColor={colors.textMuted}
                     keyboardType="numeric"
                     value={qtyFrom}
@@ -687,7 +631,7 @@ const InventoryScreen = ({ navigation }) => {
                   <Text style={styles.qtyDividerSmall}>-</Text>
                   <TextInput
                     style={styles.qtyInputSmall}
-                    placeholder="Max"
+                    placeholder="Max Qty"
                     placeholderTextColor={colors.textMuted}
                     keyboardType="numeric"
                     value={qtyTo}
@@ -780,6 +724,58 @@ const InventoryScreen = ({ navigation }) => {
           </>
         )}
       </View>
+
+      {/* Sort Dropdown Modal */}
+      <Modal
+        visible={showSortDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSortDropdown(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSortDropdown(false)}
+        >
+          <View style={styles.sortModalContent}>
+            <Text style={styles.sortModalTitle}>Sort By</Text>
+            <TouchableOpacity
+              style={[styles.sortModalOption, sortColumn === 'none' && styles.sortModalOptionActive]}
+              onPress={() => handleSortColumnSelect('none')}
+            >
+              <Text style={[styles.sortModalOptionText, sortColumn === 'none' && styles.sortModalOptionTextActive]}>Default</Text>
+              {sortColumn === 'none' && <Ionicons name="checkmark" size={20} color={colors.accent} />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortModalOption, sortColumn === 'itemNumber' && styles.sortModalOptionActive]}
+              onPress={() => handleSortColumnSelect('itemNumber')}
+            >
+              <Text style={[styles.sortModalOptionText, sortColumn === 'itemNumber' && styles.sortModalOptionTextActive]}>Item Number</Text>
+              {sortColumn === 'itemNumber' && (
+                <Ionicons name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'} size={20} color={colors.accent} />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortModalOption, sortColumn === 'itemDescription' && styles.sortModalOptionActive]}
+              onPress={() => handleSortColumnSelect('itemDescription')}
+            >
+              <Text style={[styles.sortModalOptionText, sortColumn === 'itemDescription' && styles.sortModalOptionTextActive]}>Description</Text>
+              {sortColumn === 'itemDescription' && (
+                <Ionicons name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'} size={20} color={colors.accent} />
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortModalOption, sortColumn === 'primaryQuantity' && styles.sortModalOptionActive]}
+              onPress={() => handleSortColumnSelect('primaryQuantity')}
+            >
+              <Text style={[styles.sortModalOptionText, sortColumn === 'primaryQuantity' && styles.sortModalOptionTextActive]}>Quantity</Text>
+              {sortColumn === 'primaryQuantity' && (
+                <Ionicons name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'} size={20} color={colors.accent} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -1001,6 +997,7 @@ const styles = StyleSheet.create({
   },
   collapsibleSection: {
     zIndex: 100,
+    paddingTop: 12,
   },
   collapsedFilterBar: {
     flexDirection: 'row',
@@ -1264,6 +1261,47 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sortModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '80%',
+    maxWidth: 300,
+    paddingVertical: 8,
+  },
+  sortModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: 4,
+  },
+  sortModalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  sortModalOptionActive: {
+    backgroundColor: colors.accent + '10',
+  },
+  sortModalOptionText: {
+    fontSize: 15,
+    color: colors.textPrimary,
+  },
+  sortModalOptionTextActive: {
+    color: colors.accent,
+    fontWeight: '500',
   },
 });
 
