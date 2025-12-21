@@ -220,6 +220,7 @@ const InventoryScreen = ({ navigation }) => {
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [qtyFrom, setQtyFrom] = useState('');
   const [qtyTo, setQtyTo] = useState('');
+  const [quickFilter, setQuickFilter] = useState('none'); // 'none', 'top20', 'low20'
 
   // Collapsible filter section
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
@@ -243,7 +244,7 @@ const InventoryScreen = ({ navigation }) => {
 
   useEffect(() => {
     filterAndSortData();
-  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo]);
+  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter]);
 
   // Animate filter section collapse/expand
   const animateFilterSection = useCallback((expand) => {
@@ -329,8 +330,15 @@ const InventoryScreen = ({ navigation }) => {
       result = result.filter(item => (item.primaryQuantity || 0) <= toQty);
     }
 
-    // Column-based sorting with direction
-    if (sortColumn !== 'none') {
+    // Quick filter: Top 20 or Low 20
+    if (quickFilter === 'top20') {
+      result.sort((a, b) => (b.primaryQuantity || 0) - (a.primaryQuantity || 0));
+      result = result.slice(0, 20);
+    } else if (quickFilter === 'low20') {
+      result.sort((a, b) => (a.primaryQuantity || 0) - (b.primaryQuantity || 0));
+      result = result.slice(0, 20);
+    } else if (sortColumn !== 'none') {
+      // Column-based sorting with direction (only if no quick filter)
       result.sort((a, b) => {
         let aVal, bVal;
 
@@ -364,7 +372,7 @@ const InventoryScreen = ({ navigation }) => {
     }
 
     setFilteredData(result);
-  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo]);
+  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter]);
 
   const handleClearSearch = () => {
     setSearchQuery('');
@@ -438,6 +446,7 @@ const InventoryScreen = ({ navigation }) => {
     setQtyTo('');
     setSortColumn('none');
     setSortDirection('asc');
+    setQuickFilter('none');
   };
 
   // Toggle sort direction
@@ -480,7 +489,7 @@ const InventoryScreen = ({ navigation }) => {
   };
 
   // Check if any filters are active
-  const hasActiveFilters = searchQuery.trim() || qtyFrom !== '' || qtyTo !== '' || sortColumn !== 'none';
+  const hasActiveFilters = searchQuery.trim() || qtyFrom !== '' || qtyTo !== '' || sortColumn !== 'none' || quickFilter !== 'none';
 
   return (
     <View style={styles.container}>
@@ -584,25 +593,22 @@ const InventoryScreen = ({ navigation }) => {
                 )}
               </View>
 
-              {/* Sort and Filter Row */}
-              <View style={styles.sortFilterRow}>
-                {/* Sort Column Dropdown */}
-                <View style={styles.sortContainer}>
-                  <TouchableOpacity
-                    style={[styles.sortButton, sortColumn !== 'none' && styles.sortButtonActive]}
-                    onPress={() => setShowSortDropdown(true)}
-                  >
-                    <Ionicons name="swap-vertical" size={16} color={sortColumn !== 'none' ? '#FFFFFF' : colors.accent} />
-                    <Text style={[styles.sortButtonText, sortColumn !== 'none' && styles.sortButtonTextActive]}>
-                      {getSortLabel()}
-                    </Text>
-                    <Ionicons
-                      name="chevron-down"
-                      size={16}
-                      color={sortColumn !== 'none' ? '#FFFFFF' : colors.textMuted}
-                    />
-                  </TouchableOpacity>
-                </View>
+              {/* Row 1: Sort By */}
+              <View style={styles.sortRow}>
+                <TouchableOpacity
+                  style={[styles.sortButton, sortColumn !== 'none' && styles.sortButtonActive]}
+                  onPress={() => setShowSortDropdown(true)}
+                >
+                  <Ionicons name="swap-vertical" size={16} color={sortColumn !== 'none' ? '#FFFFFF' : colors.accent} />
+                  <Text style={[styles.sortButtonText, sortColumn !== 'none' && styles.sortButtonTextActive]}>
+                    {getSortLabel()}
+                  </Text>
+                  <Ionicons
+                    name="chevron-down"
+                    size={16}
+                    color={sortColumn !== 'none' ? '#FFFFFF' : colors.textMuted}
+                  />
+                </TouchableOpacity>
 
                 {/* Sort Direction Toggle */}
                 {sortColumn !== 'none' && (
@@ -618,33 +624,59 @@ const InventoryScreen = ({ navigation }) => {
                   </TouchableOpacity>
                 )}
 
-                {/* Quantity Range Inputs */}
-                <View style={styles.qtyRangeContainer}>
-                  <TextInput
-                    style={styles.qtyInputSmall}
-                    placeholder="Min Qty"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    value={qtyFrom}
-                    onChangeText={setQtyFrom}
-                  />
-                  <Text style={styles.qtyDividerSmall}>-</Text>
-                  <TextInput
-                    style={styles.qtyInputSmall}
-                    placeholder="Max Qty"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    value={qtyTo}
-                    onChangeText={setQtyTo}
-                  />
-                </View>
-
                 {/* Clear Filters */}
                 {hasActiveFilters && (
                   <TouchableOpacity style={styles.clearAllBtn} onPress={clearFilters}>
                     <Ionicons name="close-circle" size={20} color={colors.accentRed || '#E53935'} />
                   </TouchableOpacity>
                 )}
+              </View>
+
+              {/* Row 2: Qty Range and Quick Filters */}
+              <View style={styles.qtyFilterRow}>
+                {/* Quantity Range Inputs */}
+                <TextInput
+                  style={styles.qtyInputSmall}
+                  placeholder="Min Qty"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="numeric"
+                  value={qtyFrom}
+                  onChangeText={(val) => { setQtyFrom(val); setQuickFilter('none'); }}
+                />
+                <Text style={styles.qtyDividerSmall}>-</Text>
+                <TextInput
+                  style={styles.qtyInputSmall}
+                  placeholder="Max Qty"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="numeric"
+                  value={qtyTo}
+                  onChangeText={(val) => { setQtyTo(val); setQuickFilter('none'); }}
+                />
+
+                {/* Quick Filter Buttons */}
+                <TouchableOpacity
+                  style={[styles.quickFilterBtn, quickFilter === 'top20' && styles.quickFilterBtnActive]}
+                  onPress={() => {
+                    setQuickFilter(quickFilter === 'top20' ? 'none' : 'top20');
+                    setQtyFrom('');
+                    setQtyTo('');
+                  }}
+                >
+                  <Ionicons name="arrow-up" size={14} color={quickFilter === 'top20' ? '#FFFFFF' : colors.accent} />
+                  <Text style={[styles.quickFilterText, quickFilter === 'top20' && styles.quickFilterTextActive]}>Top 20</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.quickFilterBtn, quickFilter === 'low20' && styles.quickFilterBtnActive]}
+                  onPress={() => {
+                    setQuickFilter(quickFilter === 'low20' ? 'none' : 'low20');
+                    setQtyFrom('');
+                    setQtyTo('');
+                  }}
+                >
+                  <Ionicons name="arrow-down" size={14} color={quickFilter === 'low20' ? '#FFFFFF' : colors.accent} />
+                  <Text style={[styles.quickFilterText, quickFilter === 'low20' && styles.quickFilterTextActive]}>Low 20</Text>
+                </TouchableOpacity>
               </View>
 
             </Animated.View>
@@ -889,19 +921,19 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 14,
   },
-  sortFilterRow: {
+  sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     marginBottom: 8,
     gap: 10,
-    zIndex: 1000,
-    elevation: 10,
   },
-  sortContainer: {
-    flex: 1,
-    position: 'relative',
-    zIndex: 1000,
+  qtyFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
   },
   sortButton: {
     flexDirection: 'row',
@@ -991,6 +1023,31 @@ const styles = StyleSheet.create({
   qtyDividerSmall: {
     fontSize: 14,
     color: colors.textMuted,
+  },
+  quickFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  quickFilterBtnActive: {
+    backgroundColor: colors.accent,
+  },
+  quickFilterText: {
+    fontSize: 12,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+  quickFilterTextActive: {
+    color: '#FFFFFF',
   },
   clearAllBtn: {
     padding: 4,
