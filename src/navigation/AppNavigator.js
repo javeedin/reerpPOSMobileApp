@@ -9,6 +9,11 @@ import {
   MenuDetailScreen,
   SyncDataScreen,
   SyncedDataViewScreen,
+  CustomerSelectionScreen,
+  ItemSelectionScreen,
+  CheckoutScreen,
+  PaymentScreen,
+  OrderDetailScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -33,6 +38,12 @@ const MainStack = () => {
       <Stack.Screen name="MenuDetail" component={MenuDetailScreen} />
       <Stack.Screen name="SyncData" component={SyncDataScreen} />
       <Stack.Screen name="SyncedDataView" component={SyncedDataViewScreen} />
+      {/* Order flow screens */}
+      <Stack.Screen name="CustomerSelection" component={CustomerSelectionScreen} />
+      <Stack.Screen name="ItemSelection" component={ItemSelectionScreen} />
+      <Stack.Screen name="Checkout" component={CheckoutScreen} />
+      <Stack.Screen name="Payment" component={PaymentScreen} />
+      <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
     </Stack.Navigator>
   );
 };

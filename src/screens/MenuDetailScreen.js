@@ -31,12 +31,26 @@ const ConfigItem = ({ label, value }) => (
 const MenuDetailScreen = ({ navigation, route }) => {
   const { item } = route.params || {};
 
-  const handleAction = () => {
-    Alert.alert(
-      'Coming Soon',
-      `The ${item?.name || 'feature'} functionality will be implemented in the next phase.`,
-      [{ text: 'OK' }]
-    );
+  const handleOpenNewOrder = () => {
+    // Prepare menu config for order
+    const menuConfig = {
+      name: item?.name || '',
+      orderType: item?.ordertype || '',
+      transactionType: item?.transaction_type || '',
+      paymentForm: item?.payment_form || '',
+      priceList: item?.pricelist || '',
+      allowDiscount: item?.allow_discount === 'YES' || item?.allow_discount === 'Y',
+      allowTax: item?.allow_tax === 'YES' || item?.allow_tax === 'Y',
+      signatureRequired: item?.signature_required === 'YES' || item?.signature_required === 'Y',
+      approvalRequired: item?.approval_required === 'YES' || item?.approval_required === 'Y',
+      showVatLabel: item?.show_vat_label === 'YES' || item?.show_vat_label === 'Y',
+      dutyFree: item?.Duty_free === 'YES' || item?.Duty_free === 'Y',
+      creditSales: item?.creditsales === 'YES' || item?.creditsales === 'Y',
+      warehouse: item?.warehouse || '',
+      subinventory: item?.subinventory || '',
+    };
+
+    navigation.navigate('CustomerSelection', { menuConfig });
   };
 
   if (!item) {
@@ -140,21 +154,19 @@ const MenuDetailScreen = ({ navigation, route }) => {
             </View>
           )}
 
-          {/* Action Button */}
-          <TouchableOpacity style={styles.actionButton} onPress={handleAction}>
-            <LinearGradient
-              colors={[colors.secondary, colors.secondaryDark]}
-              style={styles.actionGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Ionicons name="play-circle" size={24} color={colors.textPrimary} />
-              <Text style={styles.actionButtonText}>Open {item.PageName || 'Module'}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
           <View style={styles.bottomSpacer} />
         </ScrollView>
+
+        {/* Floating New Order Button */}
+        <TouchableOpacity style={styles.floatingButton} onPress={handleOpenNewOrder}>
+          <LinearGradient
+            colors={[colors.secondary, colors.secondaryDark]}
+            style={styles.floatingButtonGradient}
+          >
+            <Ionicons name="add" size={28} color="#FFFFFF" />
+            <Text style={styles.floatingButtonText}>New Order</Text>
+          </LinearGradient>
+        </TouchableOpacity>
       </LinearGradient>
     </View>
   );
@@ -283,31 +295,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  actionButton: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 14,
-    overflow: 'hidden',
-    shadowColor: colors.secondary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  actionGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 10,
-  },
-  actionButtonText: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
   bottomSpacer: {
-    height: 100,
+    height: 120,
   },
   emptyState: {
     flex: 1,
@@ -330,6 +319,31 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 14,
     fontWeight: '600',
+  },
+  floatingButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    left: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: colors.secondary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  floatingButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  floatingButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
   },
 });
 
