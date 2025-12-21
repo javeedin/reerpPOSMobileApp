@@ -19,6 +19,8 @@ import {
   getItems,
   getAgents,
   getPriceList,
+  getPriceListNames,
+  getPriceListItems,
 } from '../services/syncService';
 
 const PAGE_SIZE = 50;
@@ -472,18 +474,46 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
 
+  // Price List specific states
+  const [activeTab, setActiveTab] = useState('lists'); // 'lists' or 'items'
+  const [priceListNames, setPriceListNames] = useState([]);
+  const [priceListItemCounts, setPriceListItemCounts] = useState({});
+  const [selectedPriceListFilter, setSelectedPriceListFilter] = useState(null);
+  const [showPriceListDropdown, setShowPriceListDropdown] = useState(false);
+  const [allPriceListItems, setAllPriceListItems] = useState([]);
+
   useEffect(() => {
     loadData();
   }, [type]);
 
+  // Load price list names and count items when type is priceList
+  useEffect(() => {
+    if (type === 'priceList') {
+      loadPriceListData();
+    }
+  }, [type]);
+
   useEffect(() => {
     filterData();
-  }, [searchQuery, data]);
+  }, [searchQuery, data, selectedPriceListFilter, activeTab]);
 
   useEffect(() => {
     setDisplayData(filteredData.slice(0, PAGE_SIZE));
     setPage(1);
   }, [filteredData]);
+
+  // Reset search when switching tabs
+  useEffect(() => {
+    if (type === 'priceList') {
+      setSearchQuery('');
+      setSuggestions([]);
+      setShowSuggestions(false);
+      if (activeTab === 'items') {
+        setFilteredData(allPriceListItems);
+        setSelectedPriceListFilter(null);
+      }
+    }
+  }, [activeTab]);
 
   const loadData = async () => {
     setLoading(true);
@@ -493,6 +523,51 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     setFilteredData(loadedData);
     setLoading(false);
   };
+
+  // Load price list specific data
+  const loadPriceListData = async () => {
+    try {
+      // Get price list names
+      const lists = await getPriceListNames();
+      setPriceListNames(lists);
+
+      // Get all items to calculate counts
+      const allItems = await getPriceListItems();
+      setAllPriceListItems(allItems);
+
+      // Calculate item count per price list
+      const counts = {};
+      allItems.forEach((item) => {
+        const listName = item.priceListName || item.listName;
+        if (listName) {
+          counts[listName] = (counts[listName] || 0) + 1;
+        }
+      });
+      setPriceListItemCounts(counts);
+    } catch (error) {
+      console.error('Error loading price list data:', error);
+    }
+  };
+
+  // Filter items by selected price list
+  const filterByPriceList = useCallback((priceListName) => {
+    setSelectedPriceListFilter(priceListName);
+    setShowPriceListDropdown(false);
+    setSearchQuery('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+
+    if (!priceListName) {
+      // Show all items
+      setFilteredData(allPriceListItems);
+    } else {
+      // Filter by price list
+      const filtered = allPriceListItems.filter(
+        (item) => item.priceListName === priceListName || item.listName === priceListName
+      );
+      setFilteredData(filtered);
+    }
+  }, [allPriceListItems]);
 
   // Generate suggestions based on search query
   const generateSuggestions = useCallback((query) => {
@@ -505,12 +580,21 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     const lowerQuery = query.toLowerCase();
     const matchedSuggestions = [];
 
-    for (const item of data) {
+    // Use filteredData for price list items to respect filter
+    const searchData = type === 'priceList' && activeTab === 'items' ? filteredData : data;
+
+    for (const item of searchData) {
       if (matchedSuggestions.length >= 6) break;
 
       // Get the display name based on type
-      const name = item.name || '';
-      const secondary = item.accountNumber || item.number || item.id || '';
+      let name, secondary;
+      if (type === 'priceList') {
+        name = item.itemDesc || '';
+        secondary = item.itemNumber || '';
+      } else {
+        name = item.name || '';
+        secondary = item.accountNumber || item.number || item.id || '';
+      }
 
       if (name.toLowerCase().includes(lowerQuery) || secondary.toString().toLowerCase().includes(lowerQuery)) {
         matchedSuggestions.push({
@@ -524,16 +608,28 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
 
     setSuggestions(matchedSuggestions);
     setShowSuggestions(matchedSuggestions.length > 0);
-  }, [data]);
+  }, [data, filteredData, type, activeTab]);
 
   const filterData = useCallback(() => {
+    // For price list items tab, start with selected filter data
+    let baseData = data;
+    if (type === 'priceList' && activeTab === 'items') {
+      if (selectedPriceListFilter) {
+        baseData = allPriceListItems.filter(
+          (item) => item.priceListName === selectedPriceListFilter || item.listName === selectedPriceListFilter
+        );
+      } else {
+        baseData = allPriceListItems;
+      }
+    }
+
     if (!searchQuery.trim()) {
-      setFilteredData(data);
+      setFilteredData(baseData);
       return;
     }
 
     const lowerQuery = searchQuery.toLowerCase();
-    const filtered = data.filter((item) => {
+    const filtered = baseData.filter((item) => {
       const searchFields = Object.values(item)
         .filter((v) => typeof v === 'string')
         .join(' ')
@@ -541,7 +637,7 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
       return searchFields.includes(lowerQuery);
     });
     setFilteredData(filtered);
-  }, [searchQuery, data]);
+  }, [searchQuery, data, type, activeTab, selectedPriceListFilter, allPriceListItems]);
 
   const handleSearchChange = (text) => {
     setSearchQuery(text);
@@ -623,24 +719,117 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
           <Text style={styles.headerTitle}>{getTitle(type)}</Text>
         </View>
         <View style={styles.countBadge}>
-          <Text style={styles.countText}>{filteredData.length.toLocaleString()}</Text>
+          <Text style={styles.countText}>
+            {type === 'priceList' && activeTab === 'lists'
+              ? priceListNames.length.toLocaleString()
+              : filteredData.length.toLocaleString()}
+          </Text>
         </View>
       </LinearGradient>
 
-      {/* Search Bar with Autocomplete */}
-      <View style={styles.searchWrapper}>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={colors.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder={`Search ${getTitle(type).toLowerCase()}...`}
-            placeholderTextColor={colors.textMuted}
-            value={searchQuery}
-            onChangeText={handleSearchChange}
-            onFocus={() => searchQuery.length >= 2 && generateSuggestions(searchQuery)}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={handleClearSearch}>
+      {/* Price List Tabs */}
+      {type === 'priceList' && (
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'lists' && styles.tabActive]}
+            onPress={() => setActiveTab('lists')}
+          >
+            <Ionicons
+              name="list"
+              size={18}
+              color={activeTab === 'lists' ? colors.accent : colors.textMuted}
+            />
+            <Text style={[styles.tabText, activeTab === 'lists' && styles.tabTextActive]}>
+              Price Lists
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'items' && styles.tabActive]}
+            onPress={() => setActiveTab('items')}
+          >
+            <Ionicons
+              name="cube"
+              size={18}
+              color={activeTab === 'items' ? colors.accent : colors.textMuted}
+            />
+            <Text style={[styles.tabText, activeTab === 'items' && styles.tabTextActive]}>
+              Items
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Price List Filter Dropdown (for Items tab) */}
+      {type === 'priceList' && activeTab === 'items' && (
+        <View style={styles.filterContainer}>
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setShowPriceListDropdown(!showPriceListDropdown)}
+          >
+            <Ionicons name="funnel" size={18} color={colors.accent} />
+            <Text style={styles.filterButtonText} numberOfLines={1}>
+              {selectedPriceListFilter || 'All Price Lists'}
+            </Text>
+            <Ionicons
+              name={showPriceListDropdown ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.textMuted}
+            />
+          </TouchableOpacity>
+
+          {showPriceListDropdown && (
+            <View style={styles.dropdownContainer}>
+              <ScrollView style={styles.dropdownScroll} nestedScrollEnabled>
+                <TouchableOpacity
+                  style={[
+                    styles.dropdownItem,
+                    !selectedPriceListFilter && styles.dropdownItemActive,
+                  ]}
+                  onPress={() => filterByPriceList(null)}
+                >
+                  <Text style={styles.dropdownItemText}>All Price Lists</Text>
+                  <Text style={styles.dropdownItemCount}>
+                    {allPriceListItems.length.toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+                {priceListNames.map((list, index) => (
+                  <TouchableOpacity
+                    key={`filter-${index}`}
+                    style={[
+                      styles.dropdownItem,
+                      selectedPriceListFilter === list.name && styles.dropdownItemActive,
+                    ]}
+                    onPress={() => filterByPriceList(list.name)}
+                  >
+                    <Text style={styles.dropdownItemText} numberOfLines={1}>
+                      {list.name}
+                    </Text>
+                    <Text style={styles.dropdownItemCount}>
+                      {(priceListItemCounts[list.name] || 0).toLocaleString()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Search Bar with Autocomplete (hide for price list 'lists' tab) */}
+      {!(type === 'priceList' && activeTab === 'lists') && (
+        <View style={styles.searchWrapper}>
+          <View style={styles.searchContainer}>
+            <Ionicons name="search" size={20} color={colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={type === 'priceList' ? 'Search items...' : `Search ${getTitle(type).toLowerCase()}...`}
+              placeholderTextColor={colors.textMuted}
+              value={searchQuery}
+              onChangeText={handleSearchChange}
+              onFocus={() => searchQuery.length >= 2 && generateSuggestions(searchQuery)}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={handleClearSearch}>
               <Ionicons name="close-circle" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           )}
@@ -687,9 +876,53 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
           </View>
         )}
       </View>
+      )}
 
-      {/* Pagination Info */}
-      {!loading && filteredData.length > 0 && (
+      {/* Price Lists Tab Content */}
+      {type === 'priceList' && activeTab === 'lists' && (
+        <FlatList
+          data={priceListNames}
+          keyExtractor={(item, index) => `pricelist-${index}`}
+          renderItem={({ item, index }) => (
+            <TouchableOpacity
+              style={styles.priceListNameCard}
+              onPress={() => {
+                setActiveTab('items');
+                setTimeout(() => filterByPriceList(item.name), 100);
+              }}
+            >
+              <View style={[styles.avatar, { backgroundColor: colors.accentOrange + '20' }]}>
+                <Ionicons name="pricetag" size={24} color={colors.accentOrange} />
+              </View>
+              <View style={styles.priceListNameInfo}>
+                <Text style={styles.priceListNameText} numberOfLines={2}>
+                  {item.name}
+                </Text>
+                <Text style={styles.priceListCurrency}>{item.currency || 'MUR'}</Text>
+              </View>
+              <View style={styles.priceListCountBadge}>
+                <Text style={styles.priceListCountText}>
+                  {(priceListItemCounts[item.name] || 0).toLocaleString()}
+                </Text>
+                <Text style={styles.priceListCountLabel}>items</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="pricetag" size={64} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>No Price Lists</Text>
+              <Text style={styles.emptyText}>Sync data from the Sync Data screen</Text>
+            </View>
+          }
+        />
+      )}
+
+      {/* Pagination Info (hide for price lists tab) */}
+      {!(type === 'priceList' && activeTab === 'lists') && !loading && filteredData.length > 0 && (
         <View style={styles.paginationBar}>
           <Text style={styles.paginationText}>
             Showing <Text style={styles.paginationHighlight}>1-{displayData.length.toLocaleString()}</Text> of{' '}
@@ -701,45 +934,47 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         </View>
       )}
 
-      {/* Content */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={styles.loadingText}>Loading data...</Text>
-        </View>
-      ) : filteredData.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name={getIcon(type)} size={64} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>No Data Found</Text>
-          <Text style={styles.emptyText}>
-            {searchQuery
-              ? 'Try a different search term'
-              : 'Sync data from the Sync Data screen'}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={displayData}
-          keyExtractor={(item, index) => `${type}-${index}`}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            displayData.length < filteredData.length ? (
-              <View style={styles.loadMoreContainer}>
-                <ActivityIndicator size="small" color={colors.accent} />
-                <Text style={styles.loadMoreText}>Loading more...</Text>
-              </View>
-            ) : (
-              <Text style={styles.endText}>
-                Showing {displayData.length.toLocaleString()} of{' '}
-                {filteredData.length.toLocaleString()} records
-              </Text>
-            )
-          }
-        />
+      {/* Content (hide for price list 'lists' tab) */}
+      {!(type === 'priceList' && activeTab === 'lists') && (
+        loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={styles.loadingText}>Loading data...</Text>
+          </View>
+        ) : filteredData.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name={getIcon(type)} size={64} color={colors.textMuted} />
+            <Text style={styles.emptyTitle}>No Data Found</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery
+                ? 'Try a different search term'
+                : 'Sync data from the Sync Data screen'}
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={displayData}
+            keyExtractor={(item, index) => `${type}-${index}`}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              displayData.length < filteredData.length ? (
+                <View style={styles.loadMoreContainer}>
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={styles.loadMoreText}>Loading more...</Text>
+                </View>
+              ) : (
+                <Text style={styles.endText}>
+                  Showing {displayData.length.toLocaleString()} of{' '}
+                  {filteredData.length.toLocaleString()} records
+                </Text>
+              )
+            }
+          />
+        )
       )}
     </View>
   );
@@ -781,6 +1016,151 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  // Tab styles
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 6,
+  },
+  tabActive: {
+    backgroundColor: colors.accent + '15',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  tabTextActive: {
+    color: colors.accent,
+    fontWeight: '600',
+  },
+  // Filter styles
+  filterContainer: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    zIndex: 200,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  filterButtonText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  dropdownContainer: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    zIndex: 1000,
+    maxHeight: 300,
+    overflow: 'hidden',
+  },
+  dropdownScroll: {
+    maxHeight: 300,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dropdownItemActive: {
+    backgroundColor: colors.accent + '10',
+  },
+  dropdownItemText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textPrimary,
+    marginRight: 10,
+  },
+  dropdownItemCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  // Price List Name Card styles
+  priceListNameCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  priceListNameInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  priceListNameText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+    lineHeight: 20,
+  },
+  priceListCurrency: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  priceListCountBadge: {
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  priceListCountText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.accentOrange,
+  },
+  priceListCountLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
   },
   searchWrapper: {
     position: 'relative',
