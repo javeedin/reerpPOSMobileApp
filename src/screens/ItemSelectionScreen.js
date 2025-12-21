@@ -17,62 +17,82 @@ import colors from '../theme/colors';
 import { getItemsForPriceList, getPriceListItems } from '../services/syncService';
 import { calculateLineTotal, calculateOrderTotals } from '../services/orderService';
 
-const ItemCard = ({ item, onAdd, cartItem }) => {
-  const inCart = cartItem && cartItem.quantity > 0;
+const QUICK_QTY_VALUES = [1, 2, 5, 10, 20];
+
+const QuickQtyButton = ({ value, onPress, isActive }) => (
+  <TouchableOpacity
+    style={[styles.quickQtyBtn, isActive && styles.quickQtyBtnActive]}
+    onPress={() => onPress(value)}
+  >
+    <Text style={[styles.quickQtyText, isActive && styles.quickQtyTextActive]}>{value}</Text>
+  </TouchableOpacity>
+);
+
+const ItemRow = ({ item, cartQty, onAdd, onIncrease, onDecrease }) => {
+  const inCart = cartQty > 0;
 
   return (
-    <TouchableOpacity
-      style={[styles.itemCard, inCart && styles.itemCardInCart]}
-      onPress={() => onAdd(item)}
-    >
+    <View style={[styles.itemRow, inCart && styles.itemRowInCart]}>
       <View style={styles.itemInfo}>
         <Text style={styles.itemName} numberOfLines={2}>{item.itemDesc || item.itemNumber}</Text>
-        <Text style={styles.itemNumber}>{item.itemNumber}</Text>
+        <Text style={styles.itemCode}>{item.itemNumber}</Text>
         <View style={styles.itemMeta}>
           <Text style={styles.itemPrice}>
             {item.currency || 'MUR'} {(item.basePrice || 0).toFixed(2)}
           </Text>
-          {item.uom && (
-            <Text style={styles.itemUom}>/{item.uom}</Text>
-          )}
+          {item.uom && <Text style={styles.itemUom}>/{item.uom}</Text>}
         </View>
       </View>
-      {inCart ? (
-        <View style={styles.cartBadge}>
-          <Text style={styles.cartBadgeText}>{cartItem.quantity}</Text>
-        </View>
-      ) : (
-        <View style={styles.addButton}>
-          <Ionicons name="add" size={20} color={colors.accent} />
-        </View>
-      )}
-    </TouchableOpacity>
+
+      <View style={styles.itemActions}>
+        {inCart ? (
+          <View style={styles.qtyControls}>
+            <TouchableOpacity style={styles.qtyBtn} onPress={() => onDecrease(item)}>
+              <Ionicons name="remove" size={18} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={styles.qtyValue}>{cartQty}</Text>
+            <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={() => onIncrease(item)}>
+              <Ionicons name="add" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.quickQtyContainer}>
+            {QUICK_QTY_VALUES.map((val) => (
+              <QuickQtyButton
+                key={`qty-${val}`}
+                value={val}
+                onPress={() => onAdd(item, val)}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
   );
 };
 
-const CartItemRow = ({ item, onIncrease, onDecrease, onRemove, onDiscount, menuConfig }) => {
+const CartItemRow = ({ item, onIncrease, onDecrease, onRemove, menuConfig }) => {
   const lineTotals = calculateLineTotal(item, menuConfig);
 
   return (
     <View style={styles.cartItem}>
       <View style={styles.cartItemInfo}>
         <Text style={styles.cartItemName} numberOfLines={1}>{item.itemDesc || item.itemNumber}</Text>
+        <Text style={styles.cartItemCode}>{item.itemNumber}</Text>
         <Text style={styles.cartItemPrice}>
           {item.currency || 'MUR'} {lineTotals.unitPrice.toFixed(2)} x {lineTotals.quantity}
         </Text>
-        {lineTotals.discountAmount > 0 && (
-          <Text style={styles.cartItemDiscount}>
-            Discount: -{lineTotals.discountAmount.toFixed(2)}
-          </Text>
-        )}
       </View>
       <View style={styles.cartItemActions}>
-        <TouchableOpacity style={styles.qtyBtn} onPress={() => onDecrease(item)}>
+        <TouchableOpacity style={styles.cartQtyBtn} onPress={() => onDecrease(item)}>
           <Ionicons name="remove" size={16} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.qtyText}>{item.quantity}</Text>
-        <TouchableOpacity style={styles.qtyBtn} onPress={() => onIncrease(item)}>
+        <Text style={styles.cartQtyText}>{item.quantity}</Text>
+        <TouchableOpacity style={styles.cartQtyBtn} onPress={() => onIncrease(item)}>
           <Ionicons name="add" size={16} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.cartRemoveBtn} onPress={() => onRemove(item)}>
+          <Ionicons name="trash-outline" size={16} color={colors.accentRed || '#E53935'} />
         </TouchableOpacity>
       </View>
       <Text style={styles.cartItemTotal}>{lineTotals.net.toFixed(2)}</Text>
@@ -130,21 +150,22 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     }
   }, [searchQuery, items]);
 
-  const getCartItem = (item) => {
-    return cart.find(c => c.id === item.id || c.itemNumber === item.itemNumber);
+  const getCartQty = (item) => {
+    const cartItem = cart.find(c => c.itemNumber === item.itemNumber);
+    return cartItem ? cartItem.quantity : 0;
   };
 
-  const handleAddItem = (item) => {
-    const existingIndex = cart.findIndex(c => c.id === item.id || c.itemNumber === item.itemNumber);
+  const handleAddItem = (item, qty = 1) => {
+    const existingIndex = cart.findIndex(c => c.itemNumber === item.itemNumber);
 
     if (existingIndex >= 0) {
       const newCart = [...cart];
-      newCart[existingIndex].quantity += 1;
+      newCart[existingIndex].quantity += qty;
       setCart(newCart);
     } else {
       setCart([...cart, {
         ...item,
-        quantity: 1,
+        quantity: qty,
         discount: 0,
         discountType: 'amount',
         unitPrice: item.basePrice || 0,
@@ -154,7 +175,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
   const handleIncreaseQty = (item) => {
     const newCart = cart.map(c => {
-      if (c.id === item.id || c.itemNumber === item.itemNumber) {
+      if (c.itemNumber === item.itemNumber) {
         return { ...c, quantity: c.quantity + 1 };
       }
       return c;
@@ -164,7 +185,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
   const handleDecreaseQty = (item) => {
     const newCart = cart.map(c => {
-      if (c.id === item.id || c.itemNumber === item.itemNumber) {
+      if (c.itemNumber === item.itemNumber) {
         if (c.quantity > 1) {
           return { ...c, quantity: c.quantity - 1 };
         }
@@ -176,7 +197,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const handleRemoveItem = (item) => {
-    setCart(cart.filter(c => c.id !== item.id && c.itemNumber !== item.itemNumber));
+    setCart(cart.filter(c => c.itemNumber !== item.itemNumber));
   };
 
   const handleProceedToCheckout = () => {
@@ -185,6 +206,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
       return;
     }
 
+    setShowCart(false);
     navigation.navigate('Checkout', {
       menuConfig,
       customer,
@@ -198,7 +220,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
       return;
     }
 
-    // Navigate to checkout with draft flag
+    setShowCart(false);
     navigation.navigate('Checkout', {
       menuConfig,
       customer,
@@ -208,6 +230,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const totals = calculateOrderTotals(cart, menuConfig);
+  const currency = cart[0]?.currency || 'MUR';
 
   return (
     <View style={styles.container}>
@@ -261,11 +284,10 @@ const ItemSelectionScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Item Count */}
-        <View style={styles.countBar}>
-          <Text style={styles.countText}>
-            {filteredItems.length.toLocaleString()} items
-          </Text>
+        {/* Quick Add Info */}
+        <View style={styles.infoBar}>
+          <Text style={styles.countText}>{filteredItems.length.toLocaleString()} items</Text>
+          <Text style={styles.infoText}>Tap qty to add</Text>
         </View>
 
         {/* Item List */}
@@ -277,17 +299,17 @@ const ItemSelectionScreen = ({ navigation, route }) => {
         ) : (
           <FlatList
             data={filteredItems}
-            keyExtractor={(item, index) => `item-${item.id || item.itemNumber || index}`}
-            numColumns={2}
+            keyExtractor={(item, index) => `item-${index}-${item.itemNumber || ''}`}
             renderItem={({ item }) => (
-              <ItemCard
+              <ItemRow
                 item={item}
+                cartQty={getCartQty(item)}
                 onAdd={handleAddItem}
-                cartItem={getCartItem(item)}
+                onIncrease={handleIncreaseQty}
+                onDecrease={handleDecreaseQty}
               />
             )}
             contentContainerStyle={styles.listContent}
-            columnWrapperStyle={styles.columnWrapper}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyState}>
@@ -306,7 +328,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
           <View style={styles.totalInfo}>
             <Text style={styles.totalLabel}>{totals.totalItems} items</Text>
             <Text style={styles.totalAmount}>
-              {(cart[0]?.currency || 'MUR')} {totals.totalNet.toFixed(2)}
+              {currency} {totals.totalNet.toFixed(2)}
             </Text>
           </View>
           <TouchableOpacity style={styles.checkoutBtn} onPress={handleProceedToCheckout}>
@@ -334,7 +356,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
             <FlatList
               data={cart}
-              keyExtractor={(item, index) => `cart-${item.id || item.itemNumber || index}`}
+              keyExtractor={(item, index) => `cart-${index}-${item.itemNumber || ''}`}
               renderItem={({ item }) => (
                 <CartItemRow
                   item={item}
@@ -357,25 +379,25 @@ const ItemSelectionScreen = ({ navigation, route }) => {
               <View style={styles.cartTotals}>
                 <View style={styles.cartTotalRow}>
                   <Text style={styles.cartTotalLabel}>Subtotal</Text>
-                  <Text style={styles.cartTotalValue}>{totals.totalGross.toFixed(2)}</Text>
+                  <Text style={styles.cartTotalValue}>{currency} {totals.totalGross.toFixed(2)}</Text>
                 </View>
                 {totals.totalDiscount > 0 && (
                   <View style={styles.cartTotalRow}>
                     <Text style={styles.cartTotalLabel}>Discount</Text>
                     <Text style={[styles.cartTotalValue, { color: colors.accentGreen }]}>
-                      -{totals.totalDiscount.toFixed(2)}
+                      -{currency} {totals.totalDiscount.toFixed(2)}
                     </Text>
                   </View>
                 )}
                 {totals.totalTax > 0 && (
                   <View style={styles.cartTotalRow}>
                     <Text style={styles.cartTotalLabel}>Tax (15%)</Text>
-                    <Text style={styles.cartTotalValue}>{totals.totalTax.toFixed(2)}</Text>
+                    <Text style={styles.cartTotalValue}>{currency} {totals.totalTax.toFixed(2)}</Text>
                   </View>
                 )}
                 <View style={[styles.cartTotalRow, styles.cartGrandTotal]}>
                   <Text style={styles.cartGrandTotalLabel}>Total</Text>
-                  <Text style={styles.cartGrandTotalValue}>{totals.totalNet.toFixed(2)}</Text>
+                  <Text style={styles.cartGrandTotalValue}>{currency} {totals.totalNet.toFixed(2)}</Text>
                 </View>
 
                 <View style={styles.cartActions}>
@@ -488,13 +510,20 @@ const styles = StyleSheet.create({
     padding: 6,
     marginLeft: 6,
   },
-  countBar: {
+  infoBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     marginBottom: 6,
   },
   countText: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  infoText: {
+    fontSize: 11,
+    color: colors.accent,
+    fontStyle: 'italic',
   },
   loadingContainer: {
     flex: 1,
@@ -507,18 +536,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   listContent: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     paddingBottom: 100,
   },
-  columnWrapper: {
-    justifyContent: 'space-between',
-  },
-  itemCard: {
-    flex: 0.48,
+  itemRow: {
+    flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 12,
-    marginHorizontal: 4,
     marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -526,64 +551,99 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  itemCardInCart: {
+  itemRowInCart: {
     borderWidth: 2,
     borderColor: colors.secondary,
+    backgroundColor: colors.secondary + '05',
   },
   itemInfo: {
     flex: 1,
+    marginRight: 12,
   },
   itemName: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: 4,
+    marginBottom: 2,
     lineHeight: 18,
   },
-  itemNumber: {
-    fontSize: 10,
+  itemCode: {
+    fontSize: 11,
     color: colors.textMuted,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   itemMeta: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   itemPrice: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
     color: colors.accent,
   },
   itemUom: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textMuted,
   },
-  addButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.accent + '15',
+  itemActions: {
+    justifyContent: 'center',
+  },
+  quickQtyContainer: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  quickQtyBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  cartBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  quickQtyBtnActive: {
     backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
+  },
+  quickQtyText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  quickQtyTextActive: {
+    color: '#FFFFFF',
+  },
+  qtyControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: 4,
+  },
+  qtyBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  cartBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+  qtyBtnAdd: {
+    backgroundColor: colors.secondary,
+  },
+  qtyValue: {
+    fontSize: 16,
     fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginHorizontal: 16,
+    minWidth: 24,
+    textAlign: 'center',
   },
   emptyState: {
     alignItems: 'center',
@@ -683,20 +743,22 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: 2,
   },
+  cartItemCode: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
   cartItemPrice: {
     fontSize: 12,
     color: colors.textMuted,
   },
-  cartItemDiscount: {
-    fontSize: 11,
-    color: colors.accentGreen,
-  },
   cartItemActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
+    gap: 4,
   },
-  qtyBtn: {
+  cartQtyBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
@@ -704,18 +766,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  qtyText: {
+  cartQtyText: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginHorizontal: 12,
+    marginHorizontal: 8,
     minWidth: 20,
     textAlign: 'center',
+  },
+  cartRemoveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: (colors.accentRed || '#E53935') + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
   },
   cartItemTotal: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: colors.accent,
     minWidth: 70,
     textAlign: 'right',
   },

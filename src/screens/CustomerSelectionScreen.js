@@ -25,7 +25,7 @@ const CustomerCard = ({ customer, onSelect, isSelected }) => (
       </Text>
     </View>
     <View style={styles.customerInfo}>
-      <Text style={[styles.customerName, isSelected && styles.customerNameSelected]} numberOfLines={1}>
+      <Text style={[styles.customerName, isSelected && styles.customerNameSelected]} numberOfLines={2}>
         {customer.name || 'Unknown Customer'}
       </Text>
       <Text style={styles.customerAccount} numberOfLines={1}>
@@ -151,12 +151,12 @@ const CustomerSelectionScreen = ({ navigation, route }) => {
         ) : (
           <FlatList
             data={filteredCustomers}
-            keyExtractor={(item, index) => `customer-${item.id || index}`}
+            keyExtractor={(item, index) => `customer-${item.id || item.accountNumber || index}`}
             renderItem={({ item }) => (
               <CustomerCard
                 customer={item}
                 onSelect={handleSelectCustomer}
-                isSelected={selectedCustomer?.id === item.id}
+                isSelected={selectedCustomer?.id === item.id || selectedCustomer?.accountNumber === item.accountNumber}
               />
             )}
             contentContainerStyle={styles.listContent}
@@ -179,11 +179,10 @@ const CustomerSelectionScreen = ({ navigation, route }) => {
             colors={[colors.secondary, colors.secondaryDark]}
             style={styles.continueGradient}
           >
-            <Text style={styles.continueText}>
-              Continue with {selectedCustomer.name?.substring(0, 20)}
-              {selectedCustomer.name?.length > 20 ? '...' : ''}
+            <Text style={styles.continueText} numberOfLines={1}>
+              Continue with {selectedCustomer.name}
             </Text>
-            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
           </LinearGradient>
         </TouchableOpacity>
       )}
@@ -321,6 +320,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: 2,
+    lineHeight: 20,
   },
   customerNameSelected: {
     color: colors.secondary,
@@ -376,13 +376,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     gap: 8,
   },
   continueText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
+    flexShrink: 1,
   },
 });
 

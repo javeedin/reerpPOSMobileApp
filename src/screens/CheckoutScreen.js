@@ -24,7 +24,7 @@ const TotalCard = ({ label, value, color, icon }) => (
   </View>
 );
 
-const LineItem = ({ item, index, menuConfig, onDiscountChange }) => {
+const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemove, onDiscountChange, currency }) => {
   const [editDiscount, setEditDiscount] = useState(false);
   const [discountValue, setDiscountValue] = useState(item.discount?.toString() || '0');
   const lineTotals = calculateLineTotal(item, menuConfig);
@@ -36,55 +36,92 @@ const LineItem = ({ item, index, menuConfig, onDiscountChange }) => {
   };
 
   return (
-    <View style={styles.lineItem}>
-      <View style={styles.lineNumber}>
-        <Text style={styles.lineNumberText}>{index + 1}</Text>
+    <View style={styles.orderLineCard}>
+      {/* Header Row - Item Name and Delete */}
+      <View style={styles.lineHeader}>
+        <View style={styles.lineNumberBadge}>
+          <Text style={styles.lineNumberText}>{index + 1}</Text>
+        </View>
+        <View style={styles.lineHeaderInfo}>
+          <Text style={styles.lineName} numberOfLines={2}>{item.itemDesc || item.itemNumber}</Text>
+          <Text style={styles.lineCode}>{item.itemNumber}</Text>
+        </View>
+        <TouchableOpacity style={styles.deleteBtn} onPress={() => onRemove(index)}>
+          <Ionicons name="trash-outline" size={18} color={colors.accentRed || '#E53935'} />
+        </TouchableOpacity>
       </View>
-      <View style={styles.lineInfo}>
-        <Text style={styles.lineName} numberOfLines={1}>{item.itemDesc || item.itemNumber}</Text>
-        <Text style={styles.lineCode}>{item.itemNumber}</Text>
-      </View>
-      <View style={styles.lineQty}>
-        <Text style={styles.lineQtyValue}>{item.quantity}</Text>
-        <Text style={styles.lineQtyLabel}>{item.uom || 'EA'}</Text>
-      </View>
-      <View style={styles.linePrice}>
-        <Text style={styles.linePriceValue}>{lineTotals.unitPrice.toFixed(2)}</Text>
-      </View>
-      <View style={styles.lineGross}>
-        <Text style={styles.lineGrossValue}>{lineTotals.gross.toFixed(2)}</Text>
-      </View>
-      {menuConfig?.allowDiscount && (
-        <View style={styles.lineDiscount}>
-          {editDiscount ? (
-            <View style={styles.discountEdit}>
-              <TextInput
-                style={styles.discountInput}
-                value={discountValue}
-                onChangeText={setDiscountValue}
-                keyboardType="numeric"
-                autoFocus
-              />
-              <TouchableOpacity onPress={handleSaveDiscount}>
-                <Ionicons name="checkmark" size={16} color={colors.accentGreen} />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity onPress={() => setEditDiscount(true)}>
-              <Text style={[styles.lineDiscountValue, lineTotals.discountAmount > 0 && { color: colors.accentGreen }]}>
-                -{lineTotals.discountAmount.toFixed(2)}
-              </Text>
+
+      {/* Details Row */}
+      <View style={styles.lineDetails}>
+        {/* Qty Control */}
+        <View style={styles.qtySection}>
+          <Text style={styles.detailLabel}>Qty</Text>
+          <View style={styles.qtyControls}>
+            <TouchableOpacity style={styles.qtyBtn} onPress={() => onDecrease(index)}>
+              <Ionicons name="remove" size={16} color={colors.textPrimary} />
             </TouchableOpacity>
+            <Text style={styles.qtyValue}>{item.quantity}</Text>
+            <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={() => onIncrease(index)}>
+              <Ionicons name="add" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Unit Price */}
+        <View style={styles.priceSection}>
+          <Text style={styles.detailLabel}>Unit Price</Text>
+          <Text style={styles.priceValue}>{lineTotals.unitPrice.toFixed(2)}</Text>
+        </View>
+
+        {/* Gross */}
+        <View style={styles.grossSection}>
+          <Text style={styles.detailLabel}>Gross</Text>
+          <Text style={styles.grossValue}>{lineTotals.gross.toFixed(2)}</Text>
+        </View>
+      </View>
+
+      {/* Discount & Tax Row */}
+      {(menuConfig?.allowDiscount || menuConfig?.allowTax) && (
+        <View style={styles.lineExtras}>
+          {menuConfig?.allowDiscount && (
+            <View style={styles.discountSection}>
+              <Text style={styles.detailLabel}>Discount</Text>
+              {editDiscount ? (
+                <View style={styles.discountEdit}>
+                  <TextInput
+                    style={styles.discountInput}
+                    value={discountValue}
+                    onChangeText={setDiscountValue}
+                    keyboardType="numeric"
+                    autoFocus
+                  />
+                  <TouchableOpacity style={styles.discountSaveBtn} onPress={handleSaveDiscount}>
+                    <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.discountTap} onPress={() => setEditDiscount(true)}>
+                  <Text style={[styles.discountValue, lineTotals.discountAmount > 0 && styles.discountValueActive]}>
+                    -{lineTotals.discountAmount.toFixed(2)}
+                  </Text>
+                  <Ionicons name="pencil" size={12} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          {menuConfig?.allowTax && (
+            <View style={styles.taxSection}>
+              <Text style={styles.detailLabel}>Tax (15%)</Text>
+              <Text style={styles.taxValue}>{lineTotals.taxAmount.toFixed(2)}</Text>
+            </View>
           )}
         </View>
       )}
-      {menuConfig?.allowTax && (
-        <View style={styles.lineTax}>
-          <Text style={styles.lineTaxValue}>{lineTotals.taxAmount.toFixed(2)}</Text>
-        </View>
-      )}
-      <View style={styles.lineNet}>
-        <Text style={styles.lineNetValue}>{lineTotals.net.toFixed(2)}</Text>
+
+      {/* Net Total */}
+      <View style={styles.lineTotal}>
+        <Text style={styles.lineTotalLabel}>Line Total</Text>
+        <Text style={styles.lineTotalValue}>{currency} {lineTotals.net.toFixed(2)}</Text>
       </View>
     </View>
   );
@@ -106,7 +143,49 @@ const CheckoutScreen = ({ navigation, route }) => {
     setCart(newCart);
   };
 
+  const handleIncreaseQty = (index) => {
+    const newCart = [...cart];
+    newCart[index] = { ...newCart[index], quantity: newCart[index].quantity + 1 };
+    setCart(newCart);
+  };
+
+  const handleDecreaseQty = (index) => {
+    const newCart = [...cart];
+    if (newCart[index].quantity > 1) {
+      newCart[index] = { ...newCart[index], quantity: newCart[index].quantity - 1 };
+      setCart(newCart);
+    } else {
+      handleRemoveItem(index);
+    }
+  };
+
+  const handleRemoveItem = (index) => {
+    Alert.alert(
+      'Remove Item',
+      'Are you sure you want to remove this item?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            const newCart = cart.filter((_, i) => i !== index);
+            setCart(newCart);
+            if (newCart.length === 0) {
+              navigation.goBack();
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleSaveAsDraft = async () => {
+    if (cart.length === 0) {
+      Alert.alert('Empty Cart', 'No items to save.');
+      return;
+    }
+
     setSaving(true);
     try {
       const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
@@ -140,6 +219,11 @@ const CheckoutScreen = ({ navigation, route }) => {
   };
 
   const handleProceedToPayment = () => {
+    if (cart.length === 0) {
+      Alert.alert('Empty Cart', 'No items to checkout.');
+      return;
+    }
+
     navigation.navigate('Payment', {
       menuConfig,
       customer,
@@ -181,22 +265,22 @@ const CheckoutScreen = ({ navigation, route }) => {
           />
           <TotalCard
             label="Subtotal"
-            value={totals.totalGross.toFixed(2)}
+            value={`${currency} ${totals.totalGross.toFixed(2)}`}
             color={colors.accentOrange}
             icon="calculator-outline"
           />
-          {menuConfig?.allowDiscount && (
+          {menuConfig?.allowDiscount && totals.totalDiscount > 0 && (
             <TotalCard
               label="Discount"
-              value={`-${totals.totalDiscount.toFixed(2)}`}
+              value={`-${currency} ${totals.totalDiscount.toFixed(2)}`}
               color={colors.accentGreen}
               icon="pricetag-outline"
             />
           )}
-          {menuConfig?.allowTax && (
+          {menuConfig?.allowTax && totals.totalTax > 0 && (
             <TotalCard
               label="Tax (15%)"
-              value={totals.totalTax.toFixed(2)}
+              value={`${currency} ${totals.totalTax.toFixed(2)}`}
               color={colors.textMuted}
               icon="receipt-outline"
             />
@@ -213,30 +297,24 @@ const CheckoutScreen = ({ navigation, route }) => {
           </View>
         </View>
 
-        {/* Line Items Header */}
-        <View style={styles.tableHeader}>
-          <View style={styles.lineNumber}><Text style={styles.tableHeaderText}>#</Text></View>
-          <View style={styles.lineInfo}><Text style={styles.tableHeaderText}>Item</Text></View>
-          <View style={styles.lineQty}><Text style={styles.tableHeaderText}>Qty</Text></View>
-          <View style={styles.linePrice}><Text style={styles.tableHeaderText}>Price</Text></View>
-          <View style={styles.lineGross}><Text style={styles.tableHeaderText}>Gross</Text></View>
-          {menuConfig?.allowDiscount && (
-            <View style={styles.lineDiscount}><Text style={styles.tableHeaderText}>Disc</Text></View>
-          )}
-          {menuConfig?.allowTax && (
-            <View style={styles.lineTax}><Text style={styles.tableHeaderText}>Tax</Text></View>
-          )}
-          <View style={styles.lineNet}><Text style={styles.tableHeaderText}>Net</Text></View>
+        {/* Order Lines Header */}
+        <View style={styles.sectionHeader}>
+          <Ionicons name="list-outline" size={18} color={colors.textPrimary} />
+          <Text style={styles.sectionTitle}>Order Lines ({cart.length})</Text>
         </View>
 
-        {/* Line Items */}
+        {/* Order Lines */}
         {cart.map((item, index) => (
-          <LineItem
-            key={`line-${item.id || item.itemNumber}-${index}`}
+          <OrderLineCard
+            key={`line-${index}-${item.itemNumber || ''}`}
             item={item}
             index={index}
             menuConfig={menuConfig}
+            onIncrease={handleIncreaseQty}
+            onDecrease={handleDecreaseQty}
+            onRemove={handleRemoveItem}
             onDiscountChange={handleDiscountChange}
+            currency={currency}
           />
         ))}
 
@@ -262,15 +340,15 @@ const CheckoutScreen = ({ navigation, route }) => {
         <TouchableOpacity
           style={styles.draftBtn}
           onPress={handleSaveAsDraft}
-          disabled={saving}
+          disabled={saving || cart.length === 0}
         >
           <Ionicons name="save-outline" size={20} color={colors.accent} />
           <Text style={styles.draftBtnText}>Save Draft</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.paymentBtn}
+          style={[styles.paymentBtn, cart.length === 0 && styles.paymentBtnDisabled]}
           onPress={handleProceedToPayment}
-          disabled={saving}
+          disabled={saving || cart.length === 0}
         >
           <Text style={styles.paymentBtnText}>Proceed to Payment</Text>
           <Ionicons name="card-outline" size={20} color="#FFFFFF" />
@@ -367,121 +445,205 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  tableHeader: {
+  sectionHeader: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 4,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
   },
-  tableHeaderText: {
-    fontSize: 10,
+  sectionTitle: {
+    fontSize: 15,
     fontWeight: '600',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
+    color: colors.textPrimary,
   },
-  lineItem: {
-    flexDirection: 'row',
+  orderLineCard: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 12,
-    marginBottom: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    alignItems: 'center',
+    marginBottom: 10,
+    borderRadius: 12,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  lineNumber: {
+  lineHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  lineNumberBadge: {
     width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   lineNumberText: {
     fontSize: 12,
-    color: colors.textMuted,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
-  lineInfo: {
-    flex: 2,
-    paddingRight: 8,
+  lineHeaderInfo: {
+    flex: 1,
   },
   lineName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    lineHeight: 18,
+    marginBottom: 2,
+  },
+  lineCode: {
     fontSize: 12,
+    color: colors.textMuted,
+    fontFamily: 'monospace',
+  },
+  deleteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: (colors.accentRed || '#E53935') + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  lineDetails: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
+    marginBottom: 8,
+  },
+  qtySection: {
+    flex: 1,
+  },
+  priceSection: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  grossSection: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  detailLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  qtyControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  qtyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qtyBtnAdd: {
+    backgroundColor: colors.secondary,
+  },
+  qtyValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginHorizontal: 12,
+    minWidth: 20,
+    textAlign: 'center',
+  },
+  priceValue: {
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  grossValue: {
+    fontSize: 14,
     fontWeight: '500',
     color: colors.textPrimary,
   },
-  lineCode: {
-    fontSize: 9,
-    color: colors.textMuted,
+  lineExtras: {
+    flexDirection: 'row',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.surface,
   },
-  lineQty: {
-    width: 40,
+  discountSection: {
+    flex: 1,
+  },
+  taxSection: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  discountTap: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
-  lineQtyValue: {
-    fontSize: 12,
+  discountValue: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  discountValueActive: {
+    color: colors.accentGreen,
     fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  lineQtyLabel: {
-    fontSize: 8,
-    color: colors.textMuted,
-  },
-  linePrice: {
-    width: 50,
-    alignItems: 'flex-end',
-  },
-  linePriceValue: {
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  lineGross: {
-    width: 55,
-    alignItems: 'flex-end',
-  },
-  lineGrossValue: {
-    fontSize: 11,
-    color: colors.textPrimary,
-  },
-  lineDiscount: {
-    width: 50,
-    alignItems: 'flex-end',
-  },
-  lineDiscountValue: {
-    fontSize: 11,
-    color: colors.textMuted,
   },
   discountEdit: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
   discountInput: {
-    width: 40,
-    fontSize: 11,
-    padding: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.accent,
-    textAlign: 'right',
+    width: 60,
+    height: 28,
+    fontSize: 14,
+    padding: 4,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
   },
-  lineTax: {
-    width: 45,
-    alignItems: 'flex-end',
+  discountSaveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: colors.accentGreen,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  lineTaxValue: {
-    fontSize: 11,
+  taxValue: {
+    fontSize: 14,
     color: colors.textMuted,
   },
-  lineNet: {
-    width: 60,
-    alignItems: 'flex-end',
+  lineTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  lineNetValue: {
-    fontSize: 12,
+  lineTotalLabel: {
+    fontSize: 13,
     fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  lineTotalValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
     color: colors.accent,
   },
   notesContainer: {
     marginHorizontal: 12,
-    marginTop: 12,
+    marginTop: 8,
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     padding: 12,
@@ -537,6 +699,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     gap: 6,
+  },
+  paymentBtnDisabled: {
+    backgroundColor: colors.textMuted,
   },
   paymentBtnText: {
     color: '#FFFFFF',
