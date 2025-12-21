@@ -1,15 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   TextInput,
   ActivityIndicator,
   StatusBar,
   Modal,
-  Alert,
+  Animated,
+  Vibration,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,22 +20,150 @@ import colors from '../theme/colors';
 import { getItemsForPriceList, getPriceListItems } from '../services/syncService';
 import { calculateLineTotal, calculateOrderTotals } from '../services/orderService';
 
-const QUICK_QTY_VALUES = [1, 2, 5, 10, 20];
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const QUICK_QUANTITIES = [1, 5, 10, 15, 20, 25];
 
-const QuickQtyButton = ({ value, onPress, isActive }) => (
-  <TouchableOpacity
-    style={[styles.quickQtyBtn, isActive && styles.quickQtyBtnActive]}
-    onPress={() => onPress(value)}
-  >
-    <Text style={[styles.quickQtyText, isActive && styles.quickQtyTextActive]}>{value}</Text>
-  </TouchableOpacity>
-);
+// Radial Quantity Picker Component
+const QuantityPicker = ({ visible, onClose, onSelect, itemName }) => {
+  const [customQty, setCustomQty] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
 
-const ItemRow = ({ item, cartQty, onAdd, onIncrease, onDecrease }) => {
-  const inCart = cartQty > 0;
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 6,
+        tension: 100,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      scaleAnim.setValue(0);
+      setShowCustom(false);
+      setCustomQty('');
+    }
+  }, [visible]);
+
+  const handleSelect = (qty) => {
+    Vibration.vibrate(10);
+    onSelect(qty);
+    onClose();
+  };
+
+  const handleCustomSubmit = () => {
+    const qty = parseInt(customQty, 10);
+    if (qty > 0) {
+      handleSelect(qty);
+    }
+  };
+
+  if (!visible) return null;
 
   return (
-    <View style={[styles.itemRow, inCart && styles.itemRowInCart]}>
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.pickerOverlay}>
+          <TouchableWithoutFeedback>
+            <Animated.View
+              style={[
+                styles.pickerContainer,
+                { transform: [{ scale: scaleAnim }] }
+              ]}
+            >
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>Add Quantity</Text>
+                <Text style={styles.pickerSubtitle} numberOfLines={1}>{itemName}</Text>
+              </View>
+
+              {showCustom ? (
+                <View style={styles.customQtyContainer}>
+                  <TextInput
+                    style={styles.customQtyInput}
+                    value={customQty}
+                    onChangeText={setCustomQty}
+                    keyboardType="number-pad"
+                    placeholder="Enter quantity"
+                    placeholderTextColor={colors.textMuted}
+                    autoFocus
+                  />
+                  <View style={styles.customQtyActions}>
+                    <TouchableOpacity
+                      style={styles.customBackBtn}
+                      onPress={() => setShowCustom(false)}
+                    >
+                      <Text style={styles.customBackText}>Back</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.customAddBtn}
+                      onPress={handleCustomSubmit}
+                    >
+                      <Text style={styles.customAddText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.qtyGrid}>
+                    {QUICK_QUANTITIES.map((qty) => (
+                      <TouchableOpacity
+                        key={`qty-${qty}`}
+                        style={styles.qtyOption}
+                        onPress={() => handleSelect(qty)}
+                        activeOpacity={0.7}
+                      >
+                        <LinearGradient
+                          colors={[colors.accent, colors.accentDark || colors.accent]}
+                          style={styles.qtyOptionGradient}
+                        >
+                          <Text style={styles.qtyOptionText}>{qty}</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.customBtn}
+                    onPress={() => setShowCustom(true)}
+                  >
+                    <Ionicons name="keypad-outline" size={18} color={colors.accent} />
+                    <Text style={styles.customBtnText}>Custom Quantity</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+};
+
+// Item Row Component
+const ItemRow = ({ item, cartQty, onAdd, onIncrease, onDecrease, onLongPress }) => {
+  const inCart = cartQty > 0;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 3,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Animated.View style={[styles.itemRow, inCart && styles.itemRowInCart, { transform: [{ scale: scaleAnim }] }]}>
       <View style={styles.itemInfo}>
         <Text style={styles.itemName} numberOfLines={2}>{item.itemDesc || item.itemNumber}</Text>
         <Text style={styles.itemCode}>{item.itemNumber}</Text>
@@ -46,31 +177,55 @@ const ItemRow = ({ item, cartQty, onAdd, onIncrease, onDecrease }) => {
 
       <View style={styles.itemActions}>
         {inCart ? (
-          <View style={styles.qtyControls}>
-            <TouchableOpacity style={styles.qtyBtn} onPress={() => onDecrease(item)}>
+          <View style={styles.qtyControlsContainer}>
+            <TouchableOpacity
+              style={styles.qtyControlBtn}
+              onPress={() => onDecrease(item)}
+            >
               <Ionicons name="remove" size={18} color={colors.textPrimary} />
             </TouchableOpacity>
-            <Text style={styles.qtyValue}>{cartQty}</Text>
-            <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={() => onIncrease(item)}>
+
+            <TouchableOpacity
+              style={styles.qtyDisplay}
+              onLongPress={() => onLongPress(item)}
+              delayLongPress={300}
+            >
+              <Text style={styles.qtyDisplayText}>{cartQty}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.qtyControlBtn, styles.qtyControlBtnAdd]}
+              onPress={() => onIncrease(item)}
+              onLongPress={() => onLongPress(item)}
+              delayLongPress={300}
+            >
               <Ionicons name="add" size={18} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.quickQtyContainer}>
-            {QUICK_QTY_VALUES.map((val) => (
-              <QuickQtyButton
-                key={`qty-${val}`}
-                value={val}
-                onPress={() => onAdd(item, val)}
-              />
-            ))}
-          </View>
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => onAdd(item, 1)}
+            onLongPress={() => onLongPress(item)}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            delayLongPress={300}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={[colors.secondary, colors.secondaryDark || colors.secondary]}
+              style={styles.addBtnGradient}
+            >
+              <Ionicons name="add" size={22} color="#FFFFFF" />
+            </LinearGradient>
+          </TouchableOpacity>
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
+// Cart Item Row for Modal
 const CartItemRow = ({ item, onIncrease, onDecrease, onRemove, menuConfig }) => {
   const lineTotals = calculateLineTotal(item, menuConfig);
 
@@ -108,8 +263,9 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
+  const [showQtyPicker, setShowQtyPicker] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
 
-  // Determine which price list to use
   const priceListName = customer?.priceList || menuConfig?.priceList || '';
 
   useEffect(() => {
@@ -123,7 +279,6 @@ const ItemSelectionScreen = ({ navigation, route }) => {
       if (priceListName) {
         data = await getItemsForPriceList(priceListName);
       }
-      // If no price list items, get all items
       if (!data || data.length === 0) {
         data = await getPriceListItems();
       }
@@ -156,6 +311,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const handleAddItem = (item, qty = 1) => {
+    Vibration.vibrate(10);
     const existingIndex = cart.findIndex(c => c.itemNumber === item.itemNumber);
 
     if (existingIndex >= 0) {
@@ -173,7 +329,20 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     }
   };
 
+  const handleLongPressItem = (item) => {
+    Vibration.vibrate(50);
+    setSelectedItem(item);
+    setShowQtyPicker(true);
+  };
+
+  const handleQtySelect = (qty) => {
+    if (selectedItem) {
+      handleAddItem(selectedItem, qty);
+    }
+  };
+
   const handleIncreaseQty = (item) => {
+    Vibration.vibrate(10);
     const newCart = cart.map(c => {
       if (c.itemNumber === item.itemNumber) {
         return { ...c, quantity: c.quantity + 1 };
@@ -184,12 +353,13 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const handleDecreaseQty = (item) => {
+    Vibration.vibrate(10);
     const newCart = cart.map(c => {
       if (c.itemNumber === item.itemNumber) {
         if (c.quantity > 1) {
           return { ...c, quantity: c.quantity - 1 };
         }
-        return null; // Will be filtered out
+        return null;
       }
       return c;
     }).filter(Boolean);
@@ -201,11 +371,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const handleProceedToCheckout = () => {
-    if (cart.length === 0) {
-      Alert.alert('Empty Cart', 'Please add items to proceed.');
-      return;
-    }
-
+    if (cart.length === 0) return;
     setShowCart(false);
     navigation.navigate('Checkout', {
       menuConfig,
@@ -215,11 +381,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const handleSaveAsDraft = () => {
-    if (cart.length === 0) {
-      Alert.alert('Empty Cart', 'Please add items to save as draft.');
-      return;
-    }
-
+    if (cart.length === 0) return;
     setShowCart(false);
     navigation.navigate('Checkout', {
       menuConfig,
@@ -256,7 +418,6 @@ const ItemSelectionScreen = ({ navigation, route }) => {
       </LinearGradient>
 
       <View style={styles.content}>
-        {/* Price List Info */}
         {priceListName && (
           <View style={styles.priceListBar}>
             <Ionicons name="pricetag" size={14} color={colors.accent} />
@@ -264,12 +425,11 @@ const ItemSelectionScreen = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Search Bar */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color={colors.textMuted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search items or scan barcode..."
+            placeholder="Search items..."
             placeholderTextColor={colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -284,13 +444,14 @@ const ItemSelectionScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Quick Add Info */}
         <View style={styles.infoBar}>
           <Text style={styles.countText}>{filteredItems.length.toLocaleString()} items</Text>
-          <Text style={styles.infoText}>Tap qty to add</Text>
+          <View style={styles.tipContainer}>
+            <Ionicons name="finger-print" size={12} color={colors.secondary} />
+            <Text style={styles.tipText}>Long press for bulk add</Text>
+          </View>
         </View>
 
-        {/* Item List */}
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.accent} />
@@ -307,6 +468,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
                 onAdd={handleAddItem}
                 onIncrease={handleIncreaseQty}
                 onDecrease={handleDecreaseQty}
+                onLongPress={handleLongPressItem}
               />
             )}
             contentContainerStyle={styles.listContent}
@@ -315,14 +477,13 @@ const ItemSelectionScreen = ({ navigation, route }) => {
               <View style={styles.emptyState}>
                 <Ionicons name="cube-outline" size={64} color={colors.textMuted} />
                 <Text style={styles.emptyText}>No items found</Text>
-                <Text style={styles.emptySubtext}>Try a different search or sync price list data</Text>
               </View>
             }
           />
         )}
       </View>
 
-      {/* Bottom Bar with Totals */}
+      {/* Bottom Bar */}
       {cart.length > 0 && (
         <View style={styles.bottomBar}>
           <View style={styles.totalInfo}>
@@ -338,6 +499,17 @@ const ItemSelectionScreen = ({ navigation, route }) => {
         </View>
       )}
 
+      {/* Quantity Picker */}
+      <QuantityPicker
+        visible={showQtyPicker}
+        onClose={() => {
+          setShowQtyPicker(false);
+          setSelectedItem(null);
+        }}
+        onSelect={handleQtySelect}
+        itemName={selectedItem?.itemDesc || selectedItem?.itemNumber || ''}
+      />
+
       {/* Cart Modal */}
       <Modal
         visible={showCart}
@@ -348,7 +520,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.cartModal}>
             <View style={styles.cartModalHeader}>
-              <Text style={styles.cartModalTitle}>Cart ({cart.length} items)</Text>
+              <Text style={styles.cartModalTitle}>Cart ({cart.length})</Text>
               <TouchableOpacity onPress={() => setShowCart(false)}>
                 <Ionicons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
@@ -381,14 +553,6 @@ const ItemSelectionScreen = ({ navigation, route }) => {
                   <Text style={styles.cartTotalLabel}>Subtotal</Text>
                   <Text style={styles.cartTotalValue}>{currency} {totals.totalGross.toFixed(2)}</Text>
                 </View>
-                {totals.totalDiscount > 0 && (
-                  <View style={styles.cartTotalRow}>
-                    <Text style={styles.cartTotalLabel}>Discount</Text>
-                    <Text style={[styles.cartTotalValue, { color: colors.accentGreen }]}>
-                      -{currency} {totals.totalDiscount.toFixed(2)}
-                    </Text>
-                  </View>
-                )}
                 {totals.totalTax > 0 && (
                   <View style={styles.cartTotalRow}>
                     <Text style={styles.cartTotalLabel}>Tax (15%)</Text>
@@ -403,10 +567,10 @@ const ItemSelectionScreen = ({ navigation, route }) => {
                 <View style={styles.cartActions}>
                   <TouchableOpacity style={styles.draftBtn} onPress={handleSaveAsDraft}>
                     <Ionicons name="save-outline" size={18} color={colors.accent} />
-                    <Text style={styles.draftBtnText}>Save Draft</Text>
+                    <Text style={styles.draftBtnText}>Draft</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.proceedBtn} onPress={handleProceedToCheckout}>
-                    <Text style={styles.proceedBtnText}>Proceed</Text>
+                    <Text style={styles.proceedBtnText}>Checkout</Text>
                     <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
@@ -492,19 +656,19 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 10,
-    height: 44,
+    borderRadius: 12,
+    height: 46,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   searchInput: {
     flex: 1,
     marginLeft: 8,
     color: colors.textPrimary,
-    fontSize: 14,
+    fontSize: 15,
   },
   scanButton: {
     padding: 6,
@@ -513,17 +677,27 @@ const styles = StyleSheet.create({
   infoBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   countText: {
     fontSize: 12,
     color: colors.textMuted,
   },
-  infoText: {
+  tipContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.secondary + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  tipText: {
     fontSize: 11,
-    color: colors.accent,
-    fontStyle: 'italic',
+    color: colors.secondary,
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
@@ -542,14 +716,14 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
   itemRowInCart: {
     borderWidth: 2,
@@ -561,89 +735,237 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   itemName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: 2,
-    lineHeight: 18,
+    marginBottom: 3,
+    lineHeight: 20,
   },
   itemCode: {
     fontSize: 11,
     color: colors.textMuted,
-    marginBottom: 4,
+    marginBottom: 6,
+    fontFamily: 'monospace',
   },
   itemMeta: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   itemPrice: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 'bold',
     color: colors.accent,
   },
   itemUom: {
     fontSize: 11,
     color: colors.textMuted,
+    marginLeft: 2,
   },
   itemActions: {
     justifyContent: 'center',
   },
-  quickQtyContainer: {
-    flexDirection: 'row',
-    gap: 6,
+  addBtn: {
+    borderRadius: 14,
+    overflow: 'hidden',
   },
-  quickQtyBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
+  addBtnGradient: {
+    width: 48,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 14,
   },
-  quickQtyBtnActive: {
-    backgroundColor: colors.secondary,
-    borderColor: colors.secondary,
-  },
-  quickQtyText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  quickQtyTextActive: {
-    color: '#FFFFFF',
-  },
-  qtyControls: {
+  qtyControlsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 4,
   },
-  qtyBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
+  qtyControlBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 1,
   },
-  qtyBtnAdd: {
+  qtyControlBtnAdd: {
     backgroundColor: colors.secondary,
   },
-  qtyValue: {
-    fontSize: 16,
+  qtyDisplay: {
+    minWidth: 40,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qtyDisplayText: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.textPrimary,
-    marginHorizontal: 16,
-    minWidth: 24,
+  },
+  // Quantity Picker Styles
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  pickerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 320,
+  },
+  pickerHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  pickerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  pickerSubtitle: {
+    fontSize: 13,
+    color: colors.textMuted,
     textAlign: 'center',
+  },
+  qtyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  qtyOption: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  qtyOptionGradient: {
+    width: 72,
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 16,
+  },
+  qtyOptionText: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  customBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent + '15',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    marginBottom: 12,
+  },
+  customBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  customQtyContainer: {
+    marginBottom: 12,
+  },
+  customQtyInput: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: colors.textPrimary,
+    marginBottom: 12,
+  },
+  customQtyActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  customBackBtn: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  customBackText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  customAddBtn: {
+    flex: 1,
+    backgroundColor: colors.secondary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  customAddText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  cancelBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  // Bottom bar & other styles
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  totalInfo: {
+    flex: 1,
+  },
+  totalLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  totalAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+  },
+  checkoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.secondary,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  checkoutBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   emptyState: {
     alignItems: 'center',
@@ -654,51 +976,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 16,
   },
-  emptySubtext: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 4,
-  },
-  bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  totalInfo: {
-    flex: 1,
-  },
-  totalLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  totalAmount: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-  },
-  checkoutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.secondary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
-    gap: 6,
-  },
-  checkoutBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  // Cart Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -830,7 +1108,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   cartGrandTotalValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.accent,
   },
@@ -840,13 +1118,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   draftBtn: {
-    flex: 1,
+    flex: 0.35,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.accent + '15',
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     gap: 6,
   },
   draftBtnText: {
@@ -855,18 +1133,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   proceedBtn: {
-    flex: 1,
+    flex: 0.65,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.secondary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     gap: 6,
   },
   proceedBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
   },
 });
