@@ -624,15 +624,13 @@ const InventoryScreen = ({ navigation }) => {
                       style={[styles.directionBtn, sortDirection === 'asc' && styles.directionBtnActive]}
                       onPress={() => setSortDirection('asc')}
                     >
-                      <Ionicons name="arrow-up" size={16} color={sortDirection === 'asc' ? '#FFFFFF' : colors.accent} />
-                      <Text style={[styles.directionBtnText, sortDirection === 'asc' && styles.directionBtnTextActive]}>Asc</Text>
+                      <Ionicons name="arrow-up" size={18} color={sortDirection === 'asc' ? '#FFFFFF' : colors.accent} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.directionBtn, sortDirection === 'desc' && styles.directionBtnActive]}
                       onPress={() => setSortDirection('desc')}
                     >
-                      <Ionicons name="arrow-down" size={16} color={sortDirection === 'desc' ? '#FFFFFF' : colors.accent} />
-                      <Text style={[styles.directionBtnText, sortDirection === 'desc' && styles.directionBtnTextActive]}>Desc</Text>
+                      <Ionicons name="arrow-down" size={18} color={sortDirection === 'desc' ? '#FFFFFF' : colors.accent} />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -967,10 +965,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -978,8 +976,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   sortButtonText: {
-    flex: 1,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textPrimary,
   },
   sortButtonActive: {
@@ -1022,16 +1019,15 @@ const styles = StyleSheet.create({
   },
   directionButtons: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4,
   },
   directionBtn: {
-    flexDirection: 'row',
+    width: 32,
+    height: 32,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
     borderRadius: 8,
-    gap: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -1040,14 +1036,6 @@ const styles = StyleSheet.create({
   },
   directionBtnActive: {
     backgroundColor: colors.accent,
-  },
-  directionBtnText: {
-    fontSize: 12,
-    color: colors.textPrimary,
-    fontWeight: '500',
-  },
-  directionBtnTextActive: {
-    color: '#FFFFFF',
   },
   qtyRangeContainer: {
     flexDirection: 'row',
