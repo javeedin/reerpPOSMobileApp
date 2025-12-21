@@ -551,6 +551,22 @@ const InventoryScreen = ({ navigation }) => {
                 },
               ]}
             >
+              {/* Summary Cards - at top of collapsible section */}
+              <View style={styles.summaryContainer}>
+                <View style={[styles.summaryCard, { borderLeftColor: colors.accent }]}>
+                  <Text style={styles.summaryValue}>{totalItems.toLocaleString()}</Text>
+                  <Text style={styles.summaryLabel}>Total</Text>
+                </View>
+                <View style={[styles.summaryCard, { borderLeftColor: colors.accentOrange }]}>
+                  <Text style={styles.summaryValue}>{lowStockItems.toLocaleString()}</Text>
+                  <Text style={styles.summaryLabel}>Low Stock</Text>
+                </View>
+                <View style={[styles.summaryCard, { borderLeftColor: colors.accentRed || '#E53935' }]}>
+                  <Text style={styles.summaryValue}>{outOfStockItems.toLocaleString()}</Text>
+                  <Text style={styles.summaryLabel}>Out</Text>
+                </View>
+              </View>
+
               {/* Search Bar */}
               <View style={styles.searchContainer}>
                 <Ionicons name="search" size={20} color={colors.textMuted} />
@@ -687,21 +703,6 @@ const InventoryScreen = ({ navigation }) => {
                 )}
               </View>
 
-              {/* Summary Cards - inside collapsible section */}
-              <View style={styles.summaryContainer}>
-                <View style={[styles.summaryCard, { borderLeftColor: colors.accent }]}>
-                  <Text style={styles.summaryValue}>{totalItems.toLocaleString()}</Text>
-                  <Text style={styles.summaryLabel}>Total</Text>
-                </View>
-                <View style={[styles.summaryCard, { borderLeftColor: colors.accentOrange }]}>
-                  <Text style={styles.summaryValue}>{lowStockItems.toLocaleString()}</Text>
-                  <Text style={styles.summaryLabel}>Low Stock</Text>
-                </View>
-                <View style={[styles.summaryCard, { borderLeftColor: colors.accentRed || '#E53935' }]}>
-                  <Text style={styles.summaryValue}>{outOfStockItems.toLocaleString()}</Text>
-                  <Text style={styles.summaryLabel}>Out</Text>
-                </View>
-              </View>
             </Animated.View>
 
             {/* Collapsed Filter Bar - shows when collapsed */}
@@ -1119,7 +1120,7 @@ const styles = StyleSheet.create({
   summaryContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    marginTop: 8,
+    marginBottom: 8,
     gap: 6,
     zIndex: 1,
   },
