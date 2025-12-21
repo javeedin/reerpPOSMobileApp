@@ -17,8 +17,9 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
-import { getItemsForPriceList, getPriceListItems } from '../services/syncService';
+import { getItemsForPriceList, getPriceListItems, getOnhand } from '../services/syncService';
 import { calculateLineTotal, calculateOrderTotals } from '../services/orderService';
+import { getAllLocalAdjustments } from '../services/onhandService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const QUICK_QUANTITIES = [1, 5, 10, 15, 20, 25];
@@ -142,9 +143,18 @@ const QuantityPicker = ({ visible, onClose, onSelect, itemName }) => {
   );
 };
 
+// Get stock status color
+const getStockColor = (qty) => {
+  if (qty <= 0) return colors.accentRed || '#E53935';
+  if (qty < 10) return colors.accentOrange || '#FF9800';
+  return colors.accentGreen || '#4CAF50';
+};
+
 // Item Row Component
-const ItemRow = ({ item, cartQty, onAdd, onIncrease, onDecrease, onLongPress }) => {
+const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLongPress }) => {
   const inCart = cartQty > 0;
+  const hasOnhand = onhandQty !== null && onhandQty !== undefined;
+  const stockColor = hasOnhand ? getStockColor(onhandQty) : colors.textMuted;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -166,7 +176,17 @@ const ItemRow = ({ item, cartQty, onAdd, onIncrease, onDecrease, onLongPress }) 
     <Animated.View style={[styles.itemRow, inCart && styles.itemRowInCart, { transform: [{ scale: scaleAnim }] }]}>
       <View style={styles.itemInfo}>
         <Text style={styles.itemName} numberOfLines={2}>{item.itemDesc || item.itemNumber}</Text>
-        <Text style={styles.itemCode}>{item.itemNumber}</Text>
+        <View style={styles.itemCodeRow}>
+          <Text style={styles.itemCode}>{item.itemNumber}</Text>
+          {hasOnhand && (
+            <View style={[styles.onhandBadge, { backgroundColor: stockColor + '20' }]}>
+              <Ionicons name="cube-outline" size={10} color={stockColor} />
+              <Text style={[styles.onhandText, { color: stockColor }]}>
+                {onhandQty > 0 ? onhandQty : 'Out'}
+              </Text>
+            </View>
+          )}
+        </View>
         <View style={styles.itemMeta}>
           <Text style={styles.itemPrice}>
             {item.currency || 'MUR'} {(item.basePrice || 0).toFixed(2)}
@@ -265,11 +285,13 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   const [showCart, setShowCart] = useState(false);
   const [showQtyPicker, setShowQtyPicker] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [onhandMap, setOnhandMap] = useState({});
 
   const priceListName = customer?.priceList || menuConfig?.priceList || '';
 
   useEffect(() => {
     loadItems();
+    loadOnhandData();
   }, []);
 
   const loadItems = async () => {
@@ -289,6 +311,40 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadOnhandData = async () => {
+    try {
+      // Load synced on-hand data
+      const onhandData = await getOnhand() || [];
+      // Load local adjustments (sales, etc.)
+      const adjustments = await getAllLocalAdjustments() || {};
+
+      // Build a map of itemNumber -> available qty
+      const map = {};
+      onhandData.forEach(item => {
+        const itemNum = item.itemNumber;
+        if (itemNum) {
+          map[itemNum] = (map[itemNum] || 0) + (item.primaryQuantity || 0);
+        }
+      });
+
+      // Apply local adjustments
+      Object.keys(adjustments).forEach(itemNum => {
+        if (map[itemNum] !== undefined) {
+          map[itemNum] += adjustments[itemNum];
+        }
+      });
+
+      setOnhandMap(map);
+    } catch (error) {
+      console.error('Load onhand error:', error);
+    }
+  };
+
+  const getOnhandQty = (item) => {
+    const qty = onhandMap[item.itemNumber];
+    return qty !== undefined ? qty : null;
   };
 
   useEffect(() => {
@@ -465,6 +521,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
               <ItemRow
                 item={item}
                 cartQty={getCartQty(item)}
+                onhandQty={getOnhandQty(item)}
                 onAdd={handleAddItem}
                 onIncrease={handleIncreaseQty}
                 onDecrease={handleDecreaseQty}
@@ -744,8 +801,25 @@ const styles = StyleSheet.create({
   itemCode: {
     fontSize: 10,
     color: colors.textMuted,
-    marginBottom: 5,
     fontFamily: 'monospace',
+  },
+  itemCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+    gap: 6,
+  },
+  onhandBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  onhandText: {
+    fontSize: 9,
+    fontWeight: '600',
   },
   itemMeta: {
     flexDirection: 'row',

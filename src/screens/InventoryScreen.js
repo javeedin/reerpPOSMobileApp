@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { getOnhand, syncOnhand, fetchLotDetails, getSyncMetadata } from '../services/syncService';
+import { getAllLocalAdjustments, getItemAdjustmentSummary } from '../services/onhandService';
 
 const PAGE_SIZE = 50;
 
@@ -125,8 +126,12 @@ const LotDetailModal = ({ visible, lots, itemDescription, loading, onClose }) =>
 };
 
 // Onhand Item Card
-const OnhandCard = ({ item, onViewLots, searchQuery }) => {
-  const stockStatus = getStockStatus(item.primaryQuantity);
+const OnhandCard = ({ item, adjustment, onViewLots, searchQuery }) => {
+  const syncedQty = item.primaryQuantity || 0;
+  const adjustmentQty = adjustment || 0;
+  const availableQty = syncedQty + adjustmentQty;
+  const stockStatus = getStockStatus(availableQty);
+  const hasAdjustment = adjustmentQty !== 0;
 
   return (
     <TouchableOpacity style={styles.inventoryCard} activeOpacity={0.7} onPress={() => onViewLots(item)}>
@@ -150,6 +155,18 @@ const OnhandCard = ({ item, onViewLots, searchQuery }) => {
           <View style={[styles.statusBadge, { backgroundColor: stockStatus.color + '20' }]}>
             <Text style={[styles.statusText, { color: stockStatus.color }]}>{stockStatus.label}</Text>
           </View>
+          {hasAdjustment && (
+            <View style={[styles.statusBadge, { backgroundColor: adjustmentQty < 0 ? (colors.accentRed || '#E53935') + '20' : (colors.accentGreen || '#4CAF50') + '20' }]}>
+              <Ionicons
+                name={adjustmentQty < 0 ? 'arrow-down' : 'arrow-up'}
+                size={8}
+                color={adjustmentQty < 0 ? (colors.accentRed || '#E53935') : (colors.accentGreen || '#4CAF50')}
+              />
+              <Text style={[styles.statusText, { color: adjustmentQty < 0 ? (colors.accentRed || '#E53935') : (colors.accentGreen || '#4CAF50'), marginLeft: 2 }]}>
+                {adjustmentQty > 0 ? '+' : ''}{adjustmentQty}
+              </Text>
+            </View>
+          )}
           {item.lotsHref && (
             <View style={[styles.statusBadge, { backgroundColor: colors.accentPurple + '20' }]}>
               <Ionicons name="layers" size={8} color={colors.accentPurple} />
@@ -159,7 +176,10 @@ const OnhandCard = ({ item, onViewLots, searchQuery }) => {
         </View>
       </View>
       <View style={styles.cardRight}>
-        <Text style={styles.quantity}>{item.primaryQuantity || 0}</Text>
+        <Text style={styles.quantity}>{availableQty}</Text>
+        {hasAdjustment && (
+          <Text style={styles.syncedQtyLabel}>Synced: {syncedQty}</Text>
+        )}
         <Text style={styles.quantityLabel}>{item.primaryUOMCode || 'EA'}</Text>
       </View>
     </TouchableOpacity>
@@ -209,6 +229,7 @@ const InventoryScreen = ({ navigation }) => {
   const [fetchProgress, setFetchProgress] = useState(null);
   const [page, setPage] = useState(1);
   const [lastSync, setLastSync] = useState(null);
+  const [adjustmentsMap, setAdjustmentsMap] = useState({});
 
   // Organization info
   const [orgCode, setOrgCode] = useState('');
@@ -288,6 +309,10 @@ const InventoryScreen = ({ navigation }) => {
       const data = await getOnhand();
       setOnhandData(data || []);
       setFilteredData(data || []);
+
+      // Load local adjustments
+      const adjustments = await getAllLocalAdjustments() || {};
+      setAdjustmentsMap(adjustments);
 
       // Get org code and subinventory from first item
       if (data && data.length > 0) {
@@ -747,7 +772,12 @@ const InventoryScreen = ({ navigation }) => {
               data={displayData}
               keyExtractor={(item, index) => `onhand-${item.inventoryItemId}-${index}`}
               renderItem={({ item }) => (
-                <OnhandCard item={item} onViewLots={handleViewLots} searchQuery={searchQuery} />
+                <OnhandCard
+                  item={item}
+                  adjustment={adjustmentsMap[item.itemNumber] || 0}
+                  onViewLots={handleViewLots}
+                  searchQuery={searchQuery}
+                />
               )}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
@@ -1328,6 +1358,11 @@ const styles = StyleSheet.create({
   quantityLabel: {
     fontSize: 9,
     color: colors.textMuted,
+  },
+  syncedQtyLabel: {
+    fontSize: 8,
+    color: colors.textMuted,
+    marginTop: 1,
   },
   emptyState: {
     alignItems: 'center',

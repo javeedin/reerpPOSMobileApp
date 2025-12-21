@@ -16,7 +16,12 @@ import colors from '../theme/colors';
 import { calculateLineTotal, calculateOrderTotals, createOrder, ORDER_STATUS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 
-// Totals Flow Component - Shows Gross → Discount → Tax → Net as visual pipeline
+// Format number with commas (e.g., 1,250.00)
+const formatNumber = (num) => {
+  return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+};
+
+// Totals Flow Component - Shows Gross → Discount → Tax as visual pipeline
 const TotalsFlow = ({ totals, currency, menuConfig }) => {
   const flowItems = [
     {
@@ -59,27 +64,11 @@ const TotalsFlow = ({ totals, currency, menuConfig }) => {
               </View>
               <Text style={styles.flowStepLabel}>{item.label}</Text>
               <Text style={[styles.flowStepValue, { color: item.color }]}>
-                {item.value.toFixed(2)}
+                {formatNumber(item.value)}
               </Text>
             </View>
           </React.Fragment>
         ))}
-
-        {/* Equals Arrow */}
-        <View style={styles.flowEquals}>
-          <Ionicons name="arrow-forward" size={16} color={colors.textMuted} />
-        </View>
-
-        {/* Net Total */}
-        <View style={styles.flowNetStep}>
-          <View style={styles.flowNetIcon}>
-            <Ionicons name="wallet" size={16} color="#FFFFFF" />
-          </View>
-          <Text style={styles.flowNetLabel}>Net</Text>
-          <Text style={styles.flowNetValue}>
-            {currency} {totals.totalNet.toFixed(2)}
-          </Text>
-        </View>
       </View>
 
       {/* Items Count Badge */}
@@ -95,10 +84,11 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
   const [editDiscount, setEditDiscount] = useState(false);
   const [discountValue, setDiscountValue] = useState(item.discount?.toString() || '0');
   const lineTotals = calculateLineTotal(item, menuConfig);
+  const discountPercent = item.discount || 0;
 
   const handleSaveDiscount = () => {
     const discount = parseFloat(discountValue) || 0;
-    onDiscountChange(index, discount);
+    onDiscountChange(index, discount, 'percent'); // Save as percent
     setEditDiscount(false);
   };
 
@@ -137,13 +127,13 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
         {/* Unit Price */}
         <View style={styles.priceSection}>
           <Text style={styles.detailLabel}>Unit Price</Text>
-          <Text style={styles.priceValue}>{lineTotals.unitPrice.toFixed(2)}</Text>
+          <Text style={styles.priceValue}>{formatNumber(lineTotals.unitPrice)}</Text>
         </View>
 
         {/* Gross */}
         <View style={styles.grossSection}>
           <Text style={styles.detailLabel}>Gross</Text>
-          <Text style={styles.grossValue}>{lineTotals.gross.toFixed(2)}</Text>
+          <Text style={styles.grossValue}>{formatNumber(lineTotals.gross)}</Text>
         </View>
       </View>
 
@@ -152,7 +142,7 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
         <View style={styles.lineExtras}>
           {menuConfig?.allowDiscount && (
             <View style={styles.discountSection}>
-              <Text style={styles.detailLabel}>Discount</Text>
+              <Text style={styles.detailLabel}>Discount %</Text>
               {editDiscount ? (
                 <View style={styles.discountEdit}>
                   <TextInput
@@ -160,6 +150,7 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
                     value={discountValue}
                     onChangeText={setDiscountValue}
                     keyboardType="numeric"
+                    placeholder="%"
                     autoFocus
                   />
                   <TouchableOpacity style={styles.discountSaveBtn} onPress={handleSaveDiscount}>
@@ -168,8 +159,11 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
                 </View>
               ) : (
                 <TouchableOpacity style={styles.discountTap} onPress={() => setEditDiscount(true)}>
-                  <Text style={[styles.discountValue, lineTotals.discountAmount > 0 && styles.discountValueActive]}>
-                    -{lineTotals.discountAmount.toFixed(2)}
+                  <Text style={[styles.discountPercent, discountPercent > 0 && styles.discountPercentActive]}>
+                    {discountPercent}%
+                  </Text>
+                  <Text style={[styles.discountAmount, lineTotals.discountAmount > 0 && styles.discountAmountActive]}>
+                    (-{formatNumber(lineTotals.discountAmount)})
                   </Text>
                   <Ionicons name="pencil" size={12} color={colors.textMuted} />
                 </TouchableOpacity>
@@ -179,7 +173,7 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
           {menuConfig?.allowTax && (
             <View style={styles.taxSection}>
               <Text style={styles.detailLabel}>Tax (15%)</Text>
-              <Text style={styles.taxValue}>{lineTotals.taxAmount.toFixed(2)}</Text>
+              <Text style={styles.taxValue}>{formatNumber(lineTotals.taxAmount)}</Text>
             </View>
           )}
         </View>
@@ -188,7 +182,7 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
       {/* Net Total */}
       <View style={styles.lineTotal}>
         <Text style={styles.lineTotalLabel}>Line Total</Text>
-        <Text style={styles.lineTotalValue}>{currency} {lineTotals.net.toFixed(2)}</Text>
+        <Text style={styles.lineTotalValue}>{currency} {formatNumber(lineTotals.net)}</Text>
       </View>
     </View>
   );
@@ -204,9 +198,9 @@ const CheckoutScreen = ({ navigation, route }) => {
   const totals = calculateOrderTotals(cart, menuConfig);
   const currency = cart[0]?.currency || 'MUR';
 
-  const handleDiscountChange = (index, discount) => {
+  const handleDiscountChange = (index, discount, discountType = 'percent') => {
     const newCart = [...cart];
-    newCart[index] = { ...newCart[index], discount };
+    newCart[index] = { ...newCart[index], discount, discountType };
     setCart(newCart);
   };
 
@@ -333,7 +327,7 @@ const CheckoutScreen = ({ navigation, route }) => {
               <Text style={styles.grandTotalHint}>Ready for payment</Text>
             </View>
             <Text style={styles.grandTotalValue}>
-              {currency} {totals.totalNet.toFixed(2)}
+              {currency} {formatNumber(totals.totalNet)}
             </Text>
           </View>
         </View>
@@ -489,39 +483,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginTop: 2,
   },
-  flowEquals: {
-    paddingHorizontal: 6,
-  },
-  flowNetStep: {
-    flex: 1.2,
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    backgroundColor: colors.secondary,
-  },
-  flowNetIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  flowNetLabel: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.8)',
-    textTransform: 'uppercase',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  flowNetValue: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginTop: 2,
-  },
   itemsCountBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -541,14 +502,14 @@ const styles = StyleSheet.create({
   grandTotalCard: {
     backgroundColor: colors.accent,
     marginHorizontal: 12,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
     shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
   grandTotalRow: {
     flexDirection: 'row',
@@ -556,17 +517,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   grandTotalLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '600',
   },
   grandTotalHint: {
-    fontSize: 10,
+    fontSize: 9,
     color: 'rgba(255,255,255,0.7)',
-    marginTop: 2,
+    marginTop: 1,
   },
   grandTotalValue: {
-    fontSize: 26,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
@@ -709,15 +670,22 @@ const styles = StyleSheet.create({
   discountTap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
-  discountValue: {
-    fontSize: 14,
+  discountPercent: {
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.textMuted,
   },
-  discountValueActive: {
-    color: colors.accentGreen,
-    fontWeight: '600',
+  discountPercentActive: {
+    color: colors.accentGreen || '#4CAF50',
+  },
+  discountAmount: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  discountAmountActive: {
+    color: colors.accentGreen || '#4CAF50',
   },
   discountEdit: {
     flexDirection: 'row',

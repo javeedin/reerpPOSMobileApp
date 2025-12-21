@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { reduceOnhandForOrder } from './onhandService';
 
 // Storage keys for orders
 const ORDER_KEYS = {
@@ -254,6 +255,12 @@ export const confirmOrder = async (orderId, payments) => {
     };
 
     await saveOrders(orders);
+
+    // Reduce on-hand quantities for the order lines
+    if (order.lines && order.lines.length > 0) {
+      await reduceOnhandForOrder(order.orderNumber, order.lines);
+    }
+
     return { success: true, order: orders[index] };
   } catch (error) {
     console.error('Confirm order error:', error);
