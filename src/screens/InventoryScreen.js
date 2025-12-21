@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   Alert,
   Modal,
   ScrollView,
+  Animated,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -192,6 +194,10 @@ const EmptyStateWithFetch = ({ onFetch, isFetching }) => (
   </View>
 );
 
+const FILTER_SECTION_HEIGHT = 180; // Approximate height of filter section
+const ITEM_HEIGHT = 90; // Approximate height of each list item
+const COLLAPSE_THRESHOLD = 5; // Number of items to scroll before collapsing
+
 const InventoryScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
@@ -208,16 +214,23 @@ const InventoryScreen = ({ navigation }) => {
   const [orgCode, setOrgCode] = useState('');
   const [subinvCode, setSubinvCode] = useState('');
 
-  // Sorting and filtering
-  const [sortOrder, setSortOrder] = useState('none'); // 'none', 'qty_asc', 'qty_desc'
+  // Sorting and filtering - now with column selection and direction
+  const [sortColumn, setSortColumn] = useState('none'); // 'none', 'itemNumber', 'itemDescription', 'primaryQuantity'
+  const [sortDirection, setSortDirection] = useState('asc'); // 'asc', 'desc'
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [qtyFrom, setQtyFrom] = useState('');
   const [qtyTo, setQtyTo] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+
+  // Collapsible filter section
+  const [isFilterExpanded, setIsFilterExpanded] = useState(true);
+  const filterHeight = useRef(new Animated.Value(1)).current;
+  const lastScrollY = useRef(0);
+  const isUserScrolling = useRef(false);
 
   // Autocomplete
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   // Lot modal states
   const [lotModalVisible, setLotModalVisible] = useState(false);
@@ -225,13 +238,47 @@ const InventoryScreen = ({ navigation }) => {
   const [lots, setLots] = useState([]);
   const [loadingLots, setLoadingLots] = useState(false);
 
+  // FlatList ref for scroll tracking
+  const flatListRef = useRef(null);
+
   useEffect(() => {
     loadOnhandData();
   }, []);
 
   useEffect(() => {
     filterAndSortData();
-  }, [searchQuery, onhandData, sortOrder, qtyFrom, qtyTo]);
+  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo]);
+
+  // Animate filter section collapse/expand
+  const animateFilterSection = useCallback((expand) => {
+    Animated.spring(filterHeight, {
+      toValue: expand ? 1 : 0,
+      useNativeDriver: false,
+      friction: 10,
+      tension: 50,
+    }).start();
+    setIsFilterExpanded(expand);
+  }, [filterHeight]);
+
+  // Handle scroll to auto-collapse/expand filter section
+  const handleScroll = useCallback((event) => {
+    const currentScrollY = event.nativeEvent.contentOffset.y;
+    const scrollDiff = currentScrollY - lastScrollY.current;
+    const scrollThreshold = ITEM_HEIGHT * COLLAPSE_THRESHOLD;
+
+    // Scrolling down past threshold - collapse
+    if (currentScrollY > scrollThreshold && isFilterExpanded && scrollDiff > 0) {
+      animateFilterSection(false);
+      Keyboard.dismiss();
+      setShowSuggestions(false);
+    }
+    // Scrolling up near top - expand
+    else if (currentScrollY < ITEM_HEIGHT && !isFilterExpanded && scrollDiff < 0) {
+      animateFilterSection(true);
+    }
+
+    lastScrollY.current = currentScrollY;
+  }, [isFilterExpanded, animateFilterSection]);
 
   useEffect(() => {
     setDisplayData(filteredData.slice(0, PAGE_SIZE));
@@ -318,25 +365,71 @@ const InventoryScreen = ({ navigation }) => {
       result = result.filter(item => (item.primaryQuantity || 0) <= toQty);
     }
 
-    // Sorting
-    if (sortOrder === 'qty_asc') {
-      result.sort((a, b) => (a.primaryQuantity || 0) - (b.primaryQuantity || 0));
-    } else if (sortOrder === 'qty_desc') {
-      result.sort((a, b) => (b.primaryQuantity || 0) - (a.primaryQuantity || 0));
+    // Column-based sorting with direction
+    if (sortColumn !== 'none') {
+      result.sort((a, b) => {
+        let aVal, bVal;
+
+        switch (sortColumn) {
+          case 'itemNumber':
+            aVal = (a.itemNumber || '').toLowerCase();
+            bVal = (b.itemNumber || '').toLowerCase();
+            break;
+          case 'itemDescription':
+            aVal = (a.itemDescription || '').toLowerCase();
+            bVal = (b.itemDescription || '').toLowerCase();
+            break;
+          case 'primaryQuantity':
+            aVal = a.primaryQuantity || 0;
+            bVal = b.primaryQuantity || 0;
+            break;
+          default:
+            return 0;
+        }
+
+        // Compare based on type
+        let comparison = 0;
+        if (typeof aVal === 'string') {
+          comparison = aVal.localeCompare(bVal);
+        } else {
+          comparison = aVal - bVal;
+        }
+
+        return sortDirection === 'asc' ? comparison : -comparison;
+      });
     }
 
     setFilteredData(result);
-  }, [searchQuery, onhandData, sortOrder, qtyFrom, qtyTo]);
+  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo]);
 
   const handleSearchChange = (text) => {
     setSearchQuery(text);
     generateSuggestions(text);
   };
 
+  const handleSearchFocus = () => {
+    setIsSearchFocused(true);
+    if (searchQuery.length >= 2) {
+      generateSuggestions(searchQuery);
+    }
+    // Expand filter section when focusing on search
+    if (!isFilterExpanded) {
+      animateFilterSection(true);
+    }
+  };
+
+  const handleSearchBlur = () => {
+    // Delay hiding suggestions to allow tap on suggestion
+    setTimeout(() => {
+      setIsSearchFocused(false);
+    }, 200);
+  };
+
   const handleSuggestionSelect = (suggestion) => {
     setSearchQuery(suggestion.name);
     setShowSuggestions(false);
     setFilteredData([suggestion.item]);
+    Keyboard.dismiss();
   };
 
   const handleClearSearch = () => {
@@ -411,7 +504,26 @@ const InventoryScreen = ({ navigation }) => {
   const clearFilters = () => {
     setQtyFrom('');
     setQtyTo('');
-    setSortOrder('none');
+    setSortColumn('none');
+    setSortDirection('asc');
+  };
+
+  // Toggle sort direction
+  const toggleSortDirection = () => {
+    setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+  };
+
+  // Handle column selection for sorting
+  const handleSortColumnSelect = (column) => {
+    if (sortColumn === column) {
+      // If same column, toggle direction
+      toggleSortDirection();
+    } else {
+      // New column, set to asc by default
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+    setShowSortDropdown(false);
   };
 
   // Calculate summary
@@ -419,13 +531,24 @@ const InventoryScreen = ({ navigation }) => {
   const lowStockItems = onhandData.filter(item => item.primaryQuantity > 0 && item.primaryQuantity < 10).length;
   const outOfStockItems = onhandData.filter(item => item.primaryQuantity === 0).length;
 
-  const getSortLabel = () => {
-    switch (sortOrder) {
-      case 'qty_asc': return 'Qty: Low to High';
-      case 'qty_desc': return 'Qty: High to Low';
-      default: return 'Sort';
+  const getSortColumnLabel = () => {
+    switch (sortColumn) {
+      case 'itemNumber': return 'Item Number';
+      case 'itemDescription': return 'Description';
+      case 'primaryQuantity': return 'Quantity';
+      default: return 'Sort By';
     }
   };
+
+  const getSortLabel = () => {
+    if (sortColumn === 'none') return 'Sort By';
+    const colLabel = getSortColumnLabel();
+    const dirLabel = sortDirection === 'asc' ? '↑' : '↓';
+    return `${colLabel} ${dirLabel}`;
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = searchQuery.trim() || qtyFrom !== '' || qtyTo !== '' || sortColumn !== 'none';
 
   return (
     <View style={styles.container}>
@@ -487,154 +610,221 @@ const InventoryScreen = ({ navigation }) => {
               </View>
             )}
 
-            {/* Search Bar with Autocomplete */}
-            <View style={styles.searchWrapper}>
-              <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color={colors.textMuted} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search items..."
-                  placeholderTextColor={colors.textMuted}
-                  value={searchQuery}
-                  onChangeText={handleSearchChange}
-                  onFocus={() => searchQuery.length >= 2 && generateSuggestions(searchQuery)}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={handleClearSearch}>
-                    <Ionicons name="close-circle" size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* Autocomplete Suggestions */}
-              {showSuggestions && suggestions.length > 0 && (
-                <View style={styles.suggestionsContainer}>
-                  {suggestions.map((suggestion, index) => (
-                    <TouchableOpacity
-                      key={`suggestion-${suggestion.id}-${index}`}
-                      style={[
-                        styles.suggestionItem,
-                        index === suggestions.length - 1 && styles.suggestionItemLast,
-                      ]}
-                      onPress={() => handleSuggestionSelect(suggestion)}
-                    >
-                      <View style={styles.suggestionIcon}>
-                        <Ionicons name="cube" size={18} color={colors.accent} />
-                      </View>
-                      <View style={styles.suggestionContent}>
-                        <HighlightText
-                          text={suggestion.name}
-                          highlight={searchQuery}
-                          style={styles.suggestionName}
-                        />
-                        <HighlightText
-                          text={suggestion.secondary}
-                          highlight={searchQuery}
-                          style={styles.suggestionSecondary}
-                        />
-                      </View>
-                      <Ionicons name="arrow-forward" size={16} color={colors.textMuted} />
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={styles.viewAllButton}
-                    onPress={() => setShowSuggestions(false)}
-                  >
-                    <Text style={styles.viewAllText}>
-                      View all {filteredData.length} results
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
-            {/* Sort and Filter Row */}
-            <View style={styles.sortFilterRow}>
-              {/* Sort Dropdown */}
-              <View style={styles.sortContainer}>
-                <TouchableOpacity
-                  style={styles.sortButton}
-                  onPress={() => setShowSortDropdown(!showSortDropdown)}
-                >
-                  <Ionicons name="swap-vertical" size={16} color={colors.accent} />
-                  <Text style={styles.sortButtonText}>{getSortLabel()}</Text>
-                  <Ionicons
-                    name={showSortDropdown ? 'chevron-up' : 'chevron-down'}
-                    size={16}
-                    color={colors.textMuted}
+            {/* Collapsible Filter Section */}
+            <Animated.View
+              style={[
+                styles.collapsibleSection,
+                {
+                  maxHeight: filterHeight.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, FILTER_SECTION_HEIGHT],
+                  }),
+                  opacity: filterHeight,
+                  overflow: 'hidden',
+                },
+              ]}
+            >
+              {/* Search Bar with Autocomplete */}
+              <View style={styles.searchWrapper}>
+                <View style={styles.searchContainer}>
+                  <Ionicons name="search" size={20} color={colors.textMuted} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search items..."
+                    placeholderTextColor={colors.textMuted}
+                    value={searchQuery}
+                    onChangeText={handleSearchChange}
+                    onFocus={handleSearchFocus}
+                    onBlur={handleSearchBlur}
                   />
-                </TouchableOpacity>
-
-                {showSortDropdown && (
-                  <View style={styles.sortDropdown}>
-                    <TouchableOpacity
-                      style={[styles.sortOption, sortOrder === 'none' && styles.sortOptionActive]}
-                      onPress={() => { setSortOrder('none'); setShowSortDropdown(false); }}
-                    >
-                      <Text style={styles.sortOptionText}>Default</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.sortOption, sortOrder === 'qty_asc' && styles.sortOptionActive]}
-                      onPress={() => { setSortOrder('qty_asc'); setShowSortDropdown(false); }}
-                    >
-                      <Text style={styles.sortOptionText}>Qty: Low to High</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.sortOption, sortOrder === 'qty_desc' && styles.sortOptionActive]}
-                      onPress={() => { setSortOrder('qty_desc'); setShowSortDropdown(false); }}
-                    >
-                      <Text style={styles.sortOptionText}>Qty: High to Low</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-
-              {/* Filter Toggle */}
-              <TouchableOpacity
-                style={[styles.filterToggle, showFilters && styles.filterToggleActive]}
-                onPress={() => setShowFilters(!showFilters)}
-              >
-                <Ionicons name="options" size={16} color={showFilters ? '#FFFFFF' : colors.accent} />
-                <Text style={[styles.filterToggleText, showFilters && styles.filterToggleTextActive]}>
-                  Qty Range
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Quantity Range Inputs */}
-            {showFilters && (
-              <View style={styles.filterContainer}>
-                <View style={styles.qtyInputRow}>
-                  <View style={styles.qtyInputWrapper}>
-                    <Text style={styles.qtyLabel}>From</Text>
-                    <TextInput
-                      style={styles.qtyInput}
-                      placeholder="Min"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="numeric"
-                      value={qtyFrom}
-                      onChangeText={setQtyFrom}
-                    />
-                  </View>
-                  <Text style={styles.qtyDivider}>-</Text>
-                  <View style={styles.qtyInputWrapper}>
-                    <Text style={styles.qtyLabel}>To</Text>
-                    <TextInput
-                      style={styles.qtyInput}
-                      placeholder="Max"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="numeric"
-                      value={qtyTo}
-                      onChangeText={setQtyTo}
-                    />
-                  </View>
-                  {(qtyFrom !== '' || qtyTo !== '') && (
-                    <TouchableOpacity style={styles.clearFilterBtn} onPress={clearFilters}>
-                      <Ionicons name="close" size={18} color={colors.accentRed} />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={handleClearSearch}>
+                      <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   )}
                 </View>
+
+                {/* Autocomplete Suggestions */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <View style={styles.suggestionsContainer}>
+                    {suggestions.map((suggestion, index) => (
+                      <TouchableOpacity
+                        key={`suggestion-${suggestion.id}-${index}`}
+                        style={[
+                          styles.suggestionItem,
+                          index === suggestions.length - 1 && styles.suggestionItemLast,
+                        ]}
+                        onPress={() => handleSuggestionSelect(suggestion)}
+                      >
+                        <View style={styles.suggestionIcon}>
+                          <Ionicons name="cube" size={18} color={colors.accent} />
+                        </View>
+                        <View style={styles.suggestionContent}>
+                          <HighlightText
+                            text={suggestion.name}
+                            highlight={searchQuery}
+                            style={styles.suggestionName}
+                          />
+                          <HighlightText
+                            text={suggestion.secondary}
+                            highlight={searchQuery}
+                            style={styles.suggestionSecondary}
+                          />
+                        </View>
+                        <Ionicons name="arrow-forward" size={16} color={colors.textMuted} />
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity
+                      style={styles.viewAllButton}
+                      onPress={() => setShowSuggestions(false)}
+                    >
+                      <Text style={styles.viewAllText}>
+                        View all {filteredData.length} results
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
+
+              {/* Sort and Filter Row */}
+              <View style={styles.sortFilterRow}>
+                {/* Sort Column Dropdown */}
+                <View style={styles.sortContainer}>
+                  <TouchableOpacity
+                    style={[styles.sortButton, sortColumn !== 'none' && styles.sortButtonActive]}
+                    onPress={() => setShowSortDropdown(!showSortDropdown)}
+                  >
+                    <Ionicons name="swap-vertical" size={16} color={sortColumn !== 'none' ? '#FFFFFF' : colors.accent} />
+                    <Text style={[styles.sortButtonText, sortColumn !== 'none' && styles.sortButtonTextActive]}>
+                      {getSortLabel()}
+                    </Text>
+                    <Ionicons
+                      name={showSortDropdown ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={sortColumn !== 'none' ? '#FFFFFF' : colors.textMuted}
+                    />
+                  </TouchableOpacity>
+
+                  {showSortDropdown && (
+                    <View style={styles.sortDropdown}>
+                      <TouchableOpacity
+                        style={[styles.sortOption, sortColumn === 'none' && styles.sortOptionActive]}
+                        onPress={() => handleSortColumnSelect('none')}
+                      >
+                        <Text style={styles.sortOptionText}>Default</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sortOption, sortColumn === 'itemNumber' && styles.sortOptionActive]}
+                        onPress={() => handleSortColumnSelect('itemNumber')}
+                      >
+                        <View style={styles.sortOptionRow}>
+                          <Text style={styles.sortOptionText}>Item Number</Text>
+                          {sortColumn === 'itemNumber' && (
+                            <Ionicons
+                              name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
+                              size={14}
+                              color={colors.accent}
+                            />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sortOption, sortColumn === 'itemDescription' && styles.sortOptionActive]}
+                        onPress={() => handleSortColumnSelect('itemDescription')}
+                      >
+                        <View style={styles.sortOptionRow}>
+                          <Text style={styles.sortOptionText}>Description</Text>
+                          {sortColumn === 'itemDescription' && (
+                            <Ionicons
+                              name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
+                              size={14}
+                              color={colors.accent}
+                            />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sortOption, sortColumn === 'primaryQuantity' && styles.sortOptionActive]}
+                        onPress={() => handleSortColumnSelect('primaryQuantity')}
+                      >
+                        <View style={styles.sortOptionRow}>
+                          <Text style={styles.sortOptionText}>Quantity</Text>
+                          {sortColumn === 'primaryQuantity' && (
+                            <Ionicons
+                              name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
+                              size={14}
+                              color={colors.accent}
+                            />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {/* Sort Direction Toggle */}
+                {sortColumn !== 'none' && (
+                  <TouchableOpacity
+                    style={styles.directionToggle}
+                    onPress={toggleSortDirection}
+                  >
+                    <Ionicons
+                      name={sortDirection === 'asc' ? 'arrow-up' : 'arrow-down'}
+                      size={18}
+                      color={colors.accent}
+                    />
+                  </TouchableOpacity>
+                )}
+
+                {/* Quantity Range Inputs */}
+                <View style={styles.qtyRangeContainer}>
+                  <TextInput
+                    style={styles.qtyInputSmall}
+                    placeholder="Min"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numeric"
+                    value={qtyFrom}
+                    onChangeText={setQtyFrom}
+                  />
+                  <Text style={styles.qtyDividerSmall}>-</Text>
+                  <TextInput
+                    style={styles.qtyInputSmall}
+                    placeholder="Max"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numeric"
+                    value={qtyTo}
+                    onChangeText={setQtyTo}
+                  />
+                </View>
+
+                {/* Clear Filters */}
+                {hasActiveFilters && (
+                  <TouchableOpacity style={styles.clearAllBtn} onPress={clearFilters}>
+                    <Ionicons name="close-circle" size={20} color={colors.accentRed || '#E53935'} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </Animated.View>
+
+            {/* Collapsed Filter Bar - shows when collapsed */}
+            {!isFilterExpanded && (
+              <TouchableOpacity
+                style={styles.collapsedFilterBar}
+                onPress={() => animateFilterSection(true)}
+              >
+                <Ionicons name="search" size={16} color={colors.textMuted} />
+                <Text style={styles.collapsedFilterText}>
+                  {hasActiveFilters ? 'Filters active' : 'Tap to search & filter'}
+                </Text>
+                {hasActiveFilters && (
+                  <View style={styles.filterBadge}>
+                    <Text style={styles.filterBadgeText}>
+                      {(searchQuery.trim() ? 1 : 0) + (sortColumn !== 'none' ? 1 : 0) + ((qtyFrom || qtyTo) ? 1 : 0)}
+                    </Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
             )}
 
             {/* Summary Cards */}
@@ -673,6 +863,7 @@ const InventoryScreen = ({ navigation }) => {
 
             {/* Inventory List */}
             <FlatList
+              ref={flatListRef}
               data={displayData}
               keyExtractor={(item, index) => `onhand-${item.inventoryItemId}-${index}`}
               renderItem={({ item }) => (
@@ -682,6 +873,8 @@ const InventoryScreen = ({ navigation }) => {
               showsVerticalScrollIndicator={false}
               onEndReached={loadMore}
               onEndReachedThreshold={0.5}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
               ListEmptyComponent={
                 <View style={styles.emptyState}>
                   <Ionicons name="search-outline" size={64} color={colors.textMuted} />
@@ -916,6 +1109,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textPrimary,
   },
+  sortButtonActive: {
+    backgroundColor: colors.accent,
+  },
+  sortButtonTextActive: {
+    color: '#FFFFFF',
+  },
   sortDropdown: {
     position: 'absolute',
     top: 44,
@@ -942,6 +1141,84 @@ const styles = StyleSheet.create({
   sortOptionText: {
     fontSize: 14,
     color: colors.textPrimary,
+  },
+  sortOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  directionToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.accent + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qtyRangeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  qtyInputSmall: {
+    width: 50,
+    height: 36,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    fontSize: 13,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  qtyDividerSmall: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  clearAllBtn: {
+    padding: 4,
+  },
+  collapsibleSection: {
+    zIndex: 100,
+  },
+  collapsedFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  collapsedFilterText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  filterBadge: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  filterBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   filterToggle: {
     flexDirection: 'row',
