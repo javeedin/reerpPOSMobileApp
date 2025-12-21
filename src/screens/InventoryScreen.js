@@ -898,11 +898,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
     gap: 10,
-    zIndex: 50,
+    zIndex: 1000,
+    elevation: 10,
   },
   sortContainer: {
     flex: 1,
     position: 'relative',
+    zIndex: 1000,
   },
   sortButton: {
     flexDirection: 'row',
@@ -938,10 +940,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 6,
-    zIndex: 100,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 20,
+    zIndex: 1001,
   },
   sortOption: {
     paddingHorizontal: 14,
@@ -1119,6 +1121,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 8,
     gap: 6,
+    zIndex: 1,
   },
   summaryCard: {
     flex: 1,
