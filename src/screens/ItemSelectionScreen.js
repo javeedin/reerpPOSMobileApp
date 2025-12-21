@@ -13,6 +13,7 @@ import {
   Animated,
   Vibration,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -153,8 +154,9 @@ const getStockColor = (qty) => {
 // Item Row Component
 const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLongPress }) => {
   const inCart = cartQty > 0;
-  const hasOnhand = onhandQty !== null && onhandQty !== undefined;
-  const stockColor = hasOnhand ? getStockColor(onhandQty) : colors.textMuted;
+  const availableQty = onhandQty - cartQty; // Available after cart
+  const stockColor = getStockColor(onhandQty);
+  const canAdd = availableQty > 0;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -178,14 +180,12 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
         <Text style={styles.itemName} numberOfLines={2}>{item.itemDesc || item.itemNumber}</Text>
         <View style={styles.itemCodeRow}>
           <Text style={styles.itemCode}>{item.itemNumber}</Text>
-          {hasOnhand && (
-            <View style={[styles.onhandBadge, { backgroundColor: stockColor + '20' }]}>
-              <Ionicons name="cube-outline" size={10} color={stockColor} />
-              <Text style={[styles.onhandText, { color: stockColor }]}>
-                {onhandQty > 0 ? onhandQty : 'Out'}
-              </Text>
-            </View>
-          )}
+          <View style={[styles.onhandBadge, { backgroundColor: stockColor + '20' }]}>
+            <Ionicons name="cube-outline" size={10} color={stockColor} />
+            <Text style={[styles.onhandText, { color: stockColor }]}>
+              {onhandQty > 0 ? onhandQty : 'Out'}
+            </Text>
+          </View>
         </View>
         <View style={styles.itemMeta}>
           <Text style={styles.itemPrice}>
@@ -207,36 +207,41 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
 
             <TouchableOpacity
               style={styles.qtyDisplay}
-              onLongPress={() => onLongPress(item)}
+              onLongPress={() => canAdd && onLongPress(item)}
               delayLongPress={300}
             >
               <Text style={styles.qtyDisplayText}>{cartQty}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.qtyControlBtn, styles.qtyControlBtnAdd]}
-              onPress={() => onIncrease(item)}
-              onLongPress={() => onLongPress(item)}
+              style={[styles.qtyControlBtn, styles.qtyControlBtnAdd, !canAdd && styles.qtyControlBtnDisabled]}
+              onPress={() => canAdd && onIncrease(item)}
+              onLongPress={() => canAdd && onLongPress(item)}
               delayLongPress={300}
+              disabled={!canAdd}
             >
-              <Ionicons name="add" size={18} color="#FFFFFF" />
+              <Ionicons name="add" size={18} color={canAdd ? "#FFFFFF" : colors.textMuted} />
             </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => onAdd(item, 1)}
-            onLongPress={() => onLongPress(item)}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
+            style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
+            onPress={() => canAdd && onAdd(item, 1)}
+            onLongPress={() => canAdd && onLongPress(item)}
+            onPressIn={canAdd ? handlePressIn : undefined}
+            onPressOut={canAdd ? handlePressOut : undefined}
             delayLongPress={300}
-            activeOpacity={0.8}
+            activeOpacity={canAdd ? 0.8 : 1}
+            disabled={!canAdd}
           >
             <LinearGradient
-              colors={[colors.secondary, colors.secondaryDark || colors.secondary]}
+              colors={canAdd
+                ? [colors.secondary, colors.secondaryDark || colors.secondary]
+                : [colors.textMuted, colors.textMuted]
+              }
               style={styles.addBtnGradient}
             >
-              <Ionicons name="add" size={22} color="#FFFFFF" />
+              <Ionicons name={canAdd ? "add" : "ban"} size={22} color="#FFFFFF" />
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -333,6 +338,9 @@ const ItemSelectionScreen = ({ navigation, route }) => {
       Object.keys(adjustments).forEach(itemNum => {
         if (map[itemNum] !== undefined) {
           map[itemNum] += adjustments[itemNum];
+        } else {
+          // Item has adjustments but wasn't in onhand - track it anyway
+          map[itemNum] = adjustments[itemNum];
         }
       });
 
@@ -342,9 +350,10 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     }
   };
 
+  // Get on-hand qty - returns 0 if not found in on-hand table
   const getOnhandQty = (item) => {
     const qty = onhandMap[item.itemNumber];
-    return qty !== undefined ? qty : null;
+    return qty !== undefined ? Math.max(0, qty) : 0;
   };
 
   useEffect(() => {
@@ -367,25 +376,55 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const handleAddItem = (item, qty = 1) => {
-    Vibration.vibrate(10);
+    const onhandQty = getOnhandQty(item);
+    const cartQty = getCartQty(item);
+    const availableQty = onhandQty - cartQty;
+
+    if (availableQty <= 0) {
+      Vibration.vibrate([0, 50, 50, 50]);
+      Alert.alert('Out of Stock', `${item.itemDesc || item.itemNumber} is out of stock.`);
+      return;
+    }
+
+    const qtyToAdd = Math.min(qty, availableQty);
+    if (qtyToAdd < qty) {
+      Vibration.vibrate([0, 50, 50, 50]);
+      Alert.alert(
+        'Limited Stock',
+        `Only ${availableQty} units available. Adding ${qtyToAdd} to cart.`
+      );
+    } else {
+      Vibration.vibrate(10);
+    }
+
     const existingIndex = cart.findIndex(c => c.itemNumber === item.itemNumber);
 
     if (existingIndex >= 0) {
       const newCart = [...cart];
-      newCart[existingIndex].quantity += qty;
+      newCart[existingIndex].quantity += qtyToAdd;
       setCart(newCart);
     } else {
       setCart([...cart, {
         ...item,
-        quantity: qty,
+        quantity: qtyToAdd,
         discount: 0,
-        discountType: 'amount',
+        discountType: 'percent',
         unitPrice: item.basePrice || 0,
       }]);
     }
   };
 
   const handleLongPressItem = (item) => {
+    const onhandQty = getOnhandQty(item);
+    const cartQty = getCartQty(item);
+    const availableQty = onhandQty - cartQty;
+
+    if (availableQty <= 0) {
+      Vibration.vibrate([0, 50, 50, 50]);
+      Alert.alert('Out of Stock', `${item.itemDesc || item.itemNumber} is out of stock.`);
+      return;
+    }
+
     Vibration.vibrate(50);
     setSelectedItem(item);
     setShowQtyPicker(true);
@@ -398,6 +437,16 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const handleIncreaseQty = (item) => {
+    const onhandQty = getOnhandQty(item);
+    const cartQty = getCartQty(item);
+    const availableQty = onhandQty - cartQty;
+
+    if (availableQty <= 0) {
+      Vibration.vibrate([0, 50, 50, 50]);
+      Alert.alert('Stock Limit', `No more stock available for ${item.itemDesc || item.itemNumber}.`);
+      return;
+    }
+
     Vibration.vibrate(10);
     const newCart = cart.map(c => {
       if (c.itemNumber === item.itemNumber) {
@@ -842,6 +891,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: 'hidden',
   },
+  addBtnDisabled: {
+    opacity: 0.6,
+  },
   addBtnGradient: {
     width: 48,
     height: 48,
@@ -871,6 +923,9 @@ const styles = StyleSheet.create({
   },
   qtyControlBtnAdd: {
     backgroundColor: colors.secondary,
+  },
+  qtyControlBtnDisabled: {
+    backgroundColor: colors.surface,
   },
   qtyDisplay: {
     minWidth: 40,
