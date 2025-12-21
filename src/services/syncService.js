@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   ITEMS: 'sync_items',
   AGENTS: 'sync_agents',
   PRICE_LIST: 'sync_price_list',
+  PRICE_LIST_ITEMS: 'sync_price_list_items',
   SYNC_META: 'sync_metadata',
 };
 
@@ -21,7 +22,8 @@ const ENDPOINTS = {
   CUSTOMERS: '/ALLCUSTOMERS/ALL',
   ITEMS: '/ALLITEMS/ALL',
   AGENTS: '/ALLAGENTS/ALL',
-  PRICE_LIST: '/PRICELIST/ALL',
+  PRICE_LIST_FOR_USER: '/SYNCPRICELIST/LIST', // ?SALESREP_NUMBER=username
+  PRICE_LIST_ITEMS: '/pricelist/pricelist', // /:PRICE_LIST
 };
 
 // Extract only essential fields to reduce storage size
@@ -62,10 +64,32 @@ const extractAgentFields = (agent) => ({
 });
 
 const extractPriceListFields = (priceList) => ({
-  id: priceList.PRICE_LIST_ID || priceList.price_list_id || priceList.ID,
-  name: priceList.PRICE_LIST_NAME || priceList.name,
-  currency: priceList.CURRENCY_CODE || priceList.currency,
-  price: priceList.OPERAND || priceList.price,
+  name: priceList.price_list_name || priceList.PRICE_LIST_NAME || priceList.name,
+  currency: priceList.currency_code || priceList.CURRENCY_CODE || priceList.currency,
+});
+
+// Extract price list item fields
+const extractPriceListItemFields = (item) => ({
+  id: item.inventory_item_id || item.INVENTORY_ITEM_ID,
+  itemNumber: item.item_number || item.ITEM_NUMBER,
+  itemDesc: item.item_desc || item.ITEM_DESC,
+  barcode: item.barcode || item.BARCODE,
+  basePrice: item.base_price || item.BASE_PRICE,
+  currency: item.currency_code || item.CURRENCY_CODE,
+  uom: item.pricing_uom_code || item.PRICING_UOM_CODE,
+  listName: item.list_name || item.LIST_NAME,
+  profitCenter: item.profit_center || item.PROFIT_CENTER,
+  supplier: item.supplier || item.SUPPLIER,
+  brand: item.brand || item.BRAND,
+  category: item.category_name || item.CATEGORY_NAME,
+  subCategory: item.sub_category || item.SUB_CATEGORY,
+  superCategory: item.super_category || item.SUPER_CATEGORY,
+  itemStatus: item.item_status || item.ITEM_STATUS,
+  taxCode: item.tax_code || item.TAX_CODE,
+  taxRate: item.tax_rate || item.TAX_RATE,
+  allowDiscount: item.allow_discount || item.ALLOW_DISCOUNT,
+  alcoholicFlag: item.alcoholic_flag || item.ALCOHOLIC_FLAG,
+  startDate: item.start_date || item.START_DATE,
 });
 
 // Fetch data with pagination
@@ -273,27 +297,112 @@ export const syncAgents = async (onProgress) => {
   }
 };
 
-// Sync Price List
-export const syncPriceList = async (onProgress) => {
+// Sync Price List - Two step process:
+// 1. Get list of price lists for logged user
+// 2. For each price list, fetch all items
+export const syncPriceList = async (onProgress, username) => {
   try {
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST);
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
 
-    const rawData = await fetchWithPagination(ENDPOINTS.PRICE_LIST, onProgress);
-    const data = rawData.map(extractPriceListFields);
-    await saveToStorage(STORAGE_KEYS.PRICE_LIST, data);
-    await updateSyncMetadata('priceList', data.length);
-    return { success: true, count: data.length };
+    // Step 1: Get list of price lists for the user
+    const salesRepNumber = username || 'njohar'; // fallback for testing
+    const listUrl = `${BASE_URL}${ENDPOINTS.PRICE_LIST_FOR_USER}?SALESREP_NUMBER=${salesRepNumber}`;
+    console.log('Fetching price lists:', listUrl);
+
+    if (onProgress) {
+      onProgress({ status: 'Fetching price list names...', fetched: 0 });
+    }
+
+    const listResponse = await axios.get(listUrl, { timeout: 60000 });
+    let priceLists = [];
+
+    if (listResponse.data?.items && Array.isArray(listResponse.data.items)) {
+      priceLists = listResponse.data.items.map(extractPriceListFields);
+    }
+
+    // Save the price list names
+    await saveToStorage(STORAGE_KEYS.PRICE_LIST, priceLists);
+
+    if (onProgress) {
+      onProgress({ status: `Found ${priceLists.length} price lists`, fetched: priceLists.length });
+    }
+
+    // Step 2: For each price list, fetch items
+    let allItems = [];
+    for (let i = 0; i < priceLists.length; i++) {
+      const priceList = priceLists[i];
+      const encodedName = encodeURIComponent(priceList.name);
+      const itemsUrl = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}/${encodedName}`;
+
+      console.log(`Fetching items for price list ${i + 1}/${priceLists.length}: ${priceList.name}`);
+
+      if (onProgress) {
+        onProgress({
+          status: `Syncing ${priceList.name}...`,
+          fetched: allItems.length,
+          currentList: i + 1,
+          totalLists: priceLists.length,
+        });
+      }
+
+      try {
+        const itemsResponse = await axios.get(itemsUrl, { timeout: 120000 });
+        let items = [];
+
+        if (itemsResponse.data?.items && Array.isArray(itemsResponse.data.items)) {
+          items = itemsResponse.data.items;
+        } else if (Array.isArray(itemsResponse.data)) {
+          items = itemsResponse.data;
+        }
+
+        // Extract and add to all items
+        const extractedItems = items.map(item => ({
+          ...extractPriceListItemFields(item),
+          priceListName: priceList.name,
+        }));
+
+        allItems = [...allItems, ...extractedItems];
+
+        // Limit total items for storage
+        if (allItems.length > MAX_RECORDS_TEST * 2) {
+          console.log('Reached max items limit');
+          break;
+        }
+      } catch (itemError) {
+        console.error(`Error fetching items for ${priceList.name}:`, itemError.message);
+        // Continue with other price lists
+      }
+    }
+
+    // Save all price list items
+    await saveToStorage(STORAGE_KEYS.PRICE_LIST_ITEMS, allItems);
+    await updateSyncMetadata('priceList', allItems.length);
+
+    return { success: true, count: allItems.length, priceListCount: priceLists.length };
   } catch (error) {
     console.error('Sync price list error:', error);
     return { success: false, error: error.message };
   }
 };
 
+// Get price list names (for displaying list)
+export const getPriceListNames = async () => loadFromStorage(STORAGE_KEYS.PRICE_LIST);
+
+// Get price list items (all items from all price lists)
+export const getPriceListItems = async () => loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
+
+// Get items for a specific price list
+export const getItemsForPriceList = async (priceListName) => {
+  const allItems = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
+  return allItems.filter(item => item.priceListName === priceListName || item.listName === priceListName);
+};
+
 // Get synced data
 export const getCustomers = async () => loadFromStorage(STORAGE_KEYS.CUSTOMERS);
 export const getItems = async () => loadFromStorage(STORAGE_KEYS.ITEMS);
 export const getAgents = async () => loadFromStorage(STORAGE_KEYS.AGENTS);
-export const getPriceList = async () => loadFromStorage(STORAGE_KEYS.PRICE_LIST);
+export const getPriceList = async () => loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
 
 // Clear all synced data
 export const clearAllSyncData = async () => {
@@ -302,6 +411,7 @@ export const clearAllSyncData = async () => {
     await clearFromStorage(STORAGE_KEYS.ITEMS);
     await clearFromStorage(STORAGE_KEYS.AGENTS);
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST);
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
     await AsyncStorage.removeItem(STORAGE_KEYS.SYNC_META);
     return { success: true };
   } catch (error) {

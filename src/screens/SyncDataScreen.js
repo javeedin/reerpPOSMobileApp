@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
+import { useAuth } from '../context/AuthContext';
 import {
   syncCustomers,
   syncItems,
@@ -78,8 +79,13 @@ const SyncObjectCard = ({
               />
             </View>
             <Text style={styles.progressText}>
-              Fetching... {progress.fetched?.toLocaleString() || 0} records
+              {progress.status || `Fetching... ${progress.fetched?.toLocaleString() || 0} records`}
             </Text>
+            {progress.currentList && (
+              <Text style={styles.progressSubText}>
+                Price list {progress.currentList} of {progress.totalLists}
+              </Text>
+            )}
           </View>
         )}
       </View>
@@ -103,6 +109,8 @@ const SyncObjectCard = ({
 };
 
 const SyncDataScreen = ({ navigation }) => {
+  const { user } = useAuth();
+
   const [metadata, setMetadata] = useState({
     customers: { lastSync: null, count: 0 },
     items: { lastSync: null, count: 0 },
@@ -137,14 +145,22 @@ const SyncDataScreen = ({ navigation }) => {
     setSyncingStates((prev) => ({ ...prev, [type]: true }));
     setProgressStates((prev) => ({ ...prev, [type]: null }));
 
-    const result = await syncFunction((progress) => {
-      setProgressStates((prev) => ({ ...prev, [type]: progress }));
-    });
+    // For price list, pass username as second argument
+    const result = type === 'priceList'
+      ? await syncFunction((progress) => {
+          setProgressStates((prev) => ({ ...prev, [type]: progress }));
+        }, user?.username)
+      : await syncFunction((progress) => {
+          setProgressStates((prev) => ({ ...prev, [type]: progress }));
+        });
 
     setSyncingStates((prev) => ({ ...prev, [type]: false }));
 
     if (result.success) {
-      Alert.alert('Success', `Synced ${result.count.toLocaleString()} records`);
+      const message = result.priceListCount
+        ? `Synced ${result.count.toLocaleString()} items from ${result.priceListCount} price lists`
+        : `Synced ${result.count.toLocaleString()} records`;
+      Alert.alert('Success', message);
       loadMetadata();
     } else {
       Alert.alert('Error', result.error || 'Sync failed');
@@ -393,6 +409,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 6,
     textAlign: 'center',
+  },
+  progressSubText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   syncButton: {
     flexDirection: 'row',

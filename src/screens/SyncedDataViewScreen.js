@@ -287,30 +287,149 @@ const AgentCard = ({ item }) => (
   </View>
 );
 
-// Price List Card
-const PriceListCard = ({ item }) => (
+// Price List Item Detail Modal
+const PriceListItemDetailModal = ({ visible, item, onClose }) => {
+  if (!item) return null;
+
+  const DetailRow = ({ label, value, icon }) => (
+    value ? (
+      <View style={modalStyles.detailRow}>
+        <View style={modalStyles.detailIcon}>
+          <Ionicons name={icon} size={18} color={colors.accentOrange} />
+        </View>
+        <View style={modalStyles.detailContent}>
+          <Text style={modalStyles.detailLabel}>{label}</Text>
+          <Text style={modalStyles.detailValue}>{value}</Text>
+        </View>
+      </View>
+    ) : null
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={modalStyles.overlay}>
+        <View style={modalStyles.container}>
+          <View style={modalStyles.header}>
+            <Text style={modalStyles.headerTitle}>Item Details</Text>
+            <TouchableOpacity onPress={onClose} style={modalStyles.closeButton}>
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={modalStyles.content} showsVerticalScrollIndicator={false}>
+            {/* Item Name */}
+            <View style={modalStyles.nameSection}>
+              <View style={[modalStyles.avatarLarge, { backgroundColor: colors.accentOrange + '20' }]}>
+                <Ionicons name="cube" size={36} color={colors.accentOrange} />
+              </View>
+              <Text style={modalStyles.customerName}>{item.itemDesc || 'Unknown Item'}</Text>
+              <Text style={modalStyles.accountNumber}>#{item.itemNumber}</Text>
+              <View style={[
+                modalStyles.statusBadge,
+                { backgroundColor: item.itemStatus === 'Active' ? colors.accentGreen + '20' : colors.accentOrange + '20' }
+              ]}>
+                <Text style={[
+                  modalStyles.statusText,
+                  { color: item.itemStatus === 'Active' ? colors.accentGreen : colors.accentOrange }
+                ]}>
+                  {item.itemStatus || 'N/A'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Pricing Info */}
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Pricing Information</Text>
+              <DetailRow label="Base Price" value={item.basePrice ? `${item.currency || 'MUR'} ${formatCurrency(item.basePrice)}` : null} icon="cash-outline" />
+              <DetailRow label="Price List" value={item.listName || item.priceListName} icon="pricetag-outline" />
+              <DetailRow label="UOM" value={item.uom} icon="resize-outline" />
+              <DetailRow label="Tax Code" value={item.taxCode} icon="calculator-outline" />
+              <DetailRow label="Tax Rate" value={item.taxRate ? `${item.taxRate}%` : null} icon="receipt-outline" />
+              <DetailRow label="Allow Discount" value={item.allowDiscount === 'Y' ? 'Yes' : item.allowDiscount === 'N' ? 'No' : null} icon="gift-outline" />
+            </View>
+
+            {/* Product Info */}
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Product Information</Text>
+              <DetailRow label="Barcode" value={item.barcode !== 'NA' ? item.barcode : null} icon="barcode-outline" />
+              <DetailRow label="Brand" value={item.brand} icon="bookmark-outline" />
+              <DetailRow label="Supplier" value={item.supplier} icon="business-outline" />
+              <DetailRow label="Profit Center" value={item.profitCenter} icon="trending-up-outline" />
+            </View>
+
+            {/* Category Info */}
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Classification</Text>
+              <DetailRow label="Category" value={item.category} icon="folder-outline" />
+              <DetailRow label="Sub Category" value={item.subCategory} icon="folder-open-outline" />
+              <DetailRow label="Super Category" value={item.superCategory} icon="albums-outline" />
+              <DetailRow label="Alcoholic" value={item.alcoholicFlag === 'Y' ? 'Yes' : item.alcoholicFlag === 'N' ? 'No' : null} icon="wine-outline" />
+            </View>
+
+            {/* Dates */}
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Validity</Text>
+              <DetailRow label="Start Date" value={item.startDate ? new Date(item.startDate).toLocaleDateString() : null} icon="calendar-outline" />
+            </View>
+
+            <View style={{ height: 30 }} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Price List Item Card
+const PriceListCard = ({ item, onViewDetails }) => (
   <View style={styles.dataCard}>
     <View style={styles.cardHeader}>
       <View style={[styles.avatar, { backgroundColor: colors.accentOrange + '20' }]}>
-        <Ionicons name="pricetag" size={24} color={colors.accentOrange} />
+        <Ionicons name="cube" size={24} color={colors.accentOrange} />
       </View>
       <View style={styles.cardInfo}>
-        <Text style={styles.cardTitle} numberOfLines={1}>
-          {item.name || 'Unknown Price List'}
+        <Text style={styles.priceListItemName} numberOfLines={2}>
+          {item.itemDesc || 'Unknown Item'}
         </Text>
         <Text style={styles.cardSubtitle}>
-          {item.currency || 'USD'}
+          #{item.itemNumber || 'N/A'}
         </Text>
       </View>
+      <TouchableOpacity onPress={() => onViewDetails(item)} style={styles.moreButton}>
+        <Ionicons name="information-circle-outline" size={24} color={colors.accentOrange} />
+      </TouchableOpacity>
     </View>
-    {item.price && (
-      <View style={styles.cardDetails}>
+
+    <View style={styles.cardDetails}>
+      {item.listName && (
         <View style={styles.detailRow}>
-          <Ionicons name="cash-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText}>Price: ${item.price}</Text>
+          <Ionicons name="pricetag-outline" size={14} color={colors.textMuted} />
+          <Text style={styles.detailText} numberOfLines={1}>{item.listName}</Text>
         </View>
+      )}
+      <View style={styles.tagsRow}>
+        {item.basePrice && (
+          <View style={[styles.tag, { backgroundColor: colors.accentGreen + '15' }]}>
+            <Ionicons name="cash" size={12} color={colors.accentGreen} />
+            <Text style={[styles.tagText, { color: colors.accentGreen }]}>
+              {item.currency || 'MUR'} {formatCurrency(item.basePrice)}
+            </Text>
+          </View>
+        )}
+        {item.brand && (
+          <View style={styles.tag}>
+            <Ionicons name="bookmark" size={12} color={colors.accentPurple} />
+            <Text style={styles.tagText}>{item.brand}</Text>
+          </View>
+        )}
+        {item.category && (
+          <View style={[styles.tag, { backgroundColor: colors.accentOrange + '15' }]}>
+            <Ionicons name="folder" size={12} color={colors.accentOrange} />
+            <Text style={[styles.tagText, { color: colors.accentOrange }]}>{item.category}</Text>
+          </View>
+        )}
       </View>
-    )}
+    </View>
   </View>
 );
 
@@ -348,6 +467,8 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
   const [page, setPage] = useState(1);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [selectedPriceListItem, setSelectedPriceListItem] = useState(null);
+  const [priceListModalVisible, setPriceListModalVisible] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
 
@@ -454,6 +575,11 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     setModalVisible(true);
   };
 
+  const handleViewPriceListDetails = (item) => {
+    setSelectedPriceListItem(item);
+    setPriceListModalVisible(true);
+  };
+
   const renderItem = ({ item }) => {
     switch (type) {
       case 'customers':
@@ -463,7 +589,7 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
       case 'agents':
         return <AgentCard item={item} />;
       case 'priceList':
-        return <PriceListCard item={item} />;
+        return <PriceListCard item={item} onViewDetails={handleViewPriceListDetails} />;
       default:
         return null;
     }
@@ -478,6 +604,13 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         visible={modalVisible}
         customer={selectedCustomer}
         onClose={() => setModalVisible(false)}
+      />
+
+      {/* Price List Item Detail Modal */}
+      <PriceListItemDetailModal
+        visible={priceListModalVisible}
+        item={selectedPriceListItem}
+        onClose={() => setPriceListModalVisible(false)}
       />
 
       {/* Blue Header */}
@@ -826,6 +959,13 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   customerName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+    lineHeight: 18,
+  },
+  priceListItemName: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.textPrimary,
