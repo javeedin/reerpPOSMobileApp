@@ -16,13 +16,80 @@ import colors from '../theme/colors';
 import { calculateLineTotal, calculateOrderTotals, createOrder, ORDER_STATUS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 
-const TotalCard = ({ label, value, color, icon }) => (
-  <View style={[styles.totalCard, { borderLeftColor: color }]}>
-    <Ionicons name={icon} size={18} color={color} />
-    <Text style={styles.totalCardLabel}>{label}</Text>
-    <Text style={[styles.totalCardValue, { color }]}>{value}</Text>
-  </View>
-);
+// Totals Flow Component - Shows Gross → Discount → Tax → Net as visual pipeline
+const TotalsFlow = ({ totals, currency, menuConfig }) => {
+  const flowItems = [
+    {
+      label: 'Gross',
+      value: totals.totalGross,
+      icon: 'cube',
+      color: colors.accent,
+      operator: null,
+    },
+    menuConfig?.allowDiscount && totals.totalDiscount > 0 && {
+      label: 'Discount',
+      value: totals.totalDiscount,
+      icon: 'pricetag',
+      color: colors.accentGreen || '#4CAF50',
+      operator: '-',
+    },
+    menuConfig?.allowTax && totals.totalTax > 0 && {
+      label: 'Tax',
+      value: totals.totalTax,
+      icon: 'receipt',
+      color: colors.accentOrange || '#FF9800',
+      operator: '+',
+    },
+  ].filter(Boolean);
+
+  return (
+    <View style={styles.totalsFlowContainer}>
+      {/* Flow Steps */}
+      <View style={styles.flowSteps}>
+        {flowItems.map((item, index) => (
+          <React.Fragment key={item.label}>
+            {item.operator && (
+              <View style={styles.flowOperator}>
+                <Text style={[styles.operatorText, { color: item.color }]}>{item.operator}</Text>
+              </View>
+            )}
+            <View style={[styles.flowStep, { borderColor: item.color }]}>
+              <View style={[styles.flowStepIcon, { backgroundColor: item.color + '20' }]}>
+                <Ionicons name={item.icon} size={14} color={item.color} />
+              </View>
+              <Text style={styles.flowStepLabel}>{item.label}</Text>
+              <Text style={[styles.flowStepValue, { color: item.color }]}>
+                {item.value.toFixed(2)}
+              </Text>
+            </View>
+          </React.Fragment>
+        ))}
+
+        {/* Equals Arrow */}
+        <View style={styles.flowEquals}>
+          <Ionicons name="arrow-forward" size={16} color={colors.textMuted} />
+        </View>
+
+        {/* Net Total */}
+        <View style={styles.flowNetStep}>
+          <View style={styles.flowNetIcon}>
+            <Ionicons name="wallet" size={16} color="#FFFFFF" />
+          </View>
+          <Text style={styles.flowNetLabel}>Net</Text>
+          <Text style={styles.flowNetValue}>
+            {currency} {totals.totalNet.toFixed(2)}
+          </Text>
+        </View>
+      </View>
+
+      {/* Items Count Badge */}
+      <View style={styles.itemsCountBadge}>
+        <Ionicons name="cart" size={12} color={colors.accent} />
+        <Text style={styles.itemsCountText}>{totals.totalItems} items</Text>
+      </View>
+    </View>
+  );
+};
 
 const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemove, onDiscountChange, currency }) => {
   const [editDiscount, setEditDiscount] = useState(false);
@@ -255,42 +322,16 @@ const CheckoutScreen = ({ navigation, route }) => {
       </LinearGradient>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Total Cards */}
-        <View style={styles.totalCardsContainer}>
-          <TotalCard
-            label="Items"
-            value={totals.totalItems.toString()}
-            color={colors.accent}
-            icon="cube-outline"
-          />
-          <TotalCard
-            label="Subtotal"
-            value={`${currency} ${totals.totalGross.toFixed(2)}`}
-            color={colors.accentOrange}
-            icon="calculator-outline"
-          />
-          {menuConfig?.allowDiscount && totals.totalDiscount > 0 && (
-            <TotalCard
-              label="Discount"
-              value={`-${currency} ${totals.totalDiscount.toFixed(2)}`}
-              color={colors.accentGreen}
-              icon="pricetag-outline"
-            />
-          )}
-          {menuConfig?.allowTax && totals.totalTax > 0 && (
-            <TotalCard
-              label="Tax (15%)"
-              value={`${currency} ${totals.totalTax.toFixed(2)}`}
-              color={colors.textMuted}
-              icon="receipt-outline"
-            />
-          )}
-        </View>
+        {/* Innovative Totals Flow */}
+        <TotalsFlow totals={totals} currency={currency} menuConfig={menuConfig} />
 
-        {/* Grand Total */}
+        {/* Grand Total Card */}
         <View style={styles.grandTotalCard}>
           <View style={styles.grandTotalRow}>
-            <Text style={styles.grandTotalLabel}>Total Amount</Text>
+            <View>
+              <Text style={styles.grandTotalLabel}>Total Amount</Text>
+              <Text style={styles.grandTotalHint}>Ready for payment</Text>
+            </View>
             <Text style={styles.grandTotalValue}>
               {currency} {totals.totalNet.toFixed(2)}
             </Text>
@@ -394,41 +435,120 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  totalCardsContainer: {
+  // Totals Flow Styles
+  totalsFlowContainer: {
+    padding: 12,
+    paddingBottom: 8,
+  },
+  flowSteps: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 12,
-    gap: 8,
-  },
-  totalCard: {
-    flex: 1,
-    minWidth: '45%',
+    alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    borderRadius: 14,
     padding: 12,
-    borderLeftWidth: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  totalCardLabel: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 4,
+  flowOperator: {
+    paddingHorizontal: 4,
   },
-  totalCardValue: {
+  operatorText: {
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  flowStep: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+  },
+  flowStepIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  flowStepLabel: {
+    fontSize: 9,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  flowStepValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
     marginTop: 2,
+  },
+  flowEquals: {
+    paddingHorizontal: 6,
+  },
+  flowNetStep: {
+    flex: 1.2,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: colors.secondary,
+  },
+  flowNetIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  flowNetLabel: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.8)',
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  flowNetValue: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginTop: 2,
+  },
+  itemsCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accent + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginTop: 10,
+    gap: 5,
+  },
+  itemsCountText: {
+    fontSize: 11,
+    color: colors.accent,
+    fontWeight: '600',
   },
   grandTotalCard: {
     backgroundColor: colors.accent,
     marginHorizontal: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 16,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   grandTotalRow: {
     flexDirection: 'row',
@@ -436,12 +556,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   grandTotalLabel: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#FFFFFF',
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  grandTotalHint: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
   },
   grandTotalValue: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },

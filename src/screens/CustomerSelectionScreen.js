@@ -210,12 +210,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   headerSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
@@ -250,14 +250,14 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 10,
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: 13,
   },
   countBar: {
     paddingHorizontal: 16,
     marginBottom: 8,
   },
   countText: {
-    fontSize: 13,
+    fontSize: 11,
     color: colors.textMuted,
   },
   loadingContainer: {
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.secondary + '20',
   },
   avatarText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: colors.accent,
   },
@@ -316,17 +316,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   customerName: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: 2,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   customerNameSelected: {
     color: colors.secondary,
   },
   customerAccount: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
     marginBottom: 4,
   },
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
   },
   continueText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     flexShrink: 1,
   },

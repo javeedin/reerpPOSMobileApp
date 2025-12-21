@@ -668,7 +668,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: 13,
   },
   scanButton: {
     padding: 6,
@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   countText: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
   },
   tipContainer: {
@@ -735,16 +735,16 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   itemName: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: 3,
-    lineHeight: 20,
+    lineHeight: 17,
   },
   itemCode: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
-    marginBottom: 6,
+    marginBottom: 5,
     fontFamily: 'monospace',
   },
   itemMeta: {
@@ -752,7 +752,7 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   itemPrice: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     color: colors.accent,
   },
