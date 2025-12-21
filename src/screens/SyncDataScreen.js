@@ -18,6 +18,7 @@ import {
   syncItems,
   syncAgents,
   syncPriceList,
+  syncOnhand,
   getSyncMetadata,
   clearAllSyncData,
 } from '../services/syncService';
@@ -116,6 +117,7 @@ const SyncDataScreen = ({ navigation }) => {
     items: { lastSync: null, count: 0 },
     agents: { lastSync: null, count: 0 },
     priceList: { lastSync: null, count: 0 },
+    onhand: { lastSync: null, count: 0 },
   });
 
   const [syncingStates, setSyncingStates] = useState({
@@ -123,6 +125,7 @@ const SyncDataScreen = ({ navigation }) => {
     items: false,
     agents: false,
     priceList: false,
+    onhand: false,
   });
 
   const [progressStates, setProgressStates] = useState({
@@ -130,6 +133,7 @@ const SyncDataScreen = ({ navigation }) => {
     items: null,
     agents: null,
     priceList: null,
+    onhand: null,
   });
 
   useEffect(() => {
@@ -145,14 +149,22 @@ const SyncDataScreen = ({ navigation }) => {
     setSyncingStates((prev) => ({ ...prev, [type]: true }));
     setProgressStates((prev) => ({ ...prev, [type]: null }));
 
-    // For price list, pass username as second argument
-    const result = type === 'priceList'
-      ? await syncFunction((progress) => {
-          setProgressStates((prev) => ({ ...prev, [type]: progress }));
-        }, user?.username)
-      : await syncFunction((progress) => {
-          setProgressStates((prev) => ({ ...prev, [type]: progress }));
-        });
+    let result;
+    const progressCallback = (progress) => {
+      setProgressStates((prev) => ({ ...prev, [type]: progress }));
+    };
+
+    // Handle different sync types with their specific parameters
+    if (type === 'priceList') {
+      result = await syncFunction(progressCallback, user?.username);
+    } else if (type === 'onhand') {
+      // Pass warehouse (OrganizationCode) and subinventory (SubinventoryCode) from user profile
+      const warehouse = user?.WAREHOUSE || user?.warehouse;
+      const subinventory = user?.SUBINVENTORY || user?.subinventory;
+      result = await syncFunction(progressCallback, warehouse, subinventory);
+    } else {
+      result = await syncFunction(progressCallback);
+    }
 
     setSyncingStates((prev) => ({ ...prev, [type]: false }));
 
@@ -218,6 +230,13 @@ const SyncDataScreen = ({ navigation }) => {
       icon: 'pricetag',
       color: colors.accentOrange,
       syncFn: syncPriceList,
+    },
+    {
+      key: 'onhand',
+      title: 'Fusion Onhand',
+      icon: 'layers',
+      color: colors.accentRed || '#E53935',
+      syncFn: syncOnhand,
     },
   ];
 

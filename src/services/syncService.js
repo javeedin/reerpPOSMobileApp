@@ -10,7 +10,15 @@ const STORAGE_KEYS = {
   AGENTS: 'sync_agents',
   PRICE_LIST: 'sync_price_list',
   PRICE_LIST_ITEMS: 'sync_price_list_items',
+  ONHAND: 'sync_onhand',
   SYNC_META: 'sync_metadata',
+};
+
+// Fusion Cloud API configuration
+const FUSION_BASE_URL = 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05';
+const FUSION_CREDENTIALS = {
+  username: 'shaik',
+  password: 'fusion1234',
 };
 
 // Batch size for fetching data
@@ -91,6 +99,33 @@ const extractPriceListItemFields = (item) => ({
   alcoholicFlag: item.alcoholic_flag || item.ALCOHOLIC_FLAG,
   startDate: item.start_date || item.START_DATE,
 });
+
+// Extract onhand balance fields
+const extractOnhandFields = (item) => {
+  // Find the lots href from links array
+  let lotsHref = null;
+  if (item.links && Array.isArray(item.links)) {
+    const lotsLink = item.links.find(link => link.name === 'lots' && link.rel === 'child');
+    if (lotsLink) {
+      lotsHref = lotsLink.href;
+    }
+  }
+
+  return {
+    inventoryItemId: item.InventoryItemId,
+    itemNumber: item.ItemNumber,
+    itemDescription: item.ItemDescription,
+    primaryQuantity: item.PrimaryQuantity,
+    primaryUOMCode: item.PrimaryUOMCode,
+    organizationCode: item.OrganizationCode,
+    organizationId: item.OrganizationId,
+    subinventoryCode: item.SubinventoryCode,
+    locatorId: item.LocatorId,
+    revision: item.Revision,
+    summaryLevel: item.SummaryLevel,
+    lotsHref: lotsHref,
+  };
+};
 
 // Fetch data with pagination
 const fetchWithPagination = async (endpoint, onProgress, maxRecords = MAX_RECORDS_TEST) => {
@@ -221,6 +256,7 @@ export const getSyncMetadata = async () => {
       items: { lastSync: null, count: 0 },
       agents: { lastSync: null, count: 0 },
       priceList: { lastSync: null, count: 0 },
+      onhand: { lastSync: null, count: 0 },
     };
   } catch (error) {
     console.error('Get metadata error:', error);
@@ -229,6 +265,7 @@ export const getSyncMetadata = async () => {
       items: { lastSync: null, count: 0 },
       agents: { lastSync: null, count: 0 },
       priceList: { lastSync: null, count: 0 },
+      onhand: { lastSync: null, count: 0 },
     };
   }
 };
@@ -398,6 +435,116 @@ export const getItemsForPriceList = async (priceListName) => {
   return allItems.filter(item => item.priceListName === priceListName || item.listName === priceListName);
 };
 
+// Sync Fusion Onhand Balances
+export const syncOnhand = async (onProgress, userWarehouse, userSubinventory) => {
+  try {
+    await clearFromStorage(STORAGE_KEYS.ONHAND);
+
+    // Use user's warehouse and subinventory or default values
+    const organizationCode = userWarehouse || 'SHOPS';
+    const subinventoryCode = userSubinventory || 'SHCS';
+
+    if (onProgress) {
+      onProgress({ status: 'Connecting to Fusion Cloud...', fetched: 0 });
+    }
+
+    // Build the query URL
+    const queryUrl = `${FUSION_BASE_URL}/inventoryOnhandBalances?q=OrganizationCode=${organizationCode};SubinventoryCode=${subinventoryCode}&limit=500`;
+    console.log('Fetching onhand from:', queryUrl);
+
+    // Create Basic Auth header
+    const authHeader = 'Basic ' + btoa(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+
+    let allItems = [];
+    let hasMore = true;
+    let offset = 0;
+
+    while (hasMore) {
+      const url = offset > 0 ? `${queryUrl}&offset=${offset}` : queryUrl;
+
+      if (onProgress) {
+        onProgress({ status: `Fetching onhand balances...`, fetched: allItems.length });
+      }
+
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+        },
+        timeout: 120000,
+      });
+
+      let items = [];
+      if (response.data?.items && Array.isArray(response.data.items)) {
+        items = response.data.items;
+      }
+
+      if (items.length === 0) {
+        hasMore = false;
+      } else {
+        const extractedItems = items.map(extractOnhandFields);
+        allItems = [...allItems, ...extractedItems];
+        offset += items.length;
+
+        if (onProgress) {
+          onProgress({ status: `Fetched ${allItems.length} items...`, fetched: allItems.length });
+        }
+
+        // Check if there are more items
+        hasMore = response.data?.hasMore === true || items.length === 500;
+      }
+    }
+
+    // Save onhand data
+    await saveToStorage(STORAGE_KEYS.ONHAND, allItems);
+    await updateSyncMetadata('onhand', allItems.length);
+
+    return { success: true, count: allItems.length };
+  } catch (error) {
+    console.error('Sync onhand error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Get onhand data
+export const getOnhand = async () => loadFromStorage(STORAGE_KEYS.ONHAND);
+
+// Fetch lot details for an onhand item
+export const fetchLotDetails = async (lotsHref) => {
+  try {
+    if (!lotsHref) {
+      return { success: false, error: 'No lots URL provided' };
+    }
+
+    const authHeader = 'Basic ' + btoa(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+
+    const response = await axios.get(lotsHref, {
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      timeout: 60000,
+    });
+
+    let lots = [];
+    if (response.data?.items && Array.isArray(response.data.items)) {
+      lots = response.data.items.map(lot => ({
+        lotNumber: lot.LotNumber,
+        quantity: lot.OnhandQuantity || lot.PrimaryQuantity,
+        expirationDate: lot.ExpirationDate,
+        gradeCode: lot.GradeCode,
+        parentLotNumber: lot.ParentLotNumber,
+        originationDate: lot.OriginationDate,
+      }));
+    }
+
+    return { success: true, lots };
+  } catch (error) {
+    console.error('Fetch lots error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Get synced data
 export const getCustomers = async () => loadFromStorage(STORAGE_KEYS.CUSTOMERS);
 export const getItems = async () => loadFromStorage(STORAGE_KEYS.ITEMS);
@@ -412,6 +559,7 @@ export const clearAllSyncData = async () => {
     await clearFromStorage(STORAGE_KEYS.AGENTS);
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST);
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
+    await clearFromStorage(STORAGE_KEYS.ONHAND);
     await AsyncStorage.removeItem(STORAGE_KEYS.SYNC_META);
     return { success: true };
   } catch (error) {
