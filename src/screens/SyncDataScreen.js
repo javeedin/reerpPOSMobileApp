@@ -288,7 +288,8 @@ const SyncDataScreen = ({ navigation }) => {
     setIsRefreshingNames(false);
   };
 
-  const handleSyncSinglePriceList = async (priceListName) => {
+  // Internal function to sync a single price list (no alert)
+  const syncPriceListInternal = async (priceListName) => {
     setSyncingPriceList(priceListName);
     setPriceListProgressMap((prev) => ({ ...prev, [priceListName]: null }));
 
@@ -297,19 +298,44 @@ const SyncDataScreen = ({ navigation }) => {
     });
 
     setSyncingPriceList(null);
+    loadPriceListData();
+    loadMetadata();
+
+    return result;
+  };
+
+  // Handler for individual price list sync (shows alert)
+  const handleSyncSinglePriceList = async (priceListName) => {
+    const result = await syncPriceListInternal(priceListName);
 
     if (result.success) {
       Alert.alert('Success', `Synced ${result.count.toLocaleString()} items for ${priceListName}`);
-      loadPriceListData();
-      loadMetadata();
     } else {
       Alert.alert('Error', result.error || `Failed to sync ${priceListName}`);
     }
   };
 
+  // Handler for syncing all price lists (no alerts during, only at end)
   const handleSyncAllPriceLists = async () => {
+    let totalItems = 0;
+    let successCount = 0;
+    let failedLists = [];
+
     for (const pl of priceLists) {
-      await handleSyncSinglePriceList(pl.name);
+      const result = await syncPriceListInternal(pl.name);
+      if (result.success) {
+        totalItems += result.count;
+        successCount++;
+      } else {
+        failedLists.push(pl.name);
+      }
+    }
+
+    // Show summary at the end
+    if (failedLists.length === 0) {
+      Alert.alert('Success', `Synced ${totalItems.toLocaleString()} items from ${successCount} price lists`);
+    } else {
+      Alert.alert('Partial Success', `Synced ${totalItems.toLocaleString()} items from ${successCount} lists.\nFailed: ${failedLists.join(', ')}`);
     }
   };
 

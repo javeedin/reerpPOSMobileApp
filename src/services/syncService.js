@@ -367,23 +367,25 @@ export const syncPriceListNames = async (onProgress, username) => {
   }
 };
 
-// Sync a single price list with pagination (10,000 items per page)
+// Sync a single price list with pagination (2000 items per fetch using p_start_row/p_end_row)
 export const syncSinglePriceList = async (priceListName, onProgress) => {
   try {
     const encodedName = encodeURIComponent(priceListName);
     let allItems = [];
-    let page = 1;
+    let startRow = 1;
+    const batchSize = 2000;
     let hasMore = true;
 
     console.log(`Syncing price list: ${priceListName}`);
 
     while (hasMore) {
-      const url = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}?p_list_name=${encodedName}&page=${page}`;
-      console.log(`Fetching page ${page}:`, url);
+      const endRow = startRow + batchSize - 1;
+      const url = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}?p_list_name=${encodedName}&p_start_row=${startRow}&p_end_row=${endRow}`;
+      console.log(`Fetching rows ${startRow}-${endRow}:`, url);
 
       if (onProgress) {
         onProgress({
-          status: `Fetching page ${page}...`,
+          status: `Fetching ${allItems.length.toLocaleString()}+ items...`,
           fetched: allItems.length,
           priceListName,
         });
@@ -408,10 +410,10 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
         }));
 
         allItems = [...allItems, ...extractedItems];
-        page++;
+        startRow = endRow + 1;
 
-        // If less than 10,000 items returned, we're done
-        if (items.length < 10000) {
+        // If less than batchSize items returned, we're done
+        if (items.length < batchSize) {
           hasMore = false;
         }
       }
@@ -438,7 +440,7 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
 
     if (onProgress) {
       onProgress({
-        status: `Completed: ${allItems.length} items`,
+        status: `Done: ${allItems.length.toLocaleString()} items`,
         fetched: allItems.length,
         priceListName,
         complete: true,
