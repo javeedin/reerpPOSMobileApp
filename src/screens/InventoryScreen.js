@@ -366,6 +366,23 @@ const InventoryScreen = ({ navigation }) => {
       console.log('Wholesaler prices loaded:', Object.keys(wsMap).length);
       console.log('Staff prices loaded:', Object.keys(stMap).length);
 
+      // Debug: Check if onhand itemNumbers match pricelist itemNumbers
+      if (data && data.length > 0) {
+        const onhandItemNumbers = data.slice(0, 5).map(d => d.itemNumber);
+        const priceItemNumbers = Object.keys(wsMap).slice(0, 5);
+        console.log('Sample onhand itemNumbers:', onhandItemNumbers);
+        console.log('Sample pricelist itemNumbers:', priceItemNumbers);
+
+        // Check for matches
+        let matchCount = 0;
+        data.forEach(d => {
+          if (wsMap[d.itemNumber] || stMap[d.itemNumber]) {
+            matchCount++;
+          }
+        });
+        console.log('Items with price match:', matchCount, 'out of', data.length);
+      }
+
       setWholesalerPriceMap(wsMap);
       setStaffPriceMap(stMap);
 
