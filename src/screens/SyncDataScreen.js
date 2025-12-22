@@ -25,6 +25,7 @@ import {
   syncSinglePriceList,
   getPriceListNames,
   getPriceListSyncStatus,
+  clearAllDataForLargePricelistSync,
 } from '../services/syncService';
 
 const SyncObjectCard = ({
@@ -330,15 +331,45 @@ const SyncDataScreen = ({ navigation }) => {
   };
 
   // Handler for individual price list sync (shows alert)
-  // Always clears all pricelist data first to ensure space
+  // Asks user if they want to clear ALL data first to make room
   const handleSyncSinglePriceList = async (priceListName) => {
-    const result = await syncPriceListInternal(priceListName, true);
+    Alert.alert(
+      'Sync Price List',
+      'Large pricelists may exceed storage limits.\n\nWould you like to clear ALL other data (customers, onhand, etc.) to make room?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Keep Other Data',
+          onPress: async () => {
+            const result = await syncPriceListInternal(priceListName, true);
+            if (result.success) {
+              Alert.alert('Success', `Synced ${result.count.toLocaleString()} items for ${priceListName}`);
+            } else {
+              Alert.alert('Error', result.error || `Failed to sync ${priceListName}`);
+            }
+          },
+        },
+        {
+          text: 'Clear All & Sync',
+          style: 'destructive',
+          onPress: async () => {
+            // Clear ALL data first
+            await clearAllDataForLargePricelistSync();
+            loadMetadata(); // Refresh UI to show cleared data
 
-    if (result.success) {
-      Alert.alert('Success', `Synced ${result.count.toLocaleString()} items for ${priceListName}`);
-    } else {
-      Alert.alert('Error', result.error || `Failed to sync ${priceListName}`);
-    }
+            const result = await syncPriceListInternal(priceListName, true);
+            if (result.success) {
+              Alert.alert('Success', `Synced ${result.count.toLocaleString()} items for ${priceListName}`);
+            } else {
+              Alert.alert('Error', result.error || `Failed to sync ${priceListName}`);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Handler for syncing all price lists (no alerts during, only at end)
