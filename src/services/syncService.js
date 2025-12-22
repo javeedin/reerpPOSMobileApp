@@ -104,10 +104,10 @@ const extractPriceListItemFields = (item) => ({
   inventory_item_id: item.inventory_item_id || item.INVENTORY_ITEM_ID,
 });
 
-// Chunk size for pricelist storage (5000 items per key)
-const PRICELIST_CHUNK_SIZE = 5000;
+// Chunk size for pricelist storage (2000 items per key to stay under storage limits)
+const PRICELIST_CHUNK_SIZE = 2000;
 
-// API fetch batch size (fetch 2000 at a time from API)
+// API fetch batch size (fetch 2000 at a time from API - same as chunk size)
 const PRICELIST_FETCH_BATCH_SIZE = 2000;
 
 // Extract onhand balance fields
