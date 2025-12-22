@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
 import { calculateLineTotal, calculateOrderTotals, createOrder, ORDER_STATUS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
-import { getOnhand } from '../services/syncService';
+import { getOnhand, getBogoForItem, calculateBogoQty } from '../services/syncService';
 import { getAllLocalAdjustments } from '../services/onhandService';
 
 // Format number with commas (e.g., 1,250.00)
@@ -260,21 +260,146 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
   );
 };
 
+// BOGO Line Card Component - Shows promo items linked to main items
+const BogoLineCard = ({ item, index, menuConfig, currency, parentItemDesc }) => {
+  const lineTotals = calculateLineTotal(item, menuConfig);
+
+  return (
+    <View style={styles.bogoLineCard}>
+      {/* BOGO Header with Link Indicator */}
+      <View style={styles.bogoHeader}>
+        <View style={styles.bogoLinkIndicator}>
+          <Ionicons name="link" size={12} color={colors.secondary || '#FF6B6B'} />
+        </View>
+        <View style={styles.bogoPromoTag}>
+          <Ionicons name="gift" size={12} color="#FFFFFF" />
+          <Text style={styles.bogoPromoText}>{item.bogoPromoType || 'BOGO'}</Text>
+        </View>
+        <Text style={styles.bogoPromoName} numberOfLines={1}>{item.bogoPromoName}</Text>
+      </View>
+
+      {/* Item Info */}
+      <View style={styles.bogoItemInfo}>
+        <Text style={styles.bogoItemDesc} numberOfLines={2}>{item.itemDesc}</Text>
+        <Text style={styles.bogoItemCode}>{item.itemNumber}</Text>
+      </View>
+
+      {/* Parent Link Info */}
+      <View style={styles.bogoParentLink}>
+        <Ionicons name="arrow-undo" size={12} color={colors.textMuted} />
+        <Text style={styles.bogoParentText}>
+          Linked to: {parentItemDesc || item.bogoParentItemCode}
+        </Text>
+        <Text style={styles.bogoRuleText}>
+          (Buy {item.bogoBuyQty} → Get {item.bogoGetQty})
+        </Text>
+      </View>
+
+      {/* Details Row */}
+      <View style={styles.bogoDetails}>
+        <View style={styles.bogoQtyBox}>
+          <Text style={styles.bogoDetailLabel}>Qty</Text>
+          <Text style={styles.bogoQtyValue}>{item.quantity}</Text>
+        </View>
+        <View style={styles.bogoPriceBox}>
+          <Text style={styles.bogoDetailLabel}>Price</Text>
+          <Text style={styles.bogoPriceValue}>{formatNumber(lineTotals.unitPrice)}</Text>
+        </View>
+        <View style={styles.bogoTotalBox}>
+          <Text style={styles.bogoDetailLabel}>Total</Text>
+          <Text style={styles.bogoTotalValue}>{currency} {formatNumber(lineTotals.net)}</Text>
+        </View>
+      </View>
+
+      {/* Auto-calculated Note */}
+      <View style={styles.bogoAutoNote}>
+        <Ionicons name="sync" size={10} color={colors.textMuted} />
+        <Text style={styles.bogoAutoNoteText}>Auto-calculated based on main item quantity</Text>
+      </View>
+    </View>
+  );
+};
+
 const CheckoutScreen = ({ navigation, route }) => {
   const { menuConfig, customer, cart: initialCart, saveAsDraft } = route.params || {};
   const { user } = useAuth();
   const [cart, setCart] = useState(initialCart || []);
+  const [bogoItems, setBogoItems] = useState([]);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [onhandMap, setOnhandMap] = useState({});
 
-  const totals = calculateOrderTotals(cart, menuConfig);
+  // Combine cart with BOGO items for totals
+  const allItems = [...cart, ...bogoItems];
+  const totals = calculateOrderTotals(allItems, menuConfig);
   const currency = cart[0]?.currency || 'MUR';
 
   // Load onhand data on mount
   useEffect(() => {
     loadOnhandData();
   }, []);
+
+  // Calculate BOGO items whenever cart changes
+  useEffect(() => {
+    calculateBogoItems();
+  }, [cart]);
+
+  // Calculate BOGO items based on cart contents
+  const calculateBogoItems = async () => {
+    try {
+      const customerNumber = customer?.accountNumber || 'ALL';
+      const newBogoItems = [];
+
+      for (const cartItem of cart) {
+        const mainItemCode = cartItem.itemNumber || cartItem.item_number;
+        if (!mainItemCode) continue;
+
+        // Get BOGO rules for this item
+        const bogos = await getBogoForItem(mainItemCode, customerNumber);
+
+        for (const bogo of bogos) {
+          const bogoQty = calculateBogoQty(cartItem.quantity, bogo.buy_qty, bogo.get_qty);
+
+          if (bogoQty > 0) {
+            newBogoItems.push({
+              // Identification
+              itemNumber: bogo.promo_item_code,
+              itemDesc: bogo.promo_item_desc,
+              // Quantity and price
+              quantity: bogoQty,
+              unitPrice: parseFloat(bogo.promo_price) || 0,
+              basePrice: parseFloat(bogo.promo_price) || 0,
+              // BOGO metadata
+              isBogo: true,
+              bogoParentItemCode: mainItemCode,
+              bogoParentItemDesc: cartItem.itemDesc || cartItem.item_desc,
+              bogoPromoName: bogo.promo_name,
+              bogoPromoNumber: bogo.promo_number,
+              bogoPromoType: bogo.promo_type,
+              bogoBuyQty: bogo.buy_qty,
+              bogoGetQty: bogo.get_qty,
+              bogoLineId: bogo.line_id,
+              // Tax and discount rules from BOGO
+              allow_discount: bogo.is_discount_allowed,
+              tax_code: bogo.vat_code,
+              tax_rate: 0, // BOGO items typically don't have tax
+              // Currency (inherit from parent or default)
+              currency: cartItem.currency || currency || 'MUR',
+            });
+          }
+        }
+      }
+
+      setBogoItems(newBogoItems);
+    } catch (error) {
+      console.error('Error calculating BOGO items:', error);
+    }
+  };
+
+  // Get BOGO items for a specific main item
+  const getBogoItemsForParent = (parentItemCode) => {
+    return bogoItems.filter(b => b.bogoParentItemCode === parentItemCode);
+  };
 
   const loadOnhandData = async () => {
     try {
@@ -379,10 +504,12 @@ const CheckoutScreen = ({ navigation, route }) => {
     setSaving(true);
     try {
       const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
+      // Include BOGO items in the order
+      const allOrderLines = [...cart, ...bogoItems];
       const result = await createOrder({
         customer,
         menuConfig,
-        lines: cart,
+        lines: allOrderLines,
         status: ORDER_STATUS.DRAFT,
         notes,
       }, userPrefix);
@@ -434,10 +561,12 @@ const CheckoutScreen = ({ navigation, route }) => {
       return;
     }
 
+    // Include BOGO items with cart
+    const allOrderLines = [...cart, ...bogoItems];
     navigation.navigate('Payment', {
       menuConfig,
       customer,
-      cart,
+      cart: allOrderLines,
       totals,
       notes,
       currency,
@@ -485,23 +614,48 @@ const CheckoutScreen = ({ navigation, route }) => {
         <View style={styles.sectionHeader}>
           <Ionicons name="list-outline" size={18} color={colors.textPrimary} />
           <Text style={styles.sectionTitle}>Order Lines ({cart.length})</Text>
+          {bogoItems.length > 0 && (
+            <View style={styles.bogoCountBadge}>
+              <Ionicons name="gift" size={12} color={colors.secondary || '#FF6B6B'} />
+              <Text style={styles.bogoCountText}>+{bogoItems.length} BOGO</Text>
+            </View>
+          )}
         </View>
 
-        {/* Order Lines */}
-        {cart.map((item, index) => (
-          <OrderLineCard
-            key={`line-${index}-${item.itemNumber || ''}`}
-            item={item}
-            index={index}
-            menuConfig={menuConfig}
-            onIncrease={handleIncreaseQty}
-            onDecrease={handleDecreaseQty}
-            onRemove={handleRemoveItem}
-            onDiscountChange={handleDiscountChange}
-            currency={currency}
-            onhandQty={getOnhandQty(item)}
-          />
-        ))}
+        {/* Order Lines with BOGO items grouped */}
+        {cart.map((item, index) => {
+          const itemCode = item.itemNumber || item.item_number;
+          const linkedBogoItems = getBogoItemsForParent(itemCode);
+
+          return (
+            <View key={`line-group-${index}-${itemCode || ''}`}>
+              {/* Main Order Line */}
+              <OrderLineCard
+                item={item}
+                index={index}
+                menuConfig={menuConfig}
+                onIncrease={handleIncreaseQty}
+                onDecrease={handleDecreaseQty}
+                onRemove={handleRemoveItem}
+                onDiscountChange={handleDiscountChange}
+                currency={currency}
+                onhandQty={getOnhandQty(item)}
+              />
+
+              {/* BOGO items linked to this main item */}
+              {linkedBogoItems.map((bogoItem, bogoIndex) => (
+                <BogoLineCard
+                  key={`bogo-${index}-${bogoIndex}-${bogoItem.itemNumber || ''}`}
+                  item={bogoItem}
+                  index={bogoIndex}
+                  menuConfig={menuConfig}
+                  currency={currency}
+                  parentItemDesc={item.itemDesc || item.item_desc}
+                />
+              ))}
+            </View>
+          );
+        })}
 
         {/* Notes */}
         <View style={styles.notesContainer}>
@@ -1089,6 +1243,162 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // BOGO Count Badge in header
+  bogoCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: (colors.secondary || '#FF6B6B') + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginLeft: 8,
+    gap: 4,
+  },
+  bogoCountText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.secondary || '#FF6B6B',
+  },
+  // BOGO Line Card Styles
+  bogoLineCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 12,
+    marginTop: -4,
+    marginBottom: 10,
+    marginLeft: 28,
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.secondary || '#FF6B6B',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  bogoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  bogoLinkIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: (colors.secondary || '#FF6B6B') + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  bogoPromoTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.secondary || '#FF6B6B',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 4,
+    marginRight: 8,
+  },
+  bogoPromoText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+  },
+  bogoPromoName: {
+    fontSize: 11,
+    color: colors.textMuted,
+    flex: 1,
+  },
+  bogoItemInfo: {
+    marginBottom: 8,
+  },
+  bogoItemDesc: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  bogoItemCode: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontFamily: 'monospace',
+  },
+  bogoParentLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 8,
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  bogoParentText: {
+    fontSize: 10,
+    color: colors.textMuted,
+    flex: 1,
+  },
+  bogoRuleText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.secondary || '#FF6B6B',
+  },
+  bogoDetails: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 8,
+  },
+  bogoQtyBox: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  bogoPriceBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  bogoTotalBox: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  bogoDetailLabel: {
+    fontSize: 9,
+    color: colors.textMuted,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  bogoQtyValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.secondary || '#FF6B6B',
+  },
+  bogoPriceValue: {
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  bogoTotalValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.secondary || '#FF6B6B',
+  },
+  bogoAutoNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 4,
+  },
+  bogoAutoNoteText: {
+    fontSize: 9,
+    color: colors.textMuted,
+    fontStyle: 'italic',
   },
 });
 

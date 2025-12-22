@@ -19,6 +19,7 @@ import {
   syncAgents,
   syncPriceList,
   syncOnhand,
+  syncBogo,
   getSyncMetadata,
   clearAllSyncData,
   syncPriceListNames,
@@ -264,6 +265,7 @@ const SyncDataScreen = ({ navigation }) => {
     agents: { lastSync: null, count: 0 },
     priceList: { lastSync: null, count: 0 },
     onhand: { lastSync: null, count: 0 },
+    bogo: { lastSync: null, count: 0 },
   });
 
   const [syncingStates, setSyncingStates] = useState({
@@ -272,6 +274,7 @@ const SyncDataScreen = ({ navigation }) => {
     agents: false,
     priceList: false,
     onhand: false,
+    bogo: false,
   });
 
   const [progressStates, setProgressStates] = useState({
@@ -280,6 +283,7 @@ const SyncDataScreen = ({ navigation }) => {
     agents: null,
     priceList: null,
     onhand: null,
+    bogo: null,
   });
 
   // Price list specific states
@@ -499,6 +503,13 @@ const SyncDataScreen = ({ navigation }) => {
       icon: 'layers',
       color: colors.accentRed || '#E53935',
       syncFn: syncOnhand,
+    },
+    {
+      key: 'bogo',
+      title: 'BOGO Promos',
+      icon: 'gift',
+      color: colors.secondary || '#FF6B6B',
+      syncFn: syncBogo,
     },
   ];
 

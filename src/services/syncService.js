@@ -30,6 +30,29 @@ const getPricelistDb = async () => {
       CREATE INDEX IF NOT EXISTS idx_list_name ON pricelist_items(list_name);
       CREATE INDEX IF NOT EXISTS idx_item_number ON pricelist_items(item_number);
       CREATE INDEX IF NOT EXISTS idx_barcode ON pricelist_items(barcode);
+
+      CREATE TABLE IF NOT EXISTS bogo_promotions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        line_id INTEGER,
+        promo_name TEXT,
+        promo_number TEXT,
+        promo_type TEXT,
+        main_item_code TEXT,
+        main_item_desc TEXT,
+        promo_item_code TEXT,
+        promo_item_desc TEXT,
+        promo_price TEXT,
+        buy_qty INTEGER,
+        get_qty INTEGER,
+        customer_number TEXT,
+        is_discount_allowed TEXT,
+        vat_code TEXT,
+        start_date TEXT,
+        end_date TEXT,
+        allow_delete_flag TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_bogo_main_item ON bogo_promotions(main_item_code);
+      CREATE INDEX IF NOT EXISTS idx_bogo_customer ON bogo_promotions(customer_number);
     `);
   }
   return pricelistDb;
@@ -1091,4 +1114,205 @@ export const searchItems = async (query) => {
     (i.name || '').toLowerCase().includes(lowerQuery) ||
     (i.number || '').toLowerCase().includes(lowerQuery)
   ).slice(0, 50);
+};
+
+// ==================== BOGO PROMOTIONS ====================
+
+// BOGO API endpoint
+const BOGO_ENDPOINT = '/ARMODULE/BOGO';
+
+// Extract BOGO fields from API response
+const extractBogoFields = (item) => ({
+  line_id: item.line_id,
+  promo_name: item.promoname,
+  promo_number: item.promonumber,
+  promo_type: item.promotype,
+  main_item_code: item.mainitemcode,
+  main_item_desc: item.mainitemdesc,
+  promo_item_code: item.promoitemcode,
+  promo_item_desc: item.promoitemdesc,
+  promo_price: item.promoprice,
+  buy_qty: parseInt(item.buyqty) || 1,
+  get_qty: parseInt(item.getqty) || 1,
+  customer_number: item.customernumber || 'ALL',
+  is_discount_allowed: item.isdiscountallowed || 'N',
+  vat_code: item.vatcode,
+  start_date: item.startdate,
+  end_date: item.enddate,
+  allow_delete_flag: item.allow_delete_flag || 'Y',
+});
+
+// Sync BOGO promotions
+export const syncBogo = async (onProgress) => {
+  try {
+    const db = await getPricelistDb();
+
+    if (onProgress) {
+      onProgress({ status: 'Clearing old BOGO data...', fetched: 0 });
+    }
+
+    // Clear existing BOGO data
+    await db.runAsync('DELETE FROM bogo_promotions');
+
+    if (onProgress) {
+      onProgress({ status: 'Fetching BOGO promotions...', fetched: 0 });
+    }
+
+    const url = `${BASE_URL}${BOGO_ENDPOINT}`;
+    console.log('Fetching BOGO from:', url);
+
+    const response = await axios.get(url, { timeout: 60000 });
+    let items = [];
+
+    if (response.data?.items && Array.isArray(response.data.items)) {
+      items = response.data.items;
+    } else if (Array.isArray(response.data)) {
+      items = response.data;
+    }
+
+    console.log(`BOGO API returned ${items.length} promotions`);
+
+    if (items.length > 0) {
+      const extractedItems = items.map(extractBogoFields);
+
+      if (onProgress) {
+        onProgress({ status: `Saving ${extractedItems.length} BOGO promotions...`, fetched: extractedItems.length });
+      }
+
+      // Insert all BOGO items
+      for (const item of extractedItems) {
+        await db.runAsync(
+          `INSERT INTO bogo_promotions (
+            line_id, promo_name, promo_number, promo_type,
+            main_item_code, main_item_desc, promo_item_code, promo_item_desc,
+            promo_price, buy_qty, get_qty, customer_number,
+            is_discount_allowed, vat_code, start_date, end_date, allow_delete_flag
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            item.line_id, item.promo_name, item.promo_number, item.promo_type,
+            item.main_item_code, item.main_item_desc, item.promo_item_code, item.promo_item_desc,
+            item.promo_price, item.buy_qty, item.get_qty, item.customer_number,
+            item.is_discount_allowed, item.vat_code, item.start_date, item.end_date, item.allow_delete_flag
+          ]
+        );
+      }
+    }
+
+    // Update sync metadata
+    await updateSyncMetadata('bogo', items.length);
+
+    if (onProgress) {
+      onProgress({ status: `Done: ${items.length} BOGO promotions`, fetched: items.length, complete: true });
+    }
+
+    return { success: true, count: items.length };
+  } catch (error) {
+    console.error('Sync BOGO error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Get BOGO promotions for a specific main item code
+export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
+  try {
+    const db = await getPricelistDb();
+    const now = new Date().toISOString();
+
+    // Get BOGO rules for this item that are currently active
+    // Match either the specific customer or 'ALL' customers
+    const bogos = await db.getAllAsync(
+      `SELECT * FROM bogo_promotions
+       WHERE main_item_code = ?
+       AND (customer_number = ? OR customer_number = 'ALL')
+       AND (start_date IS NULL OR start_date <= ?)
+       AND (end_date IS NULL OR end_date >= ?)`,
+      [mainItemCode, customerNumber, now, now]
+    );
+
+    return bogos;
+  } catch (error) {
+    console.error('Error getting BOGO for item:', error);
+    return [];
+  }
+};
+
+// Get all BOGO promotions
+export const getAllBogo = async () => {
+  try {
+    const db = await getPricelistDb();
+    const bogos = await db.getAllAsync('SELECT * FROM bogo_promotions');
+    return bogos;
+  } catch (error) {
+    console.error('Error getting all BOGO:', error);
+    return [];
+  }
+};
+
+// Calculate BOGO quantity based on main item quantity
+// Formula: Math.floor(mainQty / buyQty) * getQty
+export const calculateBogoQty = (mainQty, buyQty, getQty) => {
+  if (!buyQty || buyQty <= 0) return 0;
+  return Math.floor(mainQty / buyQty) * getQty;
+};
+
+// Build BOGO items for a cart
+// Returns array of BOGO items to add based on cart contents
+export const buildBogoItemsForCart = async (cart, customerNumber = 'ALL') => {
+  try {
+    const bogoItems = [];
+    const db = await getPricelistDb();
+    const now = new Date().toISOString();
+
+    for (const cartItem of cart) {
+      const mainItemCode = cartItem.itemNumber || cartItem.item_number;
+      if (!mainItemCode) continue;
+
+      // Get BOGO rules for this item
+      const bogos = await db.getAllAsync(
+        `SELECT * FROM bogo_promotions
+         WHERE main_item_code = ?
+         AND (customer_number = ? OR customer_number = 'ALL')
+         AND (start_date IS NULL OR start_date <= ?)
+         AND (end_date IS NULL OR end_date >= ?)`,
+        [mainItemCode, customerNumber, now, now]
+      );
+
+      for (const bogo of bogos) {
+        const bogoQty = calculateBogoQty(cartItem.quantity, bogo.buy_qty, bogo.get_qty);
+
+        if (bogoQty > 0) {
+          bogoItems.push({
+            // Identification
+            itemNumber: bogo.promo_item_code,
+            itemDesc: bogo.promo_item_desc,
+            // Quantity and price
+            quantity: bogoQty,
+            unitPrice: parseFloat(bogo.promo_price) || 0,
+            basePrice: parseFloat(bogo.promo_price) || 0,
+            // BOGO metadata
+            isBogo: true,
+            bogoParentItemCode: mainItemCode,
+            bogoPromoName: bogo.promo_name,
+            bogoPromoNumber: bogo.promo_number,
+            bogoPromoType: bogo.promo_type,
+            bogoBuyQty: bogo.buy_qty,
+            bogoGetQty: bogo.get_qty,
+            bogoLineId: bogo.line_id,
+            // Tax and discount rules from BOGO
+            allow_discount: bogo.is_discount_allowed,
+            tax_code: bogo.vat_code,
+            // Deletion rules
+            allowDelete: bogo.allow_delete_flag === 'Y',
+            // Currency (inherit from parent or default)
+            currency: cartItem.currency || 'MUR',
+          });
+        }
+      }
+    }
+
+    return bogoItems;
+  } catch (error) {
+    console.error('Error building BOGO items for cart:', error);
+    return [];
+  }
 };
