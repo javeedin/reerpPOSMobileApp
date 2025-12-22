@@ -87,12 +87,24 @@ const extractPriceListFields = (priceList) => ({
   currency: priceList.currency_code || priceList.CURRENCY_CODE || priceList.currency,
 });
 
-// Extract price list item fields - ULTRA minimal to save storage
-// Only 3 essential fields: itemNumber (for matching), basePrice, and priceListName (added later)
+// Extract price list item fields - ALL required fields with shortened keys
+// Using chunked storage (500 items per chunk) to fit all fields within storage limits
 const extractPriceListItemFields = (item) => ({
-  n: item.item_number || item.ITEM_NUMBER,  // itemNumber - shortened key
-  p: item.base_price || item.BASE_PRICE,     // basePrice - shortened key
+  n: item.item_number || item.ITEM_NUMBER,           // itemNumber
+  p: item.base_price || item.BASE_PRICE,             // basePrice
+  d: item.item_desc || item.ITEM_DESC,               // itemDesc
+  b: item.barcode || item.BARCODE,                   // barcode
+  c: item.currency_code || item.CURRENCY_CODE,       // currency
+  u: item.pricing_uom_code || item.PRICING_UOM_CODE, // uom
+  tc: item.tax_code || item.TAX_CODE,                // taxCode
+  tr: item.tax_rate || item.TAX_RATE,                // taxRate
+  ad: item.allow_discount || item.ALLOW_DISCOUNT,    // allowDiscount
+  af: item.alcoholic_flag || item.ALCOHOLIC_FLAG,    // alcoholicFlag
+  id: item.inventory_item_id || item.INVENTORY_ITEM_ID, // inventoryItemId
 });
+
+// Chunk size for pricelist storage (smaller chunks to fit all fields)
+const PRICELIST_CHUNK_SIZE = 500;
 
 // Extract onhand balance fields
 const extractOnhandFields = (item) => {
@@ -495,40 +507,44 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
       if (items.length === 0) {
         hasMore = false;
       } else {
-        // Extract items with ultra-minimal fields
-        // Using 'l' for listName (shortened) to save storage
+        // Extract items with ALL required fields
+        // Using shortened keys to save storage
         const extractedItems = items.map(item => ({
           ...extractPriceListItemFields(item),
           l: priceListName,  // listName - shortened key
         }));
 
-        // SAVE IMMEDIATELY - each batch as a separate chunk
-        // This avoids accumulating all items in memory
-        try {
-          if (onProgress) {
-            onProgress({
-              status: `Saving batch ${chunkIndex + 1} (${totalItems.toLocaleString()}+ items)...`,
-              fetched: totalItems,
-              priceListName,
-            });
+        // SAVE IN SMALLER CHUNKS to stay under storage limits
+        // Split the 2000-item batch into 500-item chunks
+        for (let i = 0; i < extractedItems.length; i += PRICELIST_CHUNK_SIZE) {
+          const chunk = extractedItems.slice(i, i + PRICELIST_CHUNK_SIZE);
+
+          try {
+            if (onProgress) {
+              onProgress({
+                status: `Saving chunk ${chunkIndex + 1} (${(totalItems + i).toLocaleString()}+ items)...`,
+                fetched: totalItems + i,
+                priceListName,
+              });
+            }
+            await AsyncStorage.setItem(`${storageKey}_${chunkIndex}`, JSON.stringify(chunk));
+            chunkIndex++;
+          } catch (saveError) {
+            console.error('Storage save error:', saveError);
+            if (saveError.message && saveError.message.includes('full')) {
+              // Clean up partial data
+              await clearPriceListStorageCompletely(storageKey);
+              return {
+                success: false,
+                error: `Storage full at ${totalItems.toLocaleString()} items. Clear other data first.`,
+                priceListName
+              };
+            }
+            throw saveError;
           }
-          await AsyncStorage.setItem(`${storageKey}_${chunkIndex}`, JSON.stringify(extractedItems));
-          chunkIndex++;
-          totalItems += extractedItems.length;
-        } catch (saveError) {
-          console.error('Storage save error:', saveError);
-          if (saveError.message && saveError.message.includes('full')) {
-            // Clean up partial data
-            await clearPriceListStorageCompletely(storageKey);
-            return {
-              success: false,
-              error: `Storage full at ${totalItems.toLocaleString()} items. Clear other data first.`,
-              priceListName
-            };
-          }
-          throw saveError;
         }
 
+        totalItems += extractedItems.length;
         startRow = endRow + 1;
 
         // If less than batchSize items returned, we're done
