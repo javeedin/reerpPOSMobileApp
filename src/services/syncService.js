@@ -365,20 +365,38 @@ export const syncPriceListNames = async (onProgress, username) => {
   }
 };
 
+// Aggressively clear all storage for a pricelist (handles both old and new formats)
+const clearPriceListStorageCompletely = async (storageKey) => {
+  try {
+    // Get all keys to find any related chunks
+    const allKeys = await AsyncStorage.getAllKeys();
+    const relatedKeys = allKeys.filter(key => key.startsWith(storageKey));
+
+    if (relatedKeys.length > 0) {
+      console.log(`Clearing ${relatedKeys.length} storage keys for ${storageKey}`);
+      await AsyncStorage.multiRemove(relatedKeys);
+    }
+  } catch (error) {
+    console.error('Error clearing pricelist storage:', error);
+  }
+};
+
 // Sync a single price list with pagination (2000 items per fetch using p_start_row/p_end_row)
 // Each price list is stored in its own AsyncStorage key to avoid storage limits
+// Saves incrementally to avoid memory issues with large datasets
 export const syncSinglePriceList = async (priceListName, onProgress) => {
   try {
     const encodedName = encodeURIComponent(priceListName);
     const storageKey = getPriceListStorageKey(priceListName);
-    let allItems = [];
     let startRow = 1;
     const batchSize = 2000;
     let hasMore = true;
+    let chunkIndex = 0;
+    let totalItems = 0;
 
     console.log(`Syncing price list: ${priceListName} -> storage key: ${storageKey}`);
 
-    // Clear old data for this specific price list
+    // FIRST: Clear ALL old data for this specific price list
     if (onProgress) {
       onProgress({
         status: 'Clearing old data...',
@@ -386,7 +404,7 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
         priceListName,
       });
     }
-    await clearFromStorage(storageKey);
+    await clearPriceListStorageCompletely(storageKey);
 
     while (hasMore) {
       const endRow = startRow + batchSize - 1;
@@ -395,8 +413,8 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
 
       if (onProgress) {
         onProgress({
-          status: `Fetching ${allItems.length.toLocaleString()}+ items...`,
-          fetched: allItems.length,
+          status: `Fetching ${totalItems.toLocaleString()}+ items...`,
+          fetched: totalItems,
           priceListName,
         });
       }
@@ -413,13 +431,39 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
       if (items.length === 0) {
         hasMore = false;
       } else {
-        // Extract and add to all items
+        // Extract items
         const extractedItems = items.map(item => ({
           ...extractPriceListItemFields(item),
           priceListName: priceListName,
         }));
 
-        allItems = [...allItems, ...extractedItems];
+        // SAVE IMMEDIATELY - each batch as a separate chunk
+        // This avoids accumulating all items in memory
+        try {
+          if (onProgress) {
+            onProgress({
+              status: `Saving batch ${chunkIndex + 1} (${totalItems.toLocaleString()}+ items)...`,
+              fetched: totalItems,
+              priceListName,
+            });
+          }
+          await AsyncStorage.setItem(`${storageKey}_${chunkIndex}`, JSON.stringify(extractedItems));
+          chunkIndex++;
+          totalItems += extractedItems.length;
+        } catch (saveError) {
+          console.error('Storage save error:', saveError);
+          if (saveError.message && saveError.message.includes('full')) {
+            // Clean up partial data
+            await clearPriceListStorageCompletely(storageKey);
+            return {
+              success: false,
+              error: `Storage full at ${totalItems.toLocaleString()} items. Clear other data first.`,
+              priceListName
+            };
+          }
+          throw saveError;
+        }
+
         startRow = endRow + 1;
 
         // If less than batchSize items returned, we're done
@@ -429,35 +473,14 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
       }
     }
 
-    // Save items to this pricelist's own storage key
-    if (onProgress) {
-      onProgress({
-        status: `Saving ${allItems.length.toLocaleString()} items...`,
-        fetched: allItems.length,
-        priceListName,
-      });
-    }
-
-    try {
-      await saveToStorage(storageKey, allItems);
-    } catch (saveError) {
-      console.error('Storage save error:', saveError);
-      // If storage is full, return error with helpful message
-      if (saveError.message && saveError.message.includes('full')) {
-        return {
-          success: false,
-          error: `Storage full. ${priceListName} has ${allItems.length.toLocaleString()} items. Try clearing other data first.`,
-          priceListName
-        };
-      }
-      throw saveError;
-    }
+    // Save the chunk count at the end
+    await AsyncStorage.setItem(`${storageKey}_count`, JSON.stringify(chunkIndex));
 
     // Update sync status for this price list
     const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
     syncStatus[priceListName] = {
       lastSync: new Date().toISOString(),
-      count: allItems.length,
+      count: totalItems,
       storageKey: storageKey,
     };
     await saveToStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS, syncStatus);
@@ -468,14 +491,14 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
 
     if (onProgress) {
       onProgress({
-        status: `Done: ${allItems.length.toLocaleString()} items`,
-        fetched: allItems.length,
+        status: `Done: ${totalItems.toLocaleString()} items`,
+        fetched: totalItems,
         priceListName,
         complete: true,
       });
     }
 
-    return { success: true, count: allItems.length, priceListName };
+    return { success: true, count: totalItems, priceListName };
   } catch (error) {
     console.error(`Sync price list ${priceListName} error:`, error);
     return { success: false, error: error.message, priceListName };
