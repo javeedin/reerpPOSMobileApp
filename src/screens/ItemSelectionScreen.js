@@ -554,6 +554,9 @@ const ItemSelectionScreen = ({ navigation, route }) => {
         discountType: 'percent',
         unitPrice: getBasePrice(item),
         currency: getCurrency(item),
+        // Pricelist item-level rules
+        tax_rate: item.tax_rate || item.taxRate || 0,
+        allow_discount: item.allow_discount || item.allowDiscount || 'Y',
       }]);
     }
   };

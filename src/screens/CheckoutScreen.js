@@ -179,38 +179,54 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
         <View style={styles.lineExtras}>
           {menuConfig?.allowDiscount && (
             <View style={styles.discountSection}>
-              <Text style={styles.detailLabel}>Discount %</Text>
-              {editDiscount ? (
-                <View style={styles.discountEdit}>
-                  <TextInput
-                    style={styles.discountInput}
-                    value={discountValue}
-                    onChangeText={setDiscountValue}
-                    keyboardType="numeric"
-                    placeholder="%"
-                    autoFocus
-                  />
-                  <TouchableOpacity style={styles.discountSaveBtn} onPress={handleSaveDiscount}>
-                    <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+              <View style={styles.discountLabelRow}>
+                <Text style={styles.detailLabel}>Discount %</Text>
+                {!lineTotals.canApplyDiscount && (
+                  <View style={styles.noDiscountBadge}>
+                    <Ionicons name="close-circle" size={10} color={colors.textMuted} />
+                    <Text style={styles.noDiscountText}>N/A</Text>
+                  </View>
+                )}
+              </View>
+              {lineTotals.canApplyDiscount ? (
+                editDiscount ? (
+                  <View style={styles.discountEdit}>
+                    <TextInput
+                      style={styles.discountInput}
+                      value={discountValue}
+                      onChangeText={setDiscountValue}
+                      keyboardType="numeric"
+                      placeholder="%"
+                      autoFocus
+                    />
+                    <TouchableOpacity style={styles.discountSaveBtn} onPress={handleSaveDiscount}>
+                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.discountTap} onPress={() => setEditDiscount(true)}>
+                    <Text style={[styles.discountPercent, discountPercent > 0 && styles.discountPercentActive]}>
+                      {discountPercent}%
+                    </Text>
+                    <Text style={[styles.discountAmount, lineTotals.discountAmount > 0 && styles.discountAmountActive]}>
+                      (-{formatNumber(lineTotals.discountAmount)})
+                    </Text>
+                    <Ionicons name="pencil" size={12} color={colors.textMuted} />
                   </TouchableOpacity>
-                </View>
+                )
               ) : (
-                <TouchableOpacity style={styles.discountTap} onPress={() => setEditDiscount(true)}>
-                  <Text style={[styles.discountPercent, discountPercent > 0 && styles.discountPercentActive]}>
-                    {discountPercent}%
-                  </Text>
-                  <Text style={[styles.discountAmount, lineTotals.discountAmount > 0 && styles.discountAmountActive]}>
-                    (-{formatNumber(lineTotals.discountAmount)})
-                  </Text>
-                  <Ionicons name="pencil" size={12} color={colors.textMuted} />
-                </TouchableOpacity>
+                <Text style={styles.discountDisabled}>—</Text>
               )}
             </View>
           )}
           {menuConfig?.allowTax && (
             <View style={styles.taxSection}>
-              <Text style={styles.detailLabel}>Tax (15%)</Text>
-              <Text style={styles.taxValue}>{formatNumber(lineTotals.taxAmount)}</Text>
+              <Text style={styles.detailLabel}>
+                Tax {lineTotals.taxRate > 0 ? `(${lineTotals.taxRate}%)` : '(0%)'}
+              </Text>
+              <Text style={[styles.taxValue, lineTotals.taxRate === 0 && styles.taxValueZero]}>
+                {lineTotals.taxRate > 0 ? formatNumber(lineTotals.taxAmount) : '—'}
+              </Text>
             </View>
           )}
         </View>
@@ -833,9 +849,36 @@ const styles = StyleSheet.create({
   discountSection: {
     flex: 1,
   },
+  discountLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  noDiscountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    gap: 2,
+  },
+  noDiscountText: {
+    fontSize: 8,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  discountDisabled: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
   taxSection: {
     flex: 1,
     alignItems: 'flex-end',
+  },
+  taxValueZero: {
+    color: colors.textMuted,
   },
   discountTap: {
     flexDirection: 'row',

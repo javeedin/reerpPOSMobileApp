@@ -68,18 +68,29 @@ const saveOrders = async (orders) => {
 };
 
 // Calculate line totals
+// Item-level rules from pricelist:
+// - tax_rate: 0 = no tax, 15 = 15% tax, etc.
+// - allow_discount: "Y" = discount allowed, "N" = no discount
 export const calculateLineTotal = (item, menuConfig = {}) => {
   const quantity = item.quantity || 1;
-  const unitPrice = item.unitPrice || item.basePrice || 0;
+  const unitPrice = item.unitPrice || item.basePrice || parseFloat(item.base_price) || 0;
   const discount = item.discount || 0;
   const discountType = item.discountType || 'amount'; // 'amount' or 'percent'
+
+  // Check if item allows discount (from pricelist data)
+  const allowDiscount = item.allow_discount || item.allowDiscount;
+  const itemAllowsDiscount = allowDiscount === 'Y' || allowDiscount === 'y' || allowDiscount === true;
+
+  // Get item tax rate (from pricelist data) - default to 0 if not specified
+  const itemTaxRate = parseFloat(item.tax_rate || item.taxRate || 0);
 
   // Gross amount
   const gross = quantity * unitPrice;
 
-  // Calculate discount
+  // Calculate discount (only if menu allows AND item allows)
   let discountAmount = 0;
-  if (menuConfig.allowDiscount && discount > 0) {
+  const canApplyDiscount = menuConfig.allowDiscount && itemAllowsDiscount;
+  if (canApplyDiscount && discount > 0) {
     if (discountType === 'percent') {
       discountAmount = (gross * discount) / 100;
     } else {
@@ -90,10 +101,10 @@ export const calculateLineTotal = (item, menuConfig = {}) => {
   // Amount after discount
   const afterDiscount = gross - discountAmount;
 
-  // Calculate tax (15% if enabled)
+  // Calculate tax using item's tax rate (only if menu allows tax)
   let taxAmount = 0;
-  if (menuConfig.allowTax) {
-    taxAmount = (afterDiscount * 15) / 100;
+  if (menuConfig.allowTax && itemTaxRate > 0) {
+    taxAmount = (afterDiscount * itemTaxRate) / 100;
   }
 
   // Net amount
@@ -105,6 +116,8 @@ export const calculateLineTotal = (item, menuConfig = {}) => {
     gross,
     discountAmount,
     taxAmount,
+    taxRate: itemTaxRate,
+    canApplyDiscount,
     net,
   };
 };
