@@ -783,6 +783,78 @@ export const getPriceListItems = async () => {
   }
 };
 
+// Get price list items with pagination (for large datasets - 10,000 per page)
+export const getPriceListItemsPaginated = async (page = 1, pageSize = 10000) => {
+  try {
+    const db = await getPricelistDb();
+    const offset = (page - 1) * pageSize;
+
+    // Get total count
+    const countResult = await db.getFirstAsync('SELECT COUNT(*) as total FROM pricelist_items');
+    const total = countResult?.total || 0;
+
+    // Get page of items
+    const items = await db.getAllAsync(
+      'SELECT * FROM pricelist_items LIMIT ? OFFSET ?',
+      [pageSize, offset]
+    );
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    console.log(`Loaded page ${page}/${totalPages} (${items.length} items, offset ${offset})`);
+
+    return {
+      items,
+      page,
+      pageSize,
+      total,
+      totalPages,
+      hasMore: page < totalPages,
+    };
+  } catch (error) {
+    console.error('Error loading paginated pricelist items:', error);
+    return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false };
+  }
+};
+
+// Get items for a specific price list with pagination
+export const getItemsForPriceListPaginated = async (priceListName, page = 1, pageSize = 10000) => {
+  try {
+    const db = await getPricelistDb();
+    const offset = (page - 1) * pageSize;
+
+    // Get total count for this pricelist
+    const countResult = await db.getFirstAsync(
+      'SELECT COUNT(*) as total FROM pricelist_items WHERE list_name = ?',
+      [priceListName]
+    );
+    const total = countResult?.total || 0;
+
+    // Get page of items
+    const items = await db.getAllAsync(
+      'SELECT * FROM pricelist_items WHERE list_name = ? LIMIT ? OFFSET ?',
+      [priceListName, pageSize, offset]
+    );
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    console.log(`Loaded page ${page}/${totalPages} for ${priceListName} (${items.length} items)`);
+
+    return {
+      items,
+      page,
+      pageSize,
+      total,
+      totalPages,
+      hasMore: page < totalPages,
+      priceListName,
+    };
+  } catch (error) {
+    console.error(`Error loading paginated items for ${priceListName}:`, error);
+    return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false, priceListName };
+  }
+};
+
 // Get items for a specific price list (from SQLite)
 export const getItemsForPriceList = async (priceListName) => {
   try {
