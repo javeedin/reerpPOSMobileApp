@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,121 @@ import {
   Alert,
   ScrollView,
   Modal,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
 import { createOrder, confirmOrder, ORDER_STATUS, PAYMENT_METHODS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Confetti colors
+const CONFETTI_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+  '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+];
+
+// Single confetti piece component
+const ConfettiPiece = ({ delay, startX }) => {
+  const translateY = useRef(new Animated.Value(-50)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+  const size = 8 + Math.random() * 8;
+  const isCircle = Math.random() > 0.5;
+
+  useEffect(() => {
+    const horizontalMovement = (Math.random() - 0.5) * 100;
+
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: SCREEN_HEIGHT + 100,
+          duration: 2500 + Math.random() * 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateX, {
+          toValue: horizontalMovement,
+          duration: 2500 + Math.random() * 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotate, {
+          toValue: 5 + Math.random() * 5,
+          duration: 2500 + Math.random() * 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 3000,
+          delay: 1500,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, []);
+
+  const rotateInterpolate = rotate.interpolate({
+    inputRange: [0, 10],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        top: -20,
+        left: startX,
+        width: size,
+        height: isCircle ? size : size * 0.6,
+        backgroundColor: color,
+        borderRadius: isCircle ? size / 2 : 2,
+        opacity,
+        transform: [
+          { translateY },
+          { translateX },
+          { rotate: rotateInterpolate },
+        ],
+      }}
+    />
+  );
+};
+
+// Confetti burst component
+const ConfettiBurst = ({ active }) => {
+  const [pieces, setPieces] = useState([]);
+
+  useEffect(() => {
+    if (active) {
+      const newPieces = [];
+      for (let i = 0; i < 50; i++) {
+        newPieces.push({
+          id: i,
+          delay: Math.random() * 500,
+          startX: Math.random() * SCREEN_WIDTH,
+        });
+      }
+      setPieces(newPieces);
+    } else {
+      setPieces([]);
+    }
+  }, [active]);
+
+  if (!active) return null;
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {pieces.map((piece) => (
+        <ConfettiPiece key={piece.id} delay={piece.delay} startX={piece.startX} />
+      ))}
+    </View>
+  );
+};
 
 const PaymentMethodButton = ({ method, icon, label, isSelected, onSelect }) => (
   <TouchableOpacity
@@ -332,7 +441,7 @@ const PaymentScreen = ({ navigation, route }) => {
         </View>
       </Modal>
 
-      {/* Success Modal */}
+      {/* Success Modal with Confetti */}
       <Modal
         visible={showSuccess}
         animationType="fade"
@@ -340,6 +449,9 @@ const PaymentScreen = ({ navigation, route }) => {
         onRequestClose={handleDone}
       >
         <View style={styles.successOverlay}>
+          {/* Confetti celebration */}
+          <ConfettiBurst active={showSuccess} />
+
           <View style={styles.successContent}>
             <View style={styles.successIcon}>
               <Ionicons name="checkmark-circle" size={80} color={colors.accentGreen} />
