@@ -249,26 +249,51 @@ const OrderDetailScreen = ({ navigation, route }) => {
           <InfoRow label="Items" value={totals.totalItems?.toString() || '0'} />
         </View>
 
-        {/* Grand Total Card */}
-        <View style={styles.grandTotalCard}>
-          <View style={styles.grandTotalRow}>
-            <Text style={styles.grandTotalLabel}>Total Amount</Text>
-            <Text style={styles.grandTotalValue}>
-              {currency} {(totals.totalNet || 0).toFixed(2)}
-            </Text>
+        {/* Invoice-Style Totals */}
+        <View style={styles.invoiceTotalsCard}>
+          <View style={styles.invoiceTotalsHeader}>
+            <Ionicons name="calculator-outline" size={18} color={colors.accent} />
+            <Text style={styles.invoiceTotalsTitle}>Order Totals</Text>
           </View>
-          {totals.totalDiscount > 0 && (
-            <View style={styles.grandTotalSubRow}>
-              <Text style={styles.subLabel}>Discount</Text>
-              <Text style={styles.subValue}>-{totals.totalDiscount.toFixed(2)}</Text>
+
+          <View style={styles.invoiceTotalsBody}>
+            {/* Gross */}
+            <View style={styles.invoiceRow}>
+              <Text style={styles.invoiceLabel}>Gross Amount</Text>
+              <Text style={styles.invoiceValue}>{currency} {(totals.totalGross || 0).toFixed(2)}</Text>
             </View>
-          )}
-          {totals.totalTax > 0 && (
-            <View style={styles.grandTotalSubRow}>
-              <Text style={styles.subLabel}>Tax (15%)</Text>
-              <Text style={styles.subValue}>{totals.totalTax.toFixed(2)}</Text>
+
+            {/* Discount */}
+            <View style={styles.invoiceRow}>
+              <Text style={styles.invoiceLabel}>Discount</Text>
+              <Text style={[styles.invoiceValue, styles.discountValue]}>
+                {(totals.totalDiscount || 0) > 0 ? '-' : ''}{currency} {(totals.totalDiscount || 0).toFixed(2)}
+              </Text>
             </View>
-          )}
+
+            {/* Subtotal after discount */}
+            <View style={styles.invoiceRowSubtotal}>
+              <Text style={styles.invoiceLabelSubtotal}>Subtotal</Text>
+              <Text style={styles.invoiceValueSubtotal}>
+                {currency} {((totals.totalGross || 0) - (totals.totalDiscount || 0)).toFixed(2)}
+              </Text>
+            </View>
+
+            {/* Tax */}
+            <View style={styles.invoiceRow}>
+              <Text style={styles.invoiceLabel}>Tax (VAT)</Text>
+              <Text style={styles.invoiceValue}>{currency} {(totals.totalTax || 0).toFixed(2)}</Text>
+            </View>
+
+            {/* Divider */}
+            <View style={styles.invoiceDivider} />
+
+            {/* Net Total */}
+            <View style={styles.invoiceRowNet}>
+              <Text style={styles.invoiceLabelNet}>NET TOTAL</Text>
+              <Text style={styles.invoiceValueNet}>{currency} {(totals.totalNet || 0).toFixed(2)}</Text>
+            </View>
+          </View>
         </View>
 
         {/* Line Items */}
@@ -485,40 +510,96 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.textPrimary,
   },
-  grandTotalCard: {
-    backgroundColor: colors.accent,
+  // Invoice-Style Totals
+  invoiceTotalsCard: {
+    backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
     marginTop: 16,
     borderRadius: 12,
-    padding: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  grandTotalRow: {
+  invoiceTotalsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 14,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  invoiceTotalsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  invoiceTotalsBody: {
+    padding: 14,
+  },
+  invoiceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 8,
   },
-  grandTotalLabel: {
-    fontSize: 16,
-    color: '#FFFFFF',
+  invoiceLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  invoiceValue: {
+    fontSize: 14,
     fontWeight: '500',
+    color: colors.textPrimary,
   },
-  grandTotalValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  discountValue: {
+    color: colors.secondary || '#FF6B6B',
   },
-  grandTotalSubRow: {
+  invoiceRowSubtotal: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    borderStyle: 'dashed',
   },
-  subLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
+  invoiceLabelSubtotal: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
   },
-  subValue: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.9)',
+  invoiceValueSubtotal: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  invoiceDivider: {
+    height: 2,
+    backgroundColor: colors.accent,
+    marginVertical: 12,
+    borderRadius: 1,
+  },
+  invoiceRowNet: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  invoiceLabelNet: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: 0.5,
+  },
+  invoiceValueNet: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.accent,
   },
   // Line Item Card Styles
   lineItemContainer: {
