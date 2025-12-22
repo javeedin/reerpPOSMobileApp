@@ -310,8 +310,18 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [onhandMap, setOnhandMap] = useState({});
   const [showOnlyAvailable, setShowOnlyAvailable] = useState(false);
+  const [priceListWarning, setPriceListWarning] = useState(null);
 
-  const priceListName = customer?.priceList || menuConfig?.priceList || '';
+  // Debug: Log customer object to check price list field name
+  console.log('=== ItemSelectionScreen Debug ===');
+  console.log('Customer object:', JSON.stringify(customer, null, 2));
+  console.log('Customer priceList field:', customer?.priceList);
+  console.log('Customer price_list field:', customer?.price_list);
+  console.log('menuConfig priceList:', menuConfig?.priceList);
+
+  // Support both camelCase and snake_case field names for customer price list
+  const priceListName = customer?.priceList || customer?.price_list || menuConfig?.priceList || '';
+  console.log('Resolved priceListName:', priceListName);
 
   useEffect(() => {
     loadItems();
@@ -320,16 +330,57 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
   const loadItems = async () => {
     setLoading(true);
+    setPriceListWarning(null);
     try {
       let data = [];
+      console.log('=== loadItems Debug ===');
+      console.log('priceListName to filter by:', priceListName);
+
       if (priceListName) {
+        console.log('Calling getItemsForPriceList with:', priceListName);
         data = await getItemsForPriceList(priceListName);
+        console.log('getItemsForPriceList returned:', data?.length || 0, 'items');
+
+        // Log first 3 items to check their list_name
+        if (data && data.length > 0) {
+          console.log('Sample items list_name values:');
+          data.slice(0, 3).forEach((item, idx) => {
+            console.log(`  Item ${idx}: list_name="${item.list_name}", listName="${item.listName}"`);
+          });
+        }
       }
-      if (!data || data.length === 0) {
+
+      // If customer has a specific price list but no items found
+      if (priceListName && (!data || data.length === 0)) {
+        console.log(`WARNING: Customer price list "${priceListName}" not synced or has no items!`);
+        console.log('Falling back to getPriceListItems()');
+
+        // Load all items as fallback
+        const allData = await getPriceListItems();
+        console.log('getPriceListItems returned:', allData?.length || 0, 'items');
+
+        if (allData && allData.length > 0) {
+          // Show warning that we're showing items from a different price list
+          const firstItemList = allData[0]?.list_name || 'Unknown';
+          setPriceListWarning(`Price list "${priceListName}" not synced. Showing items from "${firstItemList}".`);
+          console.log(`WARNING: Showing items from "${firstItemList}" instead of "${priceListName}"`);
+
+          // Log the actual price lists in the fallback data
+          const uniqueLists = [...new Set(allData.map(item => item.list_name))];
+          console.log('Price lists in fallback data:', uniqueLists.join(', '));
+        }
+
+        data = allData;
+      } else if (!priceListName) {
+        // No price list specified - load all items
+        console.log('No priceListName specified, loading all items');
         data = await getPriceListItems();
+        console.log('getPriceListItems returned:', data?.length || 0, 'items');
       }
+
       setItems(data || []);
       setFilteredItems(data || []);
+      console.log('Final items count:', data?.length || 0);
     } catch (error) {
       console.error('Load items error:', error);
     } finally {
@@ -570,9 +621,17 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
       <View style={styles.content}>
         {priceListName && (
-          <View style={styles.priceListBar}>
-            <Ionicons name="pricetag" size={14} color={colors.accent} />
-            <Text style={styles.priceListBarText}>Price List: {priceListName}</Text>
+          <View style={[styles.priceListBar, priceListWarning && styles.priceListBarWarning]}>
+            <Ionicons name="pricetag" size={14} color={priceListWarning ? colors.accentOrange || '#FF9800' : colors.accent} />
+            <Text style={[styles.priceListBarText, priceListWarning && styles.priceListBarTextWarning]}>
+              Price List: {priceListName}
+            </Text>
+          </View>
+        )}
+        {priceListWarning && (
+          <View style={styles.warningBar}>
+            <Ionicons name="warning" size={14} color={colors.accentOrange || '#FF9800'} />
+            <Text style={styles.warningBarText}>{priceListWarning}</Text>
           </View>
         )}
 
@@ -809,6 +868,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.accent,
     fontWeight: '500',
+  },
+  priceListBarWarning: {
+    backgroundColor: (colors.accentOrange || '#FF9800') + '15',
+  },
+  priceListBarTextWarning: {
+    color: colors.accentOrange || '#FF9800',
+  },
+  warningBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: (colors.accentOrange || '#FF9800') + '10',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    gap: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: (colors.accentOrange || '#FF9800') + '30',
+  },
+  warningBarText: {
+    fontSize: 11,
+    color: colors.accentOrange || '#FF9800',
+    fontWeight: '500',
+    flex: 1,
   },
   searchContainer: {
     flexDirection: 'row',

@@ -775,7 +775,13 @@ export const getPriceListItems = async () => {
   try {
     const db = await getPricelistDb();
     const items = await db.getAllAsync('SELECT * FROM pricelist_items');
+    console.log(`=== getPriceListItems Debug ===`);
     console.log(`Loaded ${items.length} total pricelist items from SQLite`);
+
+    // Log unique list_name values in the database
+    const uniqueLists = await db.getAllAsync('SELECT DISTINCT list_name FROM pricelist_items');
+    console.log('Unique price lists in SQLite:', uniqueLists.map(l => l.list_name).join(', '));
+
     return items;
   } catch (error) {
     console.error('Error loading pricelist items from SQLite:', error);
@@ -858,12 +864,35 @@ export const getItemsForPriceListPaginated = async (priceListName, page = 1, pag
 // Get items for a specific price list (from SQLite)
 export const getItemsForPriceList = async (priceListName) => {
   try {
+    console.log(`=== getItemsForPriceList Debug ===`);
+    console.log(`Looking for price list: "${priceListName}"`);
+
     const db = await getPricelistDb();
+
+    // First, show what price lists are actually in the database
+    const uniqueLists = await db.getAllAsync('SELECT DISTINCT list_name FROM pricelist_items');
+    console.log('Available price lists in SQLite:', uniqueLists.map(l => `"${l.list_name}"`).join(', '));
+
+    // Query for the specific price list
     const items = await db.getAllAsync(
       'SELECT * FROM pricelist_items WHERE list_name = ?',
       [priceListName]
     );
-    console.log(`Loaded ${items.length} items for pricelist ${priceListName} from SQLite`);
+    console.log(`Found ${items.length} items for pricelist "${priceListName}" from SQLite`);
+
+    // If no exact match, try case-insensitive search
+    if (items.length === 0) {
+      console.log('Trying case-insensitive search...');
+      const itemsCI = await db.getAllAsync(
+        'SELECT * FROM pricelist_items WHERE UPPER(list_name) = UPPER(?)',
+        [priceListName]
+      );
+      console.log(`Case-insensitive search found ${itemsCI.length} items`);
+      if (itemsCI.length > 0) {
+        return itemsCI;
+      }
+    }
+
     return items;
   } catch (error) {
     console.error(`Error loading pricelist ${priceListName} from SQLite:`, error);
