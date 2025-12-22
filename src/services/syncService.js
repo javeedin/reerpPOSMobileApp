@@ -87,24 +87,28 @@ const extractPriceListFields = (priceList) => ({
   currency: priceList.currency_code || priceList.CURRENCY_CODE || priceList.currency,
 });
 
-// Extract price list item fields - ALL required fields with shortened keys
-// Using chunked storage (500 items per chunk) to fit all fields within storage limits
+// Extract price list item fields - ALL required fields with ACTUAL names
+// Using chunked storage (250 items per chunk) to fit all fields within storage limits
 const extractPriceListItemFields = (item) => ({
-  n: item.item_number || item.ITEM_NUMBER,           // itemNumber
-  p: item.base_price || item.BASE_PRICE,             // basePrice
-  d: item.item_desc || item.ITEM_DESC,               // itemDesc
-  b: item.barcode || item.BARCODE,                   // barcode
-  c: item.currency_code || item.CURRENCY_CODE,       // currency
-  u: item.pricing_uom_code || item.PRICING_UOM_CODE, // uom
-  tc: item.tax_code || item.TAX_CODE,                // taxCode
-  tr: item.tax_rate || item.TAX_RATE,                // taxRate
-  ad: item.allow_discount || item.ALLOW_DISCOUNT,    // allowDiscount
-  af: item.alcoholic_flag || item.ALCOHOLIC_FLAG,    // alcoholicFlag
-  id: item.inventory_item_id || item.INVENTORY_ITEM_ID, // inventoryItemId
+  list_name: item.list_name || item.LIST_NAME,
+  item_desc: item.item_desc || item.ITEM_DESC,
+  barcode: item.barcode || item.BARCODE,
+  item_number: item.item_number || item.ITEM_NUMBER,
+  currency_code: item.currency_code || item.CURRENCY_CODE,
+  pricing_uom_code: item.pricing_uom_code || item.PRICING_UOM_CODE,
+  tax_code: item.tax_code || item.TAX_CODE,
+  tax_rate: item.tax_rate || item.TAX_RATE,
+  base_price: item.base_price || item.BASE_PRICE,
+  allow_discount: item.allow_discount || item.ALLOW_DISCOUNT,
+  alcoholic_flag: item.alcoholic_flag || item.ALCOHOLIC_FLAG,
+  inventory_item_id: item.inventory_item_id || item.INVENTORY_ITEM_ID,
 });
 
 // Chunk size for pricelist storage (smaller chunks to fit all fields)
-const PRICELIST_CHUNK_SIZE = 500;
+const PRICELIST_CHUNK_SIZE = 250;
+
+// API fetch batch size (smaller batches for stability)
+const PRICELIST_FETCH_BATCH_SIZE = 500;
 
 // Extract onhand balance fields
 const extractOnhandFields = (item) => {
@@ -450,15 +454,15 @@ export const clearAllDataForLargePricelistSync = async () => {
   }
 };
 
-// Sync a single price list with pagination (2000 items per fetch using p_start_row/p_end_row)
+// Sync a single price list with pagination (500 items per fetch using p_start_row/p_end_row)
 // Each price list is stored in its own AsyncStorage key to avoid storage limits
-// Saves incrementally to avoid memory issues with large datasets
+// Saves in 250-item chunks to avoid memory/storage issues with large datasets
 export const syncSinglePriceList = async (priceListName, onProgress, clearAllFirst = true) => {
   try {
     const encodedName = encodeURIComponent(priceListName);
     const storageKey = getPriceListStorageKey(priceListName);
     let startRow = 1;
-    const batchSize = 2000;
+    const batchSize = PRICELIST_FETCH_BATCH_SIZE; // Fetch 500 items at a time
     let hasMore = true;
     let chunkIndex = 0;
     let totalItems = 0;
@@ -507,15 +511,11 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
       if (items.length === 0) {
         hasMore = false;
       } else {
-        // Extract items with ALL required fields
-        // Using shortened keys to save storage
-        const extractedItems = items.map(item => ({
-          ...extractPriceListItemFields(item),
-          l: priceListName,  // listName - shortened key
-        }));
+        // Extract items with ALL required fields using actual field names
+        const extractedItems = items.map(item => extractPriceListItemFields(item));
 
         // SAVE IN SMALLER CHUNKS to stay under storage limits
-        // Split the 2000-item batch into 500-item chunks
+        // Split the 500-item batch into 250-item chunks
         for (let i = 0; i < extractedItems.length; i += PRICELIST_CHUNK_SIZE) {
           const chunk = extractedItems.slice(i, i + PRICELIST_CHUNK_SIZE);
 
