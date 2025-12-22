@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 import { ORDER_STATUS, PAYMENT_METHODS, updateOrder, deleteOrder } from '../services/orderService';
 
@@ -52,27 +53,55 @@ const InfoRow = ({ label, value, valueColor }) => (
   </View>
 );
 
-const LineItem = ({ item, index, currency }) => (
-  <View style={styles.lineItem}>
-    <View style={styles.lineNumber}>
-      <Text style={styles.lineNumberText}>{index + 1}</Text>
+const LineItem = ({ item, index, currency }) => {
+  // Calculate line values
+  const qty = item.quantity || 1;
+  const unitPrice = item.unitPrice || item.basePrice || 0;
+  const gross = qty * unitPrice;
+  const discountPercent = item.discountPercent || 0;
+  const discountAmount = gross * (discountPercent / 100);
+  const afterDiscount = gross - discountAmount;
+  const taxRate = parseFloat(item.tax_rate) || 0;
+  const taxAmount = afterDiscount * (taxRate / 100);
+  const net = item.lineTotal || (afterDiscount + taxAmount);
+
+  return (
+    <View style={styles.lineItemContainer}>
+      {/* Item Description Row */}
+      <View style={styles.lineItemHeader}>
+        <View style={styles.lineNumber}>
+          <Text style={styles.lineNumberText}>{index + 1}</Text>
+        </View>
+        <View style={styles.lineInfoFull}>
+          <Text style={styles.lineName}>{item.itemDesc || item.itemNumber}</Text>
+          <Text style={styles.lineCode}>{item.itemNumber} • Qty: {qty} × {unitPrice.toFixed(2)}</Text>
+        </View>
+      </View>
+
+      {/* Values Row - Gross, Discount, Tax, Net */}
+      <View style={styles.lineValuesRow}>
+        <View style={styles.lineValueCol}>
+          <Text style={styles.lineValueLabel}>Gross</Text>
+          <Text style={styles.lineValueAmount}>{gross.toFixed(2)}</Text>
+        </View>
+        <View style={styles.lineValueCol}>
+          <Text style={styles.lineValueLabel}>Disc</Text>
+          <Text style={[styles.lineValueAmount, discountAmount > 0 && styles.discountText]}>
+            {discountAmount > 0 ? `-${discountAmount.toFixed(2)}` : '0.00'}
+          </Text>
+        </View>
+        <View style={styles.lineValueCol}>
+          <Text style={styles.lineValueLabel}>Tax</Text>
+          <Text style={styles.lineValueAmount}>{taxAmount.toFixed(2)}</Text>
+        </View>
+        <View style={styles.lineValueColNet}>
+          <Text style={styles.lineValueLabel}>Net</Text>
+          <Text style={styles.lineNetValue}>{net.toFixed(2)}</Text>
+        </View>
+      </View>
     </View>
-    <View style={styles.lineInfo}>
-      <Text style={styles.lineName} numberOfLines={1}>{item.itemDesc || item.itemNumber}</Text>
-      <Text style={styles.lineCode}>{item.itemNumber}</Text>
-    </View>
-    <View style={styles.lineQty}>
-      <Text style={styles.lineQtyValue}>{item.quantity}</Text>
-      <Text style={styles.lineQtyLabel}>{item.uom || 'EA'}</Text>
-    </View>
-    <View style={styles.linePrice}>
-      <Text style={styles.linePriceValue}>{(item.unitPrice || 0).toFixed(2)}</Text>
-    </View>
-    <View style={styles.lineTotal}>
-      <Text style={styles.lineTotalValue}>{(item.lineTotal || 0).toFixed(2)}</Text>
-    </View>
-  </View>
-);
+  );
+};
 
 const PaymentRow = ({ payment, currency }) => (
   <View style={styles.paymentRow}>
@@ -87,6 +116,7 @@ const PaymentRow = ({ payment, currency }) => (
 const OrderDetailScreen = ({ navigation, route }) => {
   const { order } = route.params || {};
   const [showActions, setShowActions] = useState(false);
+  const insets = useSafeAreaInsets();
 
   if (!order) {
     return (
@@ -245,16 +275,7 @@ const OrderDetailScreen = ({ navigation, route }) => {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Ionicons name="cube-outline" size={20} color={colors.accent} />
-            <Text style={styles.cardTitle}>Order Items</Text>
-          </View>
-
-          {/* Table Header */}
-          <View style={styles.tableHeader}>
-            <View style={styles.lineNumber}><Text style={styles.tableHeaderText}>#</Text></View>
-            <View style={styles.lineInfo}><Text style={styles.tableHeaderText}>Item</Text></View>
-            <View style={styles.lineQty}><Text style={styles.tableHeaderText}>Qty</Text></View>
-            <View style={styles.linePrice}><Text style={styles.tableHeaderText}>Price</Text></View>
-            <View style={styles.lineTotal}><Text style={styles.tableHeaderText}>Total</Text></View>
+            <Text style={styles.cardTitle}>Order Items ({(order.lines || []).length})</Text>
           </View>
 
           {(order.lines || []).map((item, index) => (
@@ -295,9 +316,9 @@ const OrderDetailScreen = ({ navigation, route }) => {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Actions for Draft Orders */}
+      {/* Actions for Draft Orders - with safe area padding */}
       {order.status === ORDER_STATUS.DRAFT && (
-        <View style={styles.actionBar}>
+        <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
           <TouchableOpacity style={styles.editBtn} onPress={handleEditDraft}>
             <Ionicons name="create-outline" size={20} color={colors.accent} />
             <Text style={styles.editBtnText}>Edit</Text>
@@ -499,75 +520,79 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.9)',
   },
-  tableHeader: {
-    flexDirection: 'row',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    marginBottom: 4,
+  // Line Item Card Styles
+  lineItemContainer: {
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
   },
-  tableHeaderText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-  },
-  lineItem: {
+  lineItemHeader: {
     flexDirection: 'row',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surface,
-    alignItems: 'center',
+    marginBottom: 10,
   },
   lineNumber: {
     width: 24,
+    height: 24,
+    backgroundColor: colors.accent + '20',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   lineNumberText: {
-    fontSize: 12,
-    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.accent,
   },
-  lineInfo: {
-    flex: 2,
-    paddingRight: 8,
+  lineInfoFull: {
+    flex: 1,
   },
   lineName: {
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  lineCode: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  lineValuesRow: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    padding: 8,
+  },
+  lineValueCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  lineValueColNet: {
+    flex: 1,
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+    paddingLeft: 8,
+  },
+  lineValueLabel: {
+    fontSize: 9,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  lineValueAmount: {
+    fontSize: 12,
     fontWeight: '500',
     color: colors.textPrimary,
   },
-  lineCode: {
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  lineQty: {
-    width: 40,
-    alignItems: 'center',
-  },
-  lineQtyValue: {
+  lineNetValue: {
     fontSize: 13,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  lineQtyLabel: {
-    fontSize: 9,
-    color: colors.textMuted,
-  },
-  linePrice: {
-    width: 55,
-    alignItems: 'flex-end',
-  },
-  linePriceValue: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  lineTotal: {
-    width: 60,
-    alignItems: 'flex-end',
-  },
-  lineTotalValue: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.accent,
+  },
+  discountText: {
+    color: colors.secondary || '#FF6B6B',
   },
   paymentRow: {
     flexDirection: 'row',
