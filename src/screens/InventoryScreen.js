@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
-import { getOnhand, syncOnhand, fetchLotDetails, getSyncMetadata } from '../services/syncService';
+import { getOnhand, syncOnhand, fetchLotDetails, getSyncMetadata, getPriceListItems } from '../services/syncService';
 import { getAllLocalAdjustments, getItemAdjustmentSummary } from '../services/onhandService';
 
 const PAGE_SIZE = 50;
@@ -126,12 +126,13 @@ const LotDetailModal = ({ visible, lots, itemDescription, loading, onClose }) =>
 };
 
 // Onhand Item Card
-const OnhandCard = ({ item, adjustment, onViewLots, searchQuery }) => {
+const OnhandCard = ({ item, adjustment, onViewLots, searchQuery, wholesalerPrice, staffPrice }) => {
   const syncedQty = item.primaryQuantity || 0;
   const adjustmentQty = adjustment || 0;
   const availableQty = syncedQty + adjustmentQty;
   const stockStatus = getStockStatus(availableQty);
   const hasAdjustment = adjustmentQty !== 0;
+  const hasPrice = wholesalerPrice || staffPrice;
 
   return (
     <TouchableOpacity style={styles.inventoryCard} activeOpacity={0.7} onPress={() => onViewLots(item)}>
@@ -151,6 +152,23 @@ const OnhandCard = ({ item, adjustment, onViewLots, searchQuery }) => {
           highlight={searchQuery}
           style={styles.sku}
         />
+        {/* Price row */}
+        {hasPrice && (
+          <View style={styles.priceRow}>
+            {wholesalerPrice && (
+              <View style={styles.priceBadge}>
+                <Text style={styles.priceLabel}>WS</Text>
+                <Text style={styles.priceValue}>{wholesalerPrice.toFixed(2)}</Text>
+              </View>
+            )}
+            {staffPrice && (
+              <View style={[styles.priceBadge, styles.priceBadgeStaff]}>
+                <Text style={[styles.priceLabel, styles.priceLabelStaff]}>ST</Text>
+                <Text style={[styles.priceValue, styles.priceValueStaff]}>{staffPrice.toFixed(2)}</Text>
+              </View>
+            )}
+          </View>
+        )}
         <View style={styles.tagsRow}>
           <View style={[styles.statusBadge, { backgroundColor: stockStatus.color + '20' }]}>
             <Text style={[styles.statusText, { color: stockStatus.color }]}>{stockStatus.label}</Text>
@@ -230,6 +248,9 @@ const InventoryScreen = ({ navigation }) => {
   const [page, setPage] = useState(1);
   const [lastSync, setLastSync] = useState(null);
   const [adjustmentsMap, setAdjustmentsMap] = useState({});
+  const [wholesalerPriceMap, setWholesalerPriceMap] = useState({});
+  const [staffPriceMap, setStaffPriceMap] = useState({});
+  const [showOnlyWithPrice, setShowOnlyWithPrice] = useState(false);
 
   // Organization info
   const [orgCode, setOrgCode] = useState('');
@@ -266,7 +287,7 @@ const InventoryScreen = ({ navigation }) => {
 
   useEffect(() => {
     filterAndSortData();
-  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter, quickFilterLimit]);
+  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter, quickFilterLimit, showOnlyWithPrice, wholesalerPriceMap, staffPriceMap]);
 
   // Animate filter section collapse/expand
   const animateFilterSection = useCallback((expand) => {
@@ -314,6 +335,27 @@ const InventoryScreen = ({ navigation }) => {
       const adjustments = await getAllLocalAdjustments() || {};
       setAdjustmentsMap(adjustments);
 
+      // Load price list data and build price maps
+      const priceListItems = await getPriceListItems() || [];
+      const wsMap = {};
+      const stMap = {};
+
+      priceListItems.forEach(item => {
+        const itemNum = item.itemNumber;
+        const listName = (item.listName || item.priceListName || '').toLowerCase();
+
+        if (itemNum && item.basePrice) {
+          if (listName.includes('wholesaler')) {
+            wsMap[itemNum] = item.basePrice;
+          } else if (listName.includes('staff') || listName.includes('gray')) {
+            stMap[itemNum] = item.basePrice;
+          }
+        }
+      });
+
+      setWholesalerPriceMap(wsMap);
+      setStaffPriceMap(stMap);
+
       // Get org code and subinventory from first item
       if (data && data.length > 0) {
         setOrgCode(data[0].organizationCode || '');
@@ -342,6 +384,14 @@ const InventoryScreen = ({ navigation }) => {
         const itemNumber = (item.itemNumber || '').toLowerCase();
         const itemDesc = (item.itemDescription || '').toLowerCase();
         return itemNumber.includes(lowerQuery) || itemDesc.includes(lowerQuery);
+      });
+    }
+
+    // Filter by items with price
+    if (showOnlyWithPrice) {
+      result = result.filter((item) => {
+        const itemNum = item.itemNumber;
+        return wholesalerPriceMap[itemNum] || staffPriceMap[itemNum];
       });
     }
 
@@ -398,7 +448,7 @@ const InventoryScreen = ({ navigation }) => {
     }
 
     setFilteredData(result);
-  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter, quickFilterLimit]);
+  }, [searchQuery, onhandData, sortColumn, sortDirection, qtyFrom, qtyTo, quickFilter, quickFilterLimit, showOnlyWithPrice, wholesalerPriceMap, staffPriceMap]);
 
   const handleClearSearch = () => {
     setSearchQuery('');
@@ -474,6 +524,7 @@ const InventoryScreen = ({ navigation }) => {
     setSortDirection('asc');
     setQuickFilter('none');
     setQuickFilterLimit(20);
+    setShowOnlyWithPrice(false);
   };
 
   // Load more for quick filter
@@ -521,7 +572,7 @@ const InventoryScreen = ({ navigation }) => {
   };
 
   // Check if any filters are active
-  const hasActiveFilters = searchQuery.trim() || qtyFrom !== '' || qtyTo !== '' || sortColumn !== 'none' || quickFilter !== 'none';
+  const hasActiveFilters = searchQuery.trim() || qtyFrom !== '' || qtyTo !== '' || sortColumn !== 'none' || quickFilter !== 'none' || showOnlyWithPrice;
 
   return (
     <View style={styles.container}>
@@ -723,6 +774,15 @@ const InventoryScreen = ({ navigation }) => {
                   <Ionicons name="arrow-down" size={14} color={quickFilter === 'low20' ? '#FFFFFF' : colors.accent} />
                   <Text style={[styles.quickFilterText, quickFilter === 'low20' && styles.quickFilterTextActive]}>Low 20</Text>
                 </TouchableOpacity>
+
+                {/* Price Filter */}
+                <TouchableOpacity
+                  style={[styles.quickFilterBtn, showOnlyWithPrice && styles.quickFilterBtnActive]}
+                  onPress={() => setShowOnlyWithPrice(!showOnlyWithPrice)}
+                >
+                  <Ionicons name="pricetag" size={14} color={showOnlyWithPrice ? '#FFFFFF' : colors.accent} />
+                  <Text style={[styles.quickFilterText, showOnlyWithPrice && styles.quickFilterTextActive]}>Priced</Text>
+                </TouchableOpacity>
               </View>
 
             </Animated.View>
@@ -777,6 +837,8 @@ const InventoryScreen = ({ navigation }) => {
                   adjustment={adjustmentsMap[item.itemNumber] || 0}
                   onViewLots={handleViewLots}
                   searchQuery={searchQuery}
+                  wholesalerPrice={wholesalerPriceMap[item.itemNumber]}
+                  staffPrice={staffPriceMap[item.itemNumber]}
                 />
               )}
               contentContainerStyle={styles.listContent}
@@ -1330,6 +1392,39 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textMuted,
     marginBottom: 4,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 4,
+  },
+  priceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accent + '15',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 4,
+  },
+  priceBadgeStaff: {
+    backgroundColor: colors.secondary + '15',
+  },
+  priceLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  priceLabelStaff: {
+    color: colors.secondary,
+  },
+  priceValue: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  priceValueStaff: {
+    color: colors.secondary,
   },
   tagsRow: {
     flexDirection: 'row',
