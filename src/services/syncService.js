@@ -88,7 +88,7 @@ const extractPriceListFields = (priceList) => ({
 });
 
 // Extract price list item fields - ALL required fields with ACTUAL names
-// Using chunked storage (250 items per chunk) to fit all fields within storage limits
+// Using chunked storage (5000 items per key) to handle large pricelists
 const extractPriceListItemFields = (item) => ({
   list_name: item.list_name || item.LIST_NAME,
   item_desc: item.item_desc || item.ITEM_DESC,
@@ -104,11 +104,11 @@ const extractPriceListItemFields = (item) => ({
   inventory_item_id: item.inventory_item_id || item.INVENTORY_ITEM_ID,
 });
 
-// Chunk size for pricelist storage (smaller chunks to fit all fields)
-const PRICELIST_CHUNK_SIZE = 250;
+// Chunk size for pricelist storage (5000 items per key)
+const PRICELIST_CHUNK_SIZE = 5000;
 
-// API fetch batch size (smaller batches for stability)
-const PRICELIST_FETCH_BATCH_SIZE = 500;
+// API fetch batch size (fetch 2000 at a time from API)
+const PRICELIST_FETCH_BATCH_SIZE = 2000;
 
 // Extract onhand balance fields
 const extractOnhandFields = (item) => {
@@ -454,9 +454,9 @@ export const clearAllDataForLargePricelistSync = async () => {
   }
 };
 
-// Sync a single price list with pagination (500 items per fetch using p_start_row/p_end_row)
-// Each price list is stored in its own AsyncStorage key to avoid storage limits
-// Saves in 250-item chunks to avoid memory/storage issues with large datasets
+// Sync a single price list with pagination (2000 items per fetch using p_start_row/p_end_row)
+// Each price list is stored in multiple keys: sync_pricelist_NAME_0, sync_pricelist_NAME_1, etc.
+// Each key holds 5000 items, merged when loading for reporting
 export const syncSinglePriceList = async (priceListName, onProgress, clearAllFirst = true) => {
   try {
     const encodedName = encodeURIComponent(priceListName);
@@ -486,6 +486,9 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
       await clearPriceListStorageCompletely(storageKey);
     }
 
+    // Accumulate items and save in 5000-item chunks
+    let pendingItems = [];
+
     while (hasMore) {
       const endRow = startRow + batchSize - 1;
       const url = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}?p_list_name=${encodedName}&p_start_row=${startRow}&p_end_row=${endRow}`;
@@ -493,7 +496,7 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
 
       if (onProgress) {
         onProgress({
-          status: `Fetching ${totalItems.toLocaleString()}+ items...`,
+          status: `Fetching rows ${startRow}-${endRow}...`,
           fetched: totalItems,
           priceListName,
         });
@@ -513,30 +516,32 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
       } else {
         // Extract items with ALL required fields using actual field names
         const extractedItems = items.map(item => extractPriceListItemFields(item));
+        pendingItems = [...pendingItems, ...extractedItems];
+        totalItems += extractedItems.length;
 
-        // SAVE IN SMALLER CHUNKS to stay under storage limits
-        // Split the 500-item batch into 250-item chunks
-        for (let i = 0; i < extractedItems.length; i += PRICELIST_CHUNK_SIZE) {
-          const chunk = extractedItems.slice(i, i + PRICELIST_CHUNK_SIZE);
+        // Save when we have 5000 items (or more)
+        while (pendingItems.length >= PRICELIST_CHUNK_SIZE) {
+          const chunk = pendingItems.slice(0, PRICELIST_CHUNK_SIZE);
+          pendingItems = pendingItems.slice(PRICELIST_CHUNK_SIZE);
 
           try {
             if (onProgress) {
               onProgress({
-                status: `Saving chunk ${chunkIndex + 1} (${(totalItems + i).toLocaleString()}+ items)...`,
-                fetched: totalItems + i,
+                status: `Saving key ${chunkIndex + 1} (${(chunkIndex * PRICELIST_CHUNK_SIZE).toLocaleString()} - ${((chunkIndex + 1) * PRICELIST_CHUNK_SIZE).toLocaleString()} items)...`,
+                fetched: totalItems,
                 priceListName,
               });
             }
             await AsyncStorage.setItem(`${storageKey}_${chunkIndex}`, JSON.stringify(chunk));
+            console.log(`Saved ${storageKey}_${chunkIndex} with ${chunk.length} items`);
             chunkIndex++;
           } catch (saveError) {
             console.error('Storage save error:', saveError);
             if (saveError.message && saveError.message.includes('full')) {
-              // Clean up partial data
               await clearPriceListStorageCompletely(storageKey);
               return {
                 success: false,
-                error: `Storage full at ${totalItems.toLocaleString()} items. Clear other data first.`,
+                error: `Storage full at ${totalItems.toLocaleString()} items. Use "Clear All & Sync" option.`,
                 priceListName
               };
             }
@@ -544,13 +549,39 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
           }
         }
 
-        totalItems += extractedItems.length;
         startRow = endRow + 1;
 
         // If less than batchSize items returned, we're done
         if (items.length < batchSize) {
           hasMore = false;
         }
+      }
+    }
+
+    // Save any remaining items (less than 5000)
+    if (pendingItems.length > 0) {
+      try {
+        if (onProgress) {
+          onProgress({
+            status: `Saving final key ${chunkIndex + 1} (${pendingItems.length} items)...`,
+            fetched: totalItems,
+            priceListName,
+          });
+        }
+        await AsyncStorage.setItem(`${storageKey}_${chunkIndex}`, JSON.stringify(pendingItems));
+        console.log(`Saved ${storageKey}_${chunkIndex} with ${pendingItems.length} items (final)`);
+        chunkIndex++;
+      } catch (saveError) {
+        console.error('Storage save error:', saveError);
+        if (saveError.message && saveError.message.includes('full')) {
+          await clearPriceListStorageCompletely(storageKey);
+          return {
+            success: false,
+            error: `Storage full at ${totalItems.toLocaleString()} items. Use "Clear All & Sync" option.`,
+            priceListName
+          };
+        }
+        throw saveError;
       }
     }
 
