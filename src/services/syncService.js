@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   AGENTS: 'sync_agents',
   PRICE_LIST: 'sync_price_list',
   PRICE_LIST_ITEMS: 'sync_price_list_items',
+  PRICE_LIST_SYNC_STATUS: 'sync_price_list_status', // Per-pricelist sync status
   ONHAND: 'sync_onhand',
   SYNC_META: 'sync_metadata',
 };
@@ -31,7 +32,7 @@ const ENDPOINTS = {
   ITEMS: '/ALLITEMS/ALL',
   AGENTS: '/ALLAGENTS/ALL',
   PRICE_LIST_FOR_USER: '/SYNCPRICELIST/LIST', // ?SALESREP_NUMBER=username
-  PRICE_LIST_ITEMS: '/pricelist/pricelist', // /:PRICE_LIST
+  PRICE_LIST_ITEMS: '/pricelist/onlypricelist', // ?p_list_name=<NAME> - New API with pagination (10,000 per page)
 };
 
 // Extract only essential fields to reduce storage size
@@ -334,16 +335,10 @@ export const syncAgents = async (onProgress) => {
   }
 };
 
-// Sync Price List - Two step process:
-// 1. Get list of price lists for logged user
-// 2. For each price list, fetch all items
-export const syncPriceList = async (onProgress, username) => {
+// Sync Price List Names only (Step 1)
+export const syncPriceListNames = async (onProgress, username) => {
   try {
-    await clearFromStorage(STORAGE_KEYS.PRICE_LIST);
-    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
-
-    // Step 1: Get list of price lists for the user
-    const salesRepNumber = username || 'njohar'; // fallback for testing
+    const salesRepNumber = username || 'njohar';
     const listUrl = `${BASE_URL}${ENDPOINTS.PRICE_LIST_FOR_USER}?SALESREP_NUMBER=${salesRepNumber}`;
     console.log('Fetching price lists:', listUrl);
 
@@ -365,58 +360,148 @@ export const syncPriceList = async (onProgress, username) => {
       onProgress({ status: `Found ${priceLists.length} price lists`, fetched: priceLists.length });
     }
 
-    // Step 2: For each price list, fetch items
+    return { success: true, priceLists };
+  } catch (error) {
+    console.error('Sync price list names error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Sync a single price list with pagination (10,000 items per page)
+export const syncSinglePriceList = async (priceListName, onProgress) => {
+  try {
+    const encodedName = encodeURIComponent(priceListName);
     let allItems = [];
+    let page = 1;
+    let hasMore = true;
+
+    console.log(`Syncing price list: ${priceListName}`);
+
+    while (hasMore) {
+      const url = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}?p_list_name=${encodedName}&page=${page}`;
+      console.log(`Fetching page ${page}:`, url);
+
+      if (onProgress) {
+        onProgress({
+          status: `Fetching page ${page}...`,
+          fetched: allItems.length,
+          priceListName,
+        });
+      }
+
+      const response = await axios.get(url, { timeout: 120000 });
+      let items = [];
+
+      if (response.data?.items && Array.isArray(response.data.items)) {
+        items = response.data.items;
+      } else if (Array.isArray(response.data)) {
+        items = response.data;
+      }
+
+      if (items.length === 0) {
+        hasMore = false;
+      } else {
+        // Extract and add to all items
+        const extractedItems = items.map(item => ({
+          ...extractPriceListItemFields(item),
+          priceListName: priceListName,
+        }));
+
+        allItems = [...allItems, ...extractedItems];
+        page++;
+
+        // If less than 10,000 items returned, we're done
+        if (items.length < 10000) {
+          hasMore = false;
+        }
+      }
+    }
+
+    // Load existing price list items and merge
+    let existingItems = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS) || [];
+    // Remove old items for this price list
+    existingItems = existingItems.filter(item => item.priceListName !== priceListName);
+    // Add new items
+    const mergedItems = [...existingItems, ...allItems];
+    await saveToStorage(STORAGE_KEYS.PRICE_LIST_ITEMS, mergedItems);
+
+    // Update sync status for this price list
+    const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
+    syncStatus[priceListName] = {
+      lastSync: new Date().toISOString(),
+      count: allItems.length,
+    };
+    await saveToStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS, syncStatus);
+
+    // Update overall metadata
+    await updateSyncMetadata('priceList', mergedItems.length);
+
+    if (onProgress) {
+      onProgress({
+        status: `Completed: ${allItems.length} items`,
+        fetched: allItems.length,
+        priceListName,
+        complete: true,
+      });
+    }
+
+    return { success: true, count: allItems.length, priceListName };
+  } catch (error) {
+    console.error(`Sync price list ${priceListName} error:`, error);
+    return { success: false, error: error.message, priceListName };
+  }
+};
+
+// Get price list sync status
+export const getPriceListSyncStatus = async () => {
+  return await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
+};
+
+// Sync all price lists (legacy function for backward compatibility)
+export const syncPriceList = async (onProgress, username) => {
+  try {
+    // Clear existing data
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS);
+
+    // Step 1: Get price list names
+    const namesResult = await syncPriceListNames(onProgress, username);
+    if (!namesResult.success) {
+      return namesResult;
+    }
+
+    const priceLists = namesResult.priceLists;
+    let totalItems = 0;
+
+    // Step 2: Sync each price list
     for (let i = 0; i < priceLists.length; i++) {
       const priceList = priceLists[i];
-      const encodedName = encodeURIComponent(priceList.name);
-      const itemsUrl = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}/${encodedName}`;
-
-      console.log(`Fetching items for price list ${i + 1}/${priceLists.length}: ${priceList.name}`);
 
       if (onProgress) {
         onProgress({
           status: `Syncing ${priceList.name}...`,
-          fetched: allItems.length,
+          fetched: totalItems,
           currentList: i + 1,
           totalLists: priceLists.length,
         });
       }
 
-      try {
-        const itemsResponse = await axios.get(itemsUrl, { timeout: 120000 });
-        let items = [];
-
-        if (itemsResponse.data?.items && Array.isArray(itemsResponse.data.items)) {
-          items = itemsResponse.data.items;
-        } else if (Array.isArray(itemsResponse.data)) {
-          items = itemsResponse.data;
+      const result = await syncSinglePriceList(priceList.name, (progress) => {
+        if (onProgress) {
+          onProgress({
+            ...progress,
+            currentList: i + 1,
+            totalLists: priceLists.length,
+          });
         }
+      });
 
-        // Extract and add to all items
-        const extractedItems = items.map(item => ({
-          ...extractPriceListItemFields(item),
-          priceListName: priceList.name,
-        }));
-
-        allItems = [...allItems, ...extractedItems];
-
-        // Limit total items for storage
-        if (allItems.length > MAX_RECORDS_TEST * 2) {
-          console.log('Reached max items limit');
-          break;
-        }
-      } catch (itemError) {
-        console.error(`Error fetching items for ${priceList.name}:`, itemError.message);
-        // Continue with other price lists
+      if (result.success) {
+        totalItems += result.count;
       }
     }
 
-    // Save all price list items
-    await saveToStorage(STORAGE_KEYS.PRICE_LIST_ITEMS, allItems);
-    await updateSyncMetadata('priceList', allItems.length);
-
-    return { success: true, count: allItems.length, priceListCount: priceLists.length };
+    return { success: true, count: totalItems, priceListCount: priceLists.length };
   } catch (error) {
     console.error('Sync price list error:', error);
     return { success: false, error: error.message };

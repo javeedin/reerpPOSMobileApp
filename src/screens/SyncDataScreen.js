@@ -21,6 +21,10 @@ import {
   syncOnhand,
   getSyncMetadata,
   clearAllSyncData,
+  syncPriceListNames,
+  syncSinglePriceList,
+  getPriceListNames,
+  getPriceListSyncStatus,
 } from '../services/syncService';
 
 const SyncObjectCard = ({
@@ -109,6 +113,123 @@ const SyncObjectCard = ({
   );
 };
 
+// Price List Item Row
+const PriceListRow = ({ name, syncStatus, isSyncing, progress, onSync }) => {
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Never synced';
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <View style={styles.priceListRow}>
+      <View style={styles.priceListInfo}>
+        <Text style={styles.priceListName} numberOfLines={1}>{name}</Text>
+        <View style={styles.priceListMeta}>
+          {syncStatus ? (
+            <>
+              <Text style={styles.priceListCount}>{syncStatus.count?.toLocaleString() || 0} items</Text>
+              <Text style={styles.priceListDot}>•</Text>
+              <Text style={styles.priceListDate}>{formatDate(syncStatus.lastSync)}</Text>
+            </>
+          ) : (
+            <Text style={styles.priceListDate}>Not synced</Text>
+          )}
+        </View>
+        {isSyncing && progress && (
+          <View style={styles.priceListProgress}>
+            <View style={styles.priceListProgressBar}>
+              <View
+                style={[
+                  styles.priceListProgressFill,
+                  { width: `${Math.min((progress.fetched / 10000) * 100, 100)}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.priceListProgressText}>{progress.status}</Text>
+          </View>
+        )}
+      </View>
+      <TouchableOpacity
+        style={[styles.priceListSyncBtn, isSyncing && styles.priceListSyncBtnDisabled]}
+        onPress={onSync}
+        disabled={isSyncing}
+      >
+        {isSyncing ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : (
+          <Ionicons name="sync" size={18} color={syncStatus ? colors.accent : colors.textMuted} />
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// Price List Sync Section
+const PriceListSyncSection = ({ priceLists, syncStatus, syncingList, progressMap, onSyncSingle, onSyncAll, onRefreshNames, isRefreshing }) => {
+  return (
+    <View style={styles.priceListSection}>
+      <View style={styles.priceListHeader}>
+        <View style={[styles.syncIconContainer, { backgroundColor: colors.accentOrange + '20' }]}>
+          <Ionicons name="pricetag" size={28} color={colors.accentOrange} />
+        </View>
+        <View style={styles.priceListHeaderInfo}>
+          <Text style={styles.syncTitle}>Price Lists</Text>
+          <Text style={styles.syncMeta}>{priceLists.length} price lists</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.refreshNamesBtn}
+          onPress={onRefreshNames}
+          disabled={isRefreshing}
+        >
+          {isRefreshing ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Ionicons name="refresh" size={20} color={colors.accent} />
+          )}
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.priceListBody}>
+        {priceLists.length === 0 ? (
+          <View style={styles.noPriceLists}>
+            <Ionicons name="alert-circle-outline" size={32} color={colors.textMuted} />
+            <Text style={styles.noPriceListsText}>No price lists found. Tap refresh to load.</Text>
+          </View>
+        ) : (
+          priceLists.map((pl) => (
+            <PriceListRow
+              key={pl.name}
+              name={pl.name}
+              syncStatus={syncStatus[pl.name]}
+              isSyncing={syncingList === pl.name}
+              progress={progressMap[pl.name]}
+              onSync={() => onSyncSingle(pl.name)}
+            />
+          ))
+        )}
+      </View>
+
+      {priceLists.length > 0 && (
+        <TouchableOpacity
+          style={[styles.syncButton, syncingList && styles.syncButtonDisabled]}
+          onPress={onSyncAll}
+          disabled={!!syncingList}
+        >
+          {syncingList ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="sync" size={20} color="#FFFFFF" />
+              <Text style={styles.syncButtonText}>Sync All Price Lists</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
 const SyncDataScreen = ({ navigation }) => {
   const { user } = useAuth();
 
@@ -136,9 +257,61 @@ const SyncDataScreen = ({ navigation }) => {
     onhand: null,
   });
 
+  // Price list specific states
+  const [priceLists, setPriceLists] = useState([]);
+  const [priceListSyncStatus, setPriceListSyncStatus] = useState({});
+  const [syncingPriceList, setSyncingPriceList] = useState(null);
+  const [priceListProgressMap, setPriceListProgressMap] = useState({});
+  const [isRefreshingNames, setIsRefreshingNames] = useState(false);
+
   useEffect(() => {
     loadMetadata();
+    loadPriceListData();
   }, []);
+
+  const loadPriceListData = async () => {
+    const lists = await getPriceListNames() || [];
+    const status = await getPriceListSyncStatus() || {};
+    setPriceLists(lists);
+    setPriceListSyncStatus(status);
+  };
+
+  const handleRefreshPriceListNames = async () => {
+    setIsRefreshingNames(true);
+    const result = await syncPriceListNames(null, user?.username);
+    if (result.success) {
+      setPriceLists(result.priceLists);
+      Alert.alert('Success', `Found ${result.priceLists.length} price lists`);
+    } else {
+      Alert.alert('Error', result.error || 'Failed to refresh price lists');
+    }
+    setIsRefreshingNames(false);
+  };
+
+  const handleSyncSinglePriceList = async (priceListName) => {
+    setSyncingPriceList(priceListName);
+    setPriceListProgressMap((prev) => ({ ...prev, [priceListName]: null }));
+
+    const result = await syncSinglePriceList(priceListName, (progress) => {
+      setPriceListProgressMap((prev) => ({ ...prev, [priceListName]: progress }));
+    });
+
+    setSyncingPriceList(null);
+
+    if (result.success) {
+      Alert.alert('Success', `Synced ${result.count.toLocaleString()} items for ${priceListName}`);
+      loadPriceListData();
+      loadMetadata();
+    } else {
+      Alert.alert('Error', result.error || `Failed to sync ${priceListName}`);
+    }
+  };
+
+  const handleSyncAllPriceLists = async () => {
+    for (const pl of priceLists) {
+      await handleSyncSinglePriceList(pl.name);
+    }
+  };
 
   const loadMetadata = async () => {
     const meta = await getSyncMetadata();
@@ -225,13 +398,6 @@ const SyncDataScreen = ({ navigation }) => {
       syncFn: syncAgents,
     },
     {
-      key: 'priceList',
-      title: 'Price List',
-      icon: 'pricetag',
-      color: colors.accentOrange,
-      syncFn: syncPriceList,
-    },
-    {
       key: 'onhand',
       title: 'Fusion Onhand',
       icon: 'layers',
@@ -286,6 +452,18 @@ const SyncDataScreen = ({ navigation }) => {
             onView={() => handleViewData(obj.key)}
           />
         ))}
+
+        {/* Price Lists Section */}
+        <PriceListSyncSection
+          priceLists={priceLists}
+          syncStatus={priceListSyncStatus}
+          syncingList={syncingPriceList}
+          progressMap={priceListProgressMap}
+          onSyncSingle={handleSyncSinglePriceList}
+          onSyncAll={handleSyncAllPriceLists}
+          onRefreshNames={handleRefreshPriceListNames}
+          isRefreshing={isRefreshingNames}
+        />
 
         {/* Sync All Button */}
         <TouchableOpacity
@@ -475,6 +653,112 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  // Price List Section Styles
+  priceListSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  priceListHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  priceListHeaderInfo: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  refreshNamesBtn: {
+    padding: 8,
+    backgroundColor: colors.accent + '15',
+    borderRadius: 10,
+  },
+  priceListBody: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  noPriceLists: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  noPriceListsText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  priceListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  priceListInfo: {
+    flex: 1,
+  },
+  priceListName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  priceListMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  priceListCount: {
+    fontSize: 12,
+    color: colors.accentGreen,
+    fontWeight: '500',
+  },
+  priceListDot: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginHorizontal: 6,
+  },
+  priceListDate: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  priceListProgress: {
+    marginTop: 8,
+  },
+  priceListProgressBar: {
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  priceListProgressFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: 2,
+  },
+  priceListProgressText: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  priceListSyncBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: colors.accent + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  priceListSyncBtnDisabled: {
+    backgroundColor: colors.border,
   },
 });
 
