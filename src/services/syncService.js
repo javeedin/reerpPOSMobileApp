@@ -77,28 +77,16 @@ const extractPriceListFields = (priceList) => ({
   currency: priceList.currency_code || priceList.CURRENCY_CODE || priceList.currency,
 });
 
-// Extract price list item fields
+// Extract price list item fields - minimal fields to save storage
 const extractPriceListItemFields = (item) => ({
-  id: item.inventory_item_id || item.INVENTORY_ITEM_ID,
   itemNumber: item.item_number || item.ITEM_NUMBER,
   itemDesc: item.item_desc || item.ITEM_DESC,
   barcode: item.barcode || item.BARCODE,
   basePrice: item.base_price || item.BASE_PRICE,
   currency: item.currency_code || item.CURRENCY_CODE,
   uom: item.pricing_uom_code || item.PRICING_UOM_CODE,
-  listName: item.list_name || item.LIST_NAME,
-  profitCenter: item.profit_center || item.PROFIT_CENTER,
-  supplier: item.supplier || item.SUPPLIER,
-  brand: item.brand || item.BRAND,
-  category: item.category_name || item.CATEGORY_NAME,
-  subCategory: item.sub_category || item.SUB_CATEGORY,
-  superCategory: item.super_category || item.SUPER_CATEGORY,
-  itemStatus: item.item_status || item.ITEM_STATUS,
-  taxCode: item.tax_code || item.TAX_CODE,
   taxRate: item.tax_rate || item.TAX_RATE,
   allowDiscount: item.allow_discount || item.ALLOW_DISCOUNT,
-  alcoholicFlag: item.alcoholic_flag || item.ALCOHOLIC_FLAG,
-  startDate: item.start_date || item.START_DATE,
 });
 
 // Extract onhand balance fields
@@ -378,6 +366,18 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
 
     console.log(`Syncing price list: ${priceListName}`);
 
+    // First, remove old items for this price list to free up storage
+    if (onProgress) {
+      onProgress({
+        status: 'Clearing old data...',
+        fetched: 0,
+        priceListName,
+      });
+    }
+    let existingItems = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS) || [];
+    existingItems = existingItems.filter(item => item.priceListName !== priceListName);
+    await saveToStorage(STORAGE_KEYS.PRICE_LIST_ITEMS, existingItems);
+
     while (hasMore) {
       const endRow = startRow + batchSize - 1;
       const url = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}?p_list_name=${encodedName}&p_start_row=${startRow}&p_end_row=${endRow}`;
@@ -419,13 +419,31 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
       }
     }
 
-    // Load existing price list items and merge
-    let existingItems = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS) || [];
-    // Remove old items for this price list
-    existingItems = existingItems.filter(item => item.priceListName !== priceListName);
-    // Add new items
+    // Save new items - reload existing to avoid race conditions
+    if (onProgress) {
+      onProgress({
+        status: `Saving ${allItems.length.toLocaleString()} items...`,
+        fetched: allItems.length,
+        priceListName,
+      });
+    }
+    existingItems = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS) || [];
     const mergedItems = [...existingItems, ...allItems];
-    await saveToStorage(STORAGE_KEYS.PRICE_LIST_ITEMS, mergedItems);
+
+    try {
+      await saveToStorage(STORAGE_KEYS.PRICE_LIST_ITEMS, mergedItems);
+    } catch (saveError) {
+      console.error('Storage save error:', saveError);
+      // If storage is full, return error with helpful message
+      if (saveError.message && saveError.message.includes('full')) {
+        return {
+          success: false,
+          error: `Storage full. ${priceListName} has ${allItems.length.toLocaleString()} items. Try clearing other data first.`,
+          priceListName
+        };
+      }
+      throw saveError;
+    }
 
     // Update sync status for this price list
     const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
