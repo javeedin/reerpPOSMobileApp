@@ -586,13 +586,9 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
 
         startRow = endRow + 1;
 
-        // If less than batchSize items returned, we're done
-        if (items.length < batchSize) {
-          console.log(`Only got ${items.length} items (less than batch size ${batchSize}), stopping pagination`);
-          hasMore = false;
-        } else {
-          console.log(`Got full batch, continuing to next page (startRow: ${startRow})`);
-        }
+        // Continue to next page regardless of how many items we got
+        // Only stop when we get 0 items (handled above)
+        console.log(`Got ${items.length} items, continuing to next page (startRow: ${startRow})`);
       }
     }
 
