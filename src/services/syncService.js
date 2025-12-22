@@ -497,7 +497,7 @@ export const clearAllDataForLargePricelistSync = async () => {
 
 // Sync a single price list with pagination - stores in SQLite (NO size limit!)
 // SQLite can store unlimited items, unlike AsyncStorage which has a 6MB limit
-export const syncSinglePriceList = async (priceListName, onProgress, clearAllFirst = true) => {
+export const syncSinglePriceList = async (priceListName, onProgress, clearAllFirst = false) => {
   try {
     const encodedName = encodeURIComponent(priceListName);
     let startRow = 1;
@@ -505,28 +505,28 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
     let hasMore = true;
     let totalItems = 0;
 
-    console.log(`Syncing price list: ${priceListName} -> SQLite database`);
+    console.log(`Syncing price list: ${priceListName} -> SQLite database (clearAllFirst=${clearAllFirst})`);
 
     // Get SQLite database
     const db = await getPricelistDb();
 
-    // FIRST: Clear old data for this pricelist
+    // Clear old data for this pricelist (or all if explicitly requested)
     if (onProgress) {
       onProgress({
-        status: 'Clearing old data...',
+        status: clearAllFirst ? 'Clearing all price list data...' : `Clearing ${priceListName} data...`,
         fetched: 0,
         priceListName,
       });
     }
 
     if (clearAllFirst) {
-      // Clear ALL pricelist data from SQLite
+      // Clear ALL pricelist data from SQLite (only when explicitly requested)
       await db.runAsync('DELETE FROM pricelist_items');
-      console.log('Cleared all pricelist data from SQLite');
+      console.log('Cleared ALL pricelist data from SQLite');
     } else {
-      // Just clear this specific pricelist
+      // Just clear this specific pricelist (default behavior - preserves other price lists)
       await db.runAsync('DELETE FROM pricelist_items WHERE list_name = ?', [priceListName]);
-      console.log(`Cleared pricelist ${priceListName} from SQLite`);
+      console.log(`Cleared only ${priceListName} from SQLite (other price lists preserved)`);
     }
 
     // Batch insert size (insert 500 items at a time for efficiency)
@@ -555,13 +555,17 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
         items = response.data;
       }
 
+      console.log(`API returned ${items.length} items for rows ${startRow}-${endRow}`);
+
       if (items.length === 0) {
+        console.log('No items returned, stopping pagination');
         hasMore = false;
       } else {
         // Extract items with ALL required fields using actual field names
         const extractedItems = items.map(item => extractPriceListItemFields(item));
         pendingItems = [...pendingItems, ...extractedItems];
         totalItems += extractedItems.length;
+        console.log(`Total items so far: ${totalItems}`);
 
         // Insert in batches of 500
         while (pendingItems.length >= INSERT_BATCH_SIZE) {
@@ -584,7 +588,10 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
 
         // If less than batchSize items returned, we're done
         if (items.length < batchSize) {
+          console.log(`Only got ${items.length} items (less than batch size ${batchSize}), stopping pagination`);
           hasMore = false;
+        } else {
+          console.log(`Got full batch, continuing to next page (startRow: ${startRow})`);
         }
       }
     }
