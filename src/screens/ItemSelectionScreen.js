@@ -18,7 +18,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
-import { getItemsForPriceList, getPriceListItems, getOnhand } from '../services/syncService';
+import { getItemsForPriceList, getPriceListItems, getOnhand, syncSinglePriceList, getPriceListSyncStatus } from '../services/syncService';
 import { calculateLineTotal, calculateOrderTotals } from '../services/orderService';
 import { getAllLocalAdjustments } from '../services/onhandService';
 
@@ -310,7 +310,10 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [onhandMap, setOnhandMap] = useState({});
   const [showOnlyAvailable, setShowOnlyAvailable] = useState(false);
-  const [priceListWarning, setPriceListWarning] = useState(null);
+  const [priceListNotSynced, setPriceListNotSynced] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState('');
+  const [lastSyncDate, setLastSyncDate] = useState(null);
 
   // Debug: Log customer object to check price list field name
   console.log('=== ItemSelectionScreen Debug ===');
@@ -330,13 +333,25 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
   const loadItems = async () => {
     setLoading(true);
-    setPriceListWarning(null);
+    setPriceListNotSynced(false);
+    setLastSyncDate(null);
     try {
       let data = [];
       console.log('=== loadItems Debug ===');
       console.log('priceListName to filter by:', priceListName);
 
+      // Check sync status first
+      const syncStatus = await getPriceListSyncStatus();
+      console.log('Sync status:', JSON.stringify(syncStatus, null, 2));
+
       if (priceListName) {
+        // Check if this price list has been synced
+        const priceListStatus = syncStatus[priceListName];
+        if (priceListStatus?.lastSync) {
+          setLastSyncDate(new Date(priceListStatus.lastSync));
+          console.log('Last sync date:', priceListStatus.lastSync);
+        }
+
         console.log('Calling getItemsForPriceList with:', priceListName);
         data = await getItemsForPriceList(priceListName);
         console.log('getItemsForPriceList returned:', data?.length || 0, 'items');
@@ -350,42 +365,79 @@ const ItemSelectionScreen = ({ navigation, route }) => {
         }
       }
 
-      // If customer has a specific price list but no items found
+      // If customer has a specific price list but no items found - show sync option
       if (priceListName && (!data || data.length === 0)) {
-        console.log(`WARNING: Customer price list "${priceListName}" not synced or has no items!`);
-        console.log('Falling back to getPriceListItems()');
-
-        // Load all items as fallback
-        const allData = await getPriceListItems();
-        console.log('getPriceListItems returned:', allData?.length || 0, 'items');
-
-        if (allData && allData.length > 0) {
-          // Show warning that we're showing items from a different price list
-          const firstItemList = allData[0]?.list_name || 'Unknown';
-          setPriceListWarning(`Price list "${priceListName}" not synced. Showing items from "${firstItemList}".`);
-          console.log(`WARNING: Showing items from "${firstItemList}" instead of "${priceListName}"`);
-
-          // Log the actual price lists in the fallback data
-          const uniqueLists = [...new Set(allData.map(item => item.list_name))];
-          console.log('Price lists in fallback data:', uniqueLists.join(', '));
-        }
-
-        data = allData;
+        console.log(`Price list "${priceListName}" not synced - showing sync option`);
+        setPriceListNotSynced(true);
+        setItems([]);
+        setFilteredItems([]);
       } else if (!priceListName) {
         // No price list specified - load all items
         console.log('No priceListName specified, loading all items');
         data = await getPriceListItems();
         console.log('getPriceListItems returned:', data?.length || 0, 'items');
+        setItems(data || []);
+        setFilteredItems(data || []);
+      } else {
+        setItems(data || []);
+        setFilteredItems(data || []);
       }
 
-      setItems(data || []);
-      setFilteredItems(data || []);
       console.log('Final items count:', data?.length || 0);
     } catch (error) {
       console.error('Load items error:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Sync the customer's price list directly from this screen
+  const handleSyncPriceList = async () => {
+    if (!priceListName || isSyncing) return;
+
+    setIsSyncing(true);
+    setSyncProgress('Starting sync...');
+
+    try {
+      const result = await syncSinglePriceList(priceListName, (progress) => {
+        setSyncProgress(progress.status || 'Syncing...');
+      }, false); // Don't clear all data, just add this pricelist
+
+      if (result.success) {
+        setSyncProgress(`Synced ${result.count?.toLocaleString() || 0} items`);
+        // Reload items after sync
+        setTimeout(() => {
+          setIsSyncing(false);
+          setSyncProgress('');
+          loadItems();
+        }, 1000);
+      } else {
+        Alert.alert('Sync Failed', result.error || 'Failed to sync price list');
+        setIsSyncing(false);
+        setSyncProgress('');
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      Alert.alert('Sync Error', error.message || 'An error occurred during sync');
+      setIsSyncing(false);
+      setSyncProgress('');
+    }
+  };
+
+  // Format date for display
+  const formatSyncDate = (date) => {
+    if (!date) return null;
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
   };
 
   const loadOnhandData = async () => {
@@ -621,17 +673,25 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
       <View style={styles.content}>
         {priceListName && (
-          <View style={[styles.priceListBar, priceListWarning && styles.priceListBarWarning]}>
-            <Ionicons name="pricetag" size={14} color={priceListWarning ? colors.accentOrange || '#FF9800' : colors.accent} />
-            <Text style={[styles.priceListBarText, priceListWarning && styles.priceListBarTextWarning]}>
-              Price List: {priceListName}
-            </Text>
-          </View>
-        )}
-        {priceListWarning && (
-          <View style={styles.warningBar}>
-            <Ionicons name="warning" size={14} color={colors.accentOrange || '#FF9800'} />
-            <Text style={styles.warningBarText}>{priceListWarning}</Text>
+          <View style={[styles.priceListBar, priceListNotSynced && styles.priceListBarWarning]}>
+            <View style={styles.priceListBarLeft}>
+              <Ionicons name="pricetag" size={14} color={priceListNotSynced ? colors.accentOrange || '#FF9800' : colors.accent} />
+              <Text style={[styles.priceListBarText, priceListNotSynced && styles.priceListBarTextWarning]}>
+                {priceListName}
+              </Text>
+            </View>
+            {lastSyncDate && !priceListNotSynced && (
+              <View style={styles.syncDateBadge}>
+                <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                <Text style={styles.syncDateText}>{formatSyncDate(lastSyncDate)}</Text>
+              </View>
+            )}
+            {priceListNotSynced && (
+              <View style={styles.notSyncedBadge}>
+                <Ionicons name="alert-circle" size={12} color={colors.accentOrange || '#FF9800'} />
+                <Text style={styles.notSyncedText}>Not Synced</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -694,10 +754,47 @@ const ItemSelectionScreen = ({ navigation, route }) => {
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <Ionicons name="cube-outline" size={64} color={colors.textMuted} />
-                <Text style={styles.emptyText}>No items found</Text>
-              </View>
+              priceListNotSynced ? (
+                <View style={styles.syncPromptContainer}>
+                  {isSyncing ? (
+                    <>
+                      <ActivityIndicator size="large" color={colors.accent} />
+                      <Text style={styles.syncPromptTitle}>Syncing Price List...</Text>
+                      <Text style={styles.syncProgressText}>{syncProgress}</Text>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.syncPromptIcon}>
+                        <Ionicons name="cloud-download-outline" size={48} color={colors.accentOrange || '#FF9800'} />
+                      </View>
+                      <Text style={styles.syncPromptTitle}>Price List Not Synced</Text>
+                      <Text style={styles.syncPromptSubtitle}>
+                        "{priceListName}" needs to be synced to view items
+                      </Text>
+                      <TouchableOpacity style={styles.syncButton} onPress={handleSyncPriceList}>
+                        <LinearGradient
+                          colors={[colors.accent, colors.accentDark || colors.accent]}
+                          style={styles.syncButtonGradient}
+                        >
+                          <Ionicons name="sync" size={20} color="#FFFFFF" />
+                          <Text style={styles.syncButtonText}>Sync Now</Text>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.skipSyncButton}
+                        onPress={() => navigation.goBack()}
+                      >
+                        <Text style={styles.skipSyncText}>Go Back</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="cube-outline" size={64} color={colors.textMuted} />
+                  <Text style={styles.emptyText}>No items found</Text>
+                </View>
+              )
             }
           />
         )}
@@ -867,7 +964,13 @@ const styles = StyleSheet.create({
   priceListBarText: {
     fontSize: 12,
     color: colors.accent,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  priceListBarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
   },
   priceListBarWarning: {
     backgroundColor: (colors.accentOrange || '#FF9800') + '15',
@@ -875,21 +978,94 @@ const styles = StyleSheet.create({
   priceListBarTextWarning: {
     color: colors.accentOrange || '#FF9800',
   },
-  warningBar: {
+  syncDateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: (colors.accentOrange || '#FF9800') + '10',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    gap: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: (colors.accentOrange || '#FF9800') + '30',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
   },
-  warningBarText: {
-    fontSize: 11,
-    color: colors.accentOrange || '#FF9800',
+  syncDateText: {
+    fontSize: 10,
+    color: colors.textMuted,
     fontWeight: '500',
+  },
+  notSyncedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: (colors.accentOrange || '#FF9800') + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+  },
+  notSyncedText: {
+    fontSize: 10,
+    color: colors.accentOrange || '#FF9800',
+    fontWeight: '600',
+  },
+  syncPromptContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  syncPromptIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: (colors.accentOrange || '#FF9800') + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  syncPromptTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  syncPromptSubtitle: {
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  syncProgressText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  syncButton: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  syncButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  syncButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  skipSyncButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  skipSyncText: {
+    color: colors.textMuted,
+    fontSize: 14,
   },
   searchContainer: {
     flexDirection: 'row',
