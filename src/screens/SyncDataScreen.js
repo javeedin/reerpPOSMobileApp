@@ -114,7 +114,7 @@ const SyncObjectCard = ({
 };
 
 // Price List Item Row
-const PriceListRow = ({ name, syncStatus, isSyncing, progress, onSync }) => {
+const PriceListRow = ({ name, syncStatus, isSyncing, progress, onSync, onView }) => {
   const formatDate = (dateString) => {
     if (!dateString) return 'Never synced';
     const date = new Date(dateString);
@@ -150,23 +150,37 @@ const PriceListRow = ({ name, syncStatus, isSyncing, progress, onSync }) => {
           </View>
         )}
       </View>
-      <TouchableOpacity
-        style={[styles.priceListSyncBtn, isSyncing && styles.priceListSyncBtnDisabled]}
-        onPress={onSync}
-        disabled={isSyncing}
-      >
-        {isSyncing ? (
-          <ActivityIndicator size="small" color={colors.accent} />
-        ) : (
-          <Ionicons name="sync" size={18} color={syncStatus ? colors.accent : colors.textMuted} />
+      <View style={styles.priceListActions}>
+        {syncStatus && syncStatus.count > 0 && (
+          <TouchableOpacity
+            style={styles.priceListViewBtn}
+            onPress={onView}
+            disabled={isSyncing}
+          >
+            <Ionicons name="eye-outline" size={18} color={colors.accent} />
+          </TouchableOpacity>
         )}
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.priceListSyncBtn, isSyncing && styles.priceListSyncBtnDisabled]}
+          onPress={onSync}
+          disabled={isSyncing}
+        >
+          {isSyncing ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Ionicons name="sync" size={18} color={syncStatus ? colors.accent : colors.textMuted} />
+          )}
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
 
 // Price List Sync Section
-const PriceListSyncSection = ({ priceLists, syncStatus, syncingList, progressMap, onSyncSingle, onSyncAll, onRefreshNames, isRefreshing }) => {
+const PriceListSyncSection = ({ priceLists, syncStatus, syncingList, progressMap, onSyncSingle, onSyncAll, onRefreshNames, isRefreshing, onViewPriceList, onViewAllPriceLists }) => {
+  // Calculate total synced items
+  const totalSyncedItems = Object.values(syncStatus).reduce((sum, s) => sum + (s?.count || 0), 0);
+
   return (
     <View style={styles.priceListSection}>
       <View style={styles.priceListHeader}>
@@ -177,6 +191,15 @@ const PriceListSyncSection = ({ priceLists, syncStatus, syncingList, progressMap
           <Text style={styles.syncTitle}>Price Lists</Text>
           <Text style={styles.syncMeta}>{priceLists.length} price lists</Text>
         </View>
+        {totalSyncedItems > 0 && (
+          <TouchableOpacity
+            style={styles.viewButton}
+            onPress={onViewAllPriceLists}
+            disabled={!!syncingList}
+          >
+            <Ionicons name="eye-outline" size={22} color={colors.accent} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.refreshNamesBtn}
           onPress={onRefreshNames}
@@ -205,6 +228,7 @@ const PriceListSyncSection = ({ priceLists, syncStatus, syncingList, progressMap
               isSyncing={syncingList === pl.name}
               progress={progressMap[pl.name]}
               onSync={() => onSyncSingle(pl.name)}
+              onView={() => onViewPriceList(pl.name)}
             />
           ))
         )}
@@ -382,6 +406,16 @@ const SyncDataScreen = ({ navigation }) => {
     navigation.navigate('SyncedDataView', { type });
   };
 
+  // Handler for viewing a specific price list
+  const handleViewPriceList = (priceListName) => {
+    navigation.navigate('SyncedDataView', { type: 'priceListSingle', priceListName });
+  };
+
+  // Handler for viewing all price lists
+  const handleViewAllPriceLists = () => {
+    navigation.navigate('SyncedDataView', { type: 'priceList' });
+  };
+
   const handleClearAll = () => {
     Alert.alert(
       'Clear All Data',
@@ -489,6 +523,8 @@ const SyncDataScreen = ({ navigation }) => {
           onSyncAll={handleSyncAllPriceLists}
           onRefreshNames={handleRefreshPriceListNames}
           isRefreshing={isRefreshingNames}
+          onViewPriceList={handleViewPriceList}
+          onViewAllPriceLists={handleViewAllPriceLists}
         />
 
         {/* Sync All Button */}
@@ -774,6 +810,19 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textMuted,
     marginTop: 4,
+  },
+  priceListActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  priceListViewBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.accent + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   priceListSyncBtn: {
     width: 40,

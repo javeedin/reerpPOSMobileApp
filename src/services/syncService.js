@@ -9,10 +9,20 @@ const STORAGE_KEYS = {
   ITEMS: 'sync_items',
   AGENTS: 'sync_agents',
   PRICE_LIST: 'sync_price_list',
-  PRICE_LIST_ITEMS: 'sync_price_list_items',
+  PRICE_LIST_ITEMS: 'sync_price_list_items', // Legacy - kept for backward compatibility
   PRICE_LIST_SYNC_STATUS: 'sync_price_list_status', // Per-pricelist sync status
   ONHAND: 'sync_onhand',
   SYNC_META: 'sync_metadata',
+};
+
+// Prefix for individual pricelist storage keys
+const PRICELIST_KEY_PREFIX = 'sync_pricelist_';
+
+// Helper to generate storage key for a specific price list
+const getPriceListStorageKey = (priceListName) => {
+  // Sanitize the name to create a valid storage key
+  const sanitized = priceListName.replace(/[^a-zA-Z0-9-_]/g, '_');
+  return `${PRICELIST_KEY_PREFIX}${sanitized}`;
 };
 
 // Fusion Cloud API configuration
@@ -356,17 +366,19 @@ export const syncPriceListNames = async (onProgress, username) => {
 };
 
 // Sync a single price list with pagination (2000 items per fetch using p_start_row/p_end_row)
+// Each price list is stored in its own AsyncStorage key to avoid storage limits
 export const syncSinglePriceList = async (priceListName, onProgress) => {
   try {
     const encodedName = encodeURIComponent(priceListName);
+    const storageKey = getPriceListStorageKey(priceListName);
     let allItems = [];
     let startRow = 1;
     const batchSize = 2000;
     let hasMore = true;
 
-    console.log(`Syncing price list: ${priceListName}`);
+    console.log(`Syncing price list: ${priceListName} -> storage key: ${storageKey}`);
 
-    // First, remove old items for this price list to free up storage
+    // Clear old data for this specific price list
     if (onProgress) {
       onProgress({
         status: 'Clearing old data...',
@@ -374,9 +386,7 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
         priceListName,
       });
     }
-    let existingItems = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS) || [];
-    existingItems = existingItems.filter(item => item.priceListName !== priceListName);
-    await saveToStorage(STORAGE_KEYS.PRICE_LIST_ITEMS, existingItems);
+    await clearFromStorage(storageKey);
 
     while (hasMore) {
       const endRow = startRow + batchSize - 1;
@@ -419,7 +429,7 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
       }
     }
 
-    // Save new items - reload existing to avoid race conditions
+    // Save items to this pricelist's own storage key
     if (onProgress) {
       onProgress({
         status: `Saving ${allItems.length.toLocaleString()} items...`,
@@ -427,11 +437,9 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
         priceListName,
       });
     }
-    existingItems = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS) || [];
-    const mergedItems = [...existingItems, ...allItems];
 
     try {
-      await saveToStorage(STORAGE_KEYS.PRICE_LIST_ITEMS, mergedItems);
+      await saveToStorage(storageKey, allItems);
     } catch (saveError) {
       console.error('Storage save error:', saveError);
       // If storage is full, return error with helpful message
@@ -450,11 +458,13 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
     syncStatus[priceListName] = {
       lastSync: new Date().toISOString(),
       count: allItems.length,
+      storageKey: storageKey,
     };
     await saveToStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS, syncStatus);
 
-    // Update overall metadata
-    await updateSyncMetadata('priceList', mergedItems.length);
+    // Update overall metadata with total count from all pricelists
+    const totalCount = await getTotalPriceListItemCount();
+    await updateSyncMetadata('priceList', totalCount);
 
     if (onProgress) {
       onProgress({
@@ -531,13 +541,38 @@ export const syncPriceList = async (onProgress, username) => {
 // Get price list names (for displaying list)
 export const getPriceListNames = async () => loadFromStorage(STORAGE_KEYS.PRICE_LIST);
 
-// Get price list items (all items from all price lists)
-export const getPriceListItems = async () => loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
+// Get total item count from all pricelists
+const getTotalPriceListItemCount = async () => {
+  const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
+  let total = 0;
+  for (const name of Object.keys(syncStatus)) {
+    total += syncStatus[name].count || 0;
+  }
+  return total;
+};
+
+// Get price list items (all items from all price lists - merged in memory)
+export const getPriceListItems = async () => {
+  const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
+  let allItems = [];
+
+  // Load from each individual pricelist storage key
+  for (const priceListName of Object.keys(syncStatus)) {
+    const storageKey = syncStatus[priceListName].storageKey || getPriceListStorageKey(priceListName);
+    const items = await loadFromStorage(storageKey) || [];
+    allItems = [...allItems, ...items];
+  }
+
+  console.log(`Loaded ${allItems.length} total pricelist items from ${Object.keys(syncStatus).length} pricelists`);
+  return allItems;
+};
 
 // Get items for a specific price list
 export const getItemsForPriceList = async (priceListName) => {
-  const allItems = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
-  return allItems.filter(item => item.priceListName === priceListName || item.listName === priceListName);
+  // Load directly from this pricelist's individual storage key
+  const storageKey = getPriceListStorageKey(priceListName);
+  const items = await loadFromStorage(storageKey) || [];
+  return items;
 };
 
 // Sync Fusion Onhand Balances
@@ -656,6 +691,34 @@ export const getItems = async () => loadFromStorage(STORAGE_KEYS.ITEMS);
 export const getAgents = async () => loadFromStorage(STORAGE_KEYS.AGENTS);
 export const getPriceList = async () => loadFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
 
+// Clear all pricelist storage keys
+const clearAllPriceListStorage = async () => {
+  try {
+    // Get all AsyncStorage keys
+    const allKeys = await AsyncStorage.getAllKeys();
+
+    // Find all keys that start with the pricelist prefix
+    const pricelistKeys = allKeys.filter(key => key.startsWith(PRICELIST_KEY_PREFIX));
+
+    // Clear each pricelist key (handles chunked storage)
+    for (const key of pricelistKeys) {
+      // Check if this is a chunked storage key
+      if (key.endsWith('_count')) {
+        const baseKey = key.replace('_count', '');
+        await clearFromStorage(baseKey);
+      } else if (!key.includes('_count') && !/_\d+$/.test(key)) {
+        // This is a base key (not a chunk or count key)
+        await clearFromStorage(key);
+      }
+    }
+
+    // Also clear sync status
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS);
+  } catch (error) {
+    console.error('Error clearing pricelist storage:', error);
+  }
+};
+
 // Clear all synced data
 export const clearAllSyncData = async () => {
   try {
@@ -663,7 +726,8 @@ export const clearAllSyncData = async () => {
     await clearFromStorage(STORAGE_KEYS.ITEMS);
     await clearFromStorage(STORAGE_KEYS.AGENTS);
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST);
-    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS); // Legacy key
+    await clearAllPriceListStorage(); // Clear all individual pricelist keys
     await clearFromStorage(STORAGE_KEYS.ONHAND);
     await AsyncStorage.removeItem(STORAGE_KEYS.SYNC_META);
     return { success: true };

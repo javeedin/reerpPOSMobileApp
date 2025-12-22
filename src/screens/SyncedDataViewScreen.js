@@ -21,6 +21,7 @@ import {
   getPriceList,
   getPriceListNames,
   getPriceListItems,
+  getItemsForPriceList,
   getOnhand,
 } from '../services/syncService';
 
@@ -43,7 +44,7 @@ const getDataLoader = (type) => {
   }
 };
 
-const getTitle = (type) => {
+const getTitle = (type, priceListName) => {
   switch (type) {
     case 'customers':
       return 'Customers';
@@ -53,6 +54,8 @@ const getTitle = (type) => {
       return 'Agents';
     case 'priceList':
       return 'Price List';
+    case 'priceListSingle':
+      return priceListName || 'Price List';
     case 'onhand':
       return 'Fusion Onhand';
     default:
@@ -69,6 +72,7 @@ const getIcon = (type) => {
     case 'agents':
       return 'person';
     case 'priceList':
+    case 'priceListSingle':
       return 'pricetag';
     case 'onhand':
       return 'layers';
@@ -520,7 +524,7 @@ const HighlightText = ({ text, highlight, style }) => {
 };
 
 const SyncedDataViewScreen = ({ navigation, route }) => {
-  const { type } = route.params;
+  const { type, priceListName } = route.params;
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [displayData, setDisplayData] = useState([]);
@@ -544,7 +548,7 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     loadData();
-  }, [type]);
+  }, [type, priceListName]);
 
   // Load price list names and count items when type is priceList
   useEffect(() => {
@@ -574,6 +578,16 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
 
   const loadData = async () => {
     setLoading(true);
+
+    // Handle single price list view
+    if (type === 'priceListSingle' && priceListName) {
+      const items = await getItemsForPriceList(priceListName);
+      setData(items);
+      setFilteredData(items);
+      setLoading(false);
+      return;
+    }
+
     const loader = getDataLoader(type);
     const loadedData = await loader();
     setData(loadedData);
@@ -627,15 +641,15 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     const lowerQuery = query.toLowerCase();
     const matchedSuggestions = [];
 
-    // Use filteredData for price list items to respect filter
-    const searchData = type === 'priceList' && activeTab === 'items' ? filteredData : data;
+    // Use filteredData for price list items to respect filter, or data for single pricelist
+    const searchData = (type === 'priceList' && activeTab === 'items') ? filteredData : data;
 
     for (const item of searchData) {
       if (matchedSuggestions.length >= 6) break;
 
       // Get the display name based on type
       let name, secondary;
-      if (type === 'priceList') {
+      if (type === 'priceList' || type === 'priceListSingle') {
         name = item.itemDesc || '';
         secondary = item.itemNumber || '';
       } else {
@@ -668,6 +682,9 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
       } else {
         baseData = allPriceListItems;
       }
+    } else if (type === 'priceListSingle') {
+      // For single price list view, use the loaded data directly
+      baseData = data;
     }
 
     if (!searchQuery.trim()) {
@@ -732,6 +749,7 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
       case 'agents':
         return <AgentCard item={item} />;
       case 'priceList':
+      case 'priceListSingle':
         return <PriceListCard item={item} onViewDetails={handleViewPriceListDetails} />;
       case 'onhand':
         return <OnhandCard item={item} />;
@@ -765,7 +783,7 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Ionicons name={getIcon(type)} size={22} color="#FFFFFF" />
-          <Text style={styles.headerTitle}>{getTitle(type)}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{getTitle(type, priceListName)}</Text>
         </View>
         <View style={styles.countBadge}>
           <Text style={styles.countText}>
@@ -864,14 +882,14 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         </View>
       )}
 
-      {/* Search Bar with Autocomplete (hide for price list 'lists' tab) */}
-      {!(type === 'priceList' && activeTab === 'lists') && (
+      {/* Search Bar with Autocomplete (hide for price list 'lists' tab, show for priceListSingle) */}
+      {(type === 'priceListSingle' || !(type === 'priceList' && activeTab === 'lists')) && (
         <View style={styles.searchWrapper}>
           <View style={styles.searchContainer}>
             <Ionicons name="search" size={20} color={colors.textMuted} />
             <TextInput
               style={styles.searchInput}
-              placeholder={type === 'priceList' ? 'Search items...' : `Search ${getTitle(type).toLowerCase()}...`}
+              placeholder={type === 'priceList' || type === 'priceListSingle' ? 'Search items...' : `Search ${getTitle(type, priceListName).toLowerCase()}...`}
               placeholderTextColor={colors.textMuted}
               value={searchQuery}
               onChangeText={handleSearchChange}
@@ -970,8 +988,8 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         />
       )}
 
-      {/* Pagination Info (hide for price lists tab) */}
-      {!(type === 'priceList' && activeTab === 'lists') && !loading && filteredData.length > 0 && (
+      {/* Pagination Info (hide for price lists tab, show for priceListSingle) */}
+      {(type === 'priceListSingle' || !(type === 'priceList' && activeTab === 'lists')) && !loading && filteredData.length > 0 && (
         <View style={styles.paginationBar}>
           <Text style={styles.paginationText}>
             Showing <Text style={styles.paginationHighlight}>1-{displayData.length.toLocaleString()}</Text> of{' '}
@@ -983,8 +1001,8 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
         </View>
       )}
 
-      {/* Content (hide for price list 'lists' tab) */}
-      {!(type === 'priceList' && activeTab === 'lists') && (
+      {/* Content (hide for price list 'lists' tab, show for priceListSingle) */}
+      {(type === 'priceListSingle' || !(type === 'priceList' && activeTab === 'lists')) && (
         loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.accent} />
