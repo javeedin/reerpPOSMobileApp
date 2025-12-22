@@ -1144,6 +1144,7 @@ const extractBogoFields = (item) => ({
 
 // Sync BOGO promotions
 export const syncBogo = async (onProgress) => {
+  console.log('=== BOGO SYNC START ===');
   try {
     const db = await getPricelistDb();
 
@@ -1153,33 +1154,55 @@ export const syncBogo = async (onProgress) => {
 
     // Clear existing BOGO data
     await db.runAsync('DELETE FROM bogo_promotions');
+    console.log('[syncBogo] Cleared old BOGO data');
 
     if (onProgress) {
       onProgress({ status: 'Fetching BOGO promotions...', fetched: 0 });
     }
 
     const url = `${BASE_URL}${BOGO_ENDPOINT}`;
-    console.log('Fetching BOGO from:', url);
+    console.log('[syncBogo] Fetching BOGO from:', url);
 
     const response = await axios.get(url, { timeout: 60000 });
+    console.log('[syncBogo] API Response status:', response.status);
+    console.log('[syncBogo] API Response data type:', typeof response.data);
+    console.log('[syncBogo] API Response has items?:', !!response.data?.items);
+
     let items = [];
 
     if (response.data?.items && Array.isArray(response.data.items)) {
       items = response.data.items;
+      console.log('[syncBogo] Using response.data.items');
     } else if (Array.isArray(response.data)) {
       items = response.data;
+      console.log('[syncBogo] Using response.data directly');
     }
 
-    console.log(`BOGO API returned ${items.length} promotions`);
+    console.log(`[syncBogo] BOGO API returned ${items.length} promotions`);
+
+    // Log first 3 raw items for debugging
+    if (items.length > 0) {
+      console.log('[syncBogo] Sample RAW API items (first 3):');
+      items.slice(0, 3).forEach((item, idx) => {
+        console.log(`  [${idx}]:`, JSON.stringify(item, null, 2));
+      });
+    }
 
     if (items.length > 0) {
       const extractedItems = items.map(extractBogoFields);
+
+      // Log extracted items for debugging
+      console.log('[syncBogo] Sample EXTRACTED items (first 3):');
+      extractedItems.slice(0, 3).forEach((item, idx) => {
+        console.log(`  [${idx}]:`, JSON.stringify(item, null, 2));
+      });
 
       if (onProgress) {
         onProgress({ status: `Saving ${extractedItems.length} BOGO promotions...`, fetched: extractedItems.length });
       }
 
       // Insert all BOGO items
+      let insertedCount = 0;
       for (const item of extractedItems) {
         await db.runAsync(
           `INSERT INTO bogo_promotions (
@@ -1195,7 +1218,17 @@ export const syncBogo = async (onProgress) => {
             item.is_discount_allowed, item.vat_code, item.start_date, item.end_date, item.allow_delete_flag
           ]
         );
+        insertedCount++;
       }
+      console.log(`[syncBogo] Inserted ${insertedCount} BOGO records into SQLite`);
+
+      // Verify insertion
+      const verifyCount = await db.getFirstAsync('SELECT COUNT(*) as count FROM bogo_promotions');
+      console.log(`[syncBogo] Verification - records in DB: ${verifyCount?.count || 0}`);
+
+      // Show all main_item_codes in the DB
+      const mainCodes = await db.getAllAsync('SELECT DISTINCT main_item_code FROM bogo_promotions');
+      console.log(`[syncBogo] Main item codes in DB:`, mainCodes.map(r => r.main_item_code).join(', '));
     }
 
     // Update sync metadata
@@ -1205,9 +1238,12 @@ export const syncBogo = async (onProgress) => {
       onProgress({ status: `Done: ${items.length} BOGO promotions`, fetched: items.length, complete: true });
     }
 
+    console.log('=== BOGO SYNC COMPLETE ===');
     return { success: true, count: items.length };
   } catch (error) {
+    console.error('=== BOGO SYNC ERROR ===');
     console.error('Sync BOGO error:', error);
+    console.error('Stack:', error.stack);
     return { success: false, error: error.message };
   }
 };
