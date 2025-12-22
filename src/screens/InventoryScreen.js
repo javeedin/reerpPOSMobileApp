@@ -340,18 +340,31 @@ const InventoryScreen = ({ navigation }) => {
       const wsMap = {};
       const stMap = {};
 
+      // Log for debugging
+      console.log('Price list items loaded:', priceListItems.length);
+      if (priceListItems.length > 0) {
+        const uniqueLists = [...new Set(priceListItems.map(i => i.priceListName || i.listName))];
+        console.log('Unique price lists:', uniqueLists);
+      }
+
       priceListItems.forEach(item => {
         const itemNum = item.itemNumber;
-        const listName = (item.listName || item.priceListName || '').toLowerCase();
+        const listName = (item.priceListName || item.listName || '').toLowerCase();
 
         if (itemNum && item.basePrice) {
-          if (listName.includes('wholesaler')) {
+          // Match "Wholesaler-ps"
+          if (listName.includes('wholesaler') || listName === 'wholesaler-ps') {
             wsMap[itemNum] = item.basePrice;
-          } else if (listName.includes('staff') || listName.includes('gray')) {
+          }
+          // Match "Staff Grays"
+          if (listName.includes('staff') || listName.includes('gray') || listName === 'staff grays') {
             stMap[itemNum] = item.basePrice;
           }
         }
       });
+
+      console.log('Wholesaler prices loaded:', Object.keys(wsMap).length);
+      console.log('Staff prices loaded:', Object.keys(stMap).length);
 
       setWholesalerPriceMap(wsMap);
       setStaffPriceMap(stMap);
