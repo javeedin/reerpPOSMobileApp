@@ -172,6 +172,11 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
   const currencyCode = item.currency_code || item.currency || 'MUR';
   const uom = item.pricing_uom_code || item.uom || '';
 
+  // Tax and discount info from pricelist
+  const taxRate = parseFloat(item.tax_rate || item.taxRate || 0);
+  const allowDiscount = item.allow_discount || item.allowDiscount;
+  const discountAllowed = allowDiscount === 'Y' || allowDiscount === 'y' || allowDiscount === true;
+
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.95,
@@ -205,6 +210,25 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
             {currencyCode} {basePrice.toFixed(2)}
           </Text>
           {uom && <Text style={styles.itemUom}>/{uom}</Text>}
+        </View>
+        {/* Tax & Discount Badges */}
+        <View style={styles.itemBadgesRow}>
+          <View style={[styles.taxBadge, taxRate > 0 ? styles.taxBadgeActive : styles.taxBadgeZero]}>
+            <Ionicons name="receipt-outline" size={10} color={taxRate > 0 ? colors.accentOrange || '#FF9800' : colors.textMuted} />
+            <Text style={[styles.taxBadgeText, taxRate > 0 ? styles.taxBadgeTextActive : styles.taxBadgeTextZero]}>
+              {taxRate > 0 ? `${taxRate}%` : '0%'}
+            </Text>
+          </View>
+          <View style={[styles.discountBadge, discountAllowed ? styles.discountBadgeYes : styles.discountBadgeNo]}>
+            <Ionicons
+              name={discountAllowed ? "pricetag-outline" : "close-circle-outline"}
+              size={10}
+              color={discountAllowed ? colors.accentGreen || '#4CAF50' : colors.textMuted}
+            />
+            <Text style={[styles.discountBadgeText, discountAllowed ? styles.discountBadgeTextYes : styles.discountBadgeTextNo]}>
+              {discountAllowed ? 'Disc' : 'No Disc'}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -1222,6 +1246,60 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
     marginLeft: 2,
+  },
+  itemBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 6,
+  },
+  taxBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
+  },
+  taxBadgeActive: {
+    backgroundColor: (colors.accentOrange || '#FF9800') + '15',
+  },
+  taxBadgeZero: {
+    backgroundColor: colors.surface,
+  },
+  taxBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  taxBadgeTextActive: {
+    color: colors.accentOrange || '#FF9800',
+  },
+  taxBadgeTextZero: {
+    color: colors.textMuted,
+  },
+  discountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
+  },
+  discountBadgeYes: {
+    backgroundColor: (colors.accentGreen || '#4CAF50') + '15',
+  },
+  discountBadgeNo: {
+    backgroundColor: colors.surface,
+  },
+  discountBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  discountBadgeTextYes: {
+    color: colors.accentGreen || '#4CAF50',
+  },
+  discountBadgeTextNo: {
+    color: colors.textMuted,
   },
   itemActions: {
     justifyContent: 'center',

@@ -125,6 +125,25 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
               </View>
             )}
           </View>
+          {/* Tax & Discount Badges */}
+          <View style={styles.lineBadgesRow}>
+            <View style={[styles.lineTaxBadge, lineTotals.taxRate > 0 ? styles.lineTaxBadgeActive : styles.lineTaxBadgeZero]}>
+              <Ionicons name="receipt-outline" size={10} color={lineTotals.taxRate > 0 ? colors.accentOrange || '#FF9800' : colors.textMuted} />
+              <Text style={[styles.lineTaxBadgeText, lineTotals.taxRate > 0 ? styles.lineTaxBadgeTextActive : styles.lineTaxBadgeTextZero]}>
+                {lineTotals.taxRate > 0 ? `${lineTotals.taxRate}%` : '0% Tax'}
+              </Text>
+            </View>
+            <View style={[styles.lineDiscBadge, lineTotals.canApplyDiscount ? styles.lineDiscBadgeYes : styles.lineDiscBadgeNo]}>
+              <Ionicons
+                name={lineTotals.canApplyDiscount ? "pricetag-outline" : "close-circle-outline"}
+                size={10}
+                color={lineTotals.canApplyDiscount ? colors.accentGreen || '#4CAF50' : colors.textMuted}
+              />
+              <Text style={[styles.lineDiscBadgeText, lineTotals.canApplyDiscount ? styles.lineDiscBadgeTextYes : styles.lineDiscBadgeTextNo]}>
+                {lineTotals.canApplyDiscount ? 'Disc' : 'No Disc'}
+              </Text>
+            </View>
+          </View>
         </View>
         <TouchableOpacity style={styles.deleteBtn} onPress={() => onRemove(index)}>
           <Ionicons name="trash-outline" size={18} color={colors.accentRed || '#E53935'} />
@@ -740,6 +759,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  lineBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 6,
+  },
+  lineTaxBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
+  },
+  lineTaxBadgeActive: {
+    backgroundColor: (colors.accentOrange || '#FF9800') + '15',
+  },
+  lineTaxBadgeZero: {
+    backgroundColor: colors.surface,
+  },
+  lineTaxBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  lineTaxBadgeTextActive: {
+    color: colors.accentOrange || '#FF9800',
+  },
+  lineTaxBadgeTextZero: {
+    color: colors.textMuted,
+  },
+  lineDiscBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
+  },
+  lineDiscBadgeYes: {
+    backgroundColor: (colors.accentGreen || '#4CAF50') + '15',
+  },
+  lineDiscBadgeNo: {
+    backgroundColor: colors.surface,
+  },
+  lineDiscBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  lineDiscBadgeTextYes: {
+    color: colors.accentGreen || '#4CAF50',
+  },
+  lineDiscBadgeTextNo: {
+    color: colors.textMuted,
   },
   qohBadge: {
     flexDirection: 'row',
