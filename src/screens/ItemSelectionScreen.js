@@ -25,6 +25,12 @@ import { getAllLocalAdjustments } from '../services/onhandService';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const QUICK_QUANTITIES = [1, 5, 10, 15, 20, 25];
 
+// Helper to get item number (supports both SQLite snake_case and legacy camelCase)
+const getItemNumber = (item) => item.item_number || item.itemNumber || '';
+const getItemDesc = (item) => item.item_desc || item.itemDesc || getItemNumber(item);
+const getBasePrice = (item) => parseFloat(item.base_price || item.basePrice || 0);
+const getCurrency = (item) => item.currency_code || item.currency || 'MUR';
+
 // Radial Quantity Picker Component
 const QuantityPicker = ({ visible, onClose, onSelect, itemName }) => {
   const [customQty, setCustomQty] = useState('');
@@ -159,6 +165,13 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
   const canAdd = availableQty > 0;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
+  // Support SQLite snake_case and legacy camelCase formats
+  const itemNumber = item.item_number || item.itemNumber || '';
+  const itemDesc = item.item_desc || item.itemDesc || itemNumber;
+  const basePrice = parseFloat(item.base_price || item.basePrice || 0);
+  const currencyCode = item.currency_code || item.currency || 'MUR';
+  const uom = item.pricing_uom_code || item.uom || '';
+
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
       toValue: 0.95,
@@ -177,9 +190,9 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
   return (
     <Animated.View style={[styles.itemRow, inCart && styles.itemRowInCart, { transform: [{ scale: scaleAnim }] }]}>
       <View style={styles.itemInfo}>
-        <Text style={styles.itemName} numberOfLines={2}>{item.itemDesc || item.itemNumber}</Text>
+        <Text style={styles.itemName} numberOfLines={2}>{itemDesc}</Text>
         <View style={styles.itemCodeRow}>
-          <Text style={styles.itemCode}>{item.itemNumber}</Text>
+          <Text style={styles.itemCode}>{itemNumber}</Text>
           <View style={[styles.onhandBadge, { backgroundColor: stockColor + '20' }]}>
             <Ionicons name="cube-outline" size={12} color={stockColor} />
             <Text style={[styles.onhandText, { color: stockColor }]}>
@@ -189,9 +202,9 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
         </View>
         <View style={styles.itemMeta}>
           <Text style={styles.itemPrice}>
-            {item.currency || 'MUR'} {(item.basePrice || 0).toFixed(2)}
+            {currencyCode} {basePrice.toFixed(2)}
           </Text>
-          {item.uom && <Text style={styles.itemUom}>/{item.uom}</Text>}
+          {uom && <Text style={styles.itemUom}>/{uom}</Text>}
         </View>
       </View>
 
@@ -254,13 +267,18 @@ const ItemRow = ({ item, cartQty, onhandQty, onAdd, onIncrease, onDecrease, onLo
 const CartItemRow = ({ item, onIncrease, onDecrease, onRemove, menuConfig }) => {
   const lineTotals = calculateLineTotal(item, menuConfig);
 
+  // Support SQLite snake_case and legacy camelCase formats
+  const itemNumber = item.item_number || item.itemNumber || '';
+  const itemDesc = item.item_desc || item.itemDesc || itemNumber;
+  const currencyCode = item.currency_code || item.currency || 'MUR';
+
   return (
     <View style={styles.cartItem}>
       <View style={styles.cartItemInfo}>
-        <Text style={styles.cartItemName} numberOfLines={1}>{item.itemDesc || item.itemNumber}</Text>
-        <Text style={styles.cartItemCode}>{item.itemNumber}</Text>
+        <Text style={styles.cartItemName} numberOfLines={1}>{itemDesc}</Text>
+        <Text style={styles.cartItemCode}>{itemNumber}</Text>
         <Text style={styles.cartItemPrice}>
-          {item.currency || 'MUR'} {lineTotals.unitPrice.toFixed(2)} x {lineTotals.quantity}
+          {currencyCode} {lineTotals.unitPrice.toFixed(2)} x {lineTotals.quantity}
         </Text>
       </View>
       <View style={styles.cartItemActions}>
@@ -353,7 +371,8 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
   // Get on-hand qty - returns 0 if not found in on-hand table
   const getOnhandQty = (item) => {
-    const qty = onhandMap[item.itemNumber];
+    const itemNum = getItemNumber(item);
+    const qty = onhandMap[itemNum];
     return qty !== undefined ? Math.max(0, qty) : 0;
   };
 
@@ -363,17 +382,20 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(item =>
-        (item.itemNumber || '').toLowerCase().includes(query) ||
-        (item.itemDesc || '').toLowerCase().includes(query) ||
-        (item.barcode || '').toLowerCase().includes(query)
-      );
+      result = result.filter(item => {
+        const itemNum = getItemNumber(item);
+        const itemDesc = getItemDesc(item);
+        return itemNum.toLowerCase().includes(query) ||
+          itemDesc.toLowerCase().includes(query) ||
+          (item.barcode || '').toLowerCase().includes(query);
+      });
     }
 
     // Filter by availability
     if (showOnlyAvailable) {
       result = result.filter(item => {
-        const qty = onhandMap[item.itemNumber];
+        const itemNum = getItemNumber(item);
+        const qty = onhandMap[itemNum];
         return qty !== undefined && qty > 0;
       });
     }
@@ -382,7 +404,8 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   }, [searchQuery, items, showOnlyAvailable, onhandMap]);
 
   const getCartQty = (item) => {
-    const cartItem = cart.find(c => c.itemNumber === item.itemNumber);
+    const itemNum = getItemNumber(item);
+    const cartItem = cart.find(c => getItemNumber(c) === itemNum);
     return cartItem ? cartItem.quantity : 0;
   };
 
@@ -390,10 +413,12 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     const onhandQty = getOnhandQty(item);
     const cartQty = getCartQty(item);
     const availableQty = onhandQty - cartQty;
+    const itemNum = getItemNumber(item);
+    const itemDesc = getItemDesc(item);
 
     if (availableQty <= 0) {
       Vibration.vibrate([0, 50, 50, 50]);
-      Alert.alert('Out of Stock', `${item.itemDesc || item.itemNumber} is out of stock.`);
+      Alert.alert('Out of Stock', `${itemDesc} is out of stock.`);
       return;
     }
 
@@ -408,19 +433,24 @@ const ItemSelectionScreen = ({ navigation, route }) => {
       Vibration.vibrate(10);
     }
 
-    const existingIndex = cart.findIndex(c => c.itemNumber === item.itemNumber);
+    const existingIndex = cart.findIndex(c => getItemNumber(c) === itemNum);
 
     if (existingIndex >= 0) {
       const newCart = [...cart];
       newCart[existingIndex].quantity += qtyToAdd;
       setCart(newCart);
     } else {
+      // Normalize the item to use consistent field names for cart
       setCart([...cart, {
         ...item,
+        // Ensure consistent field names for cart operations
+        itemNumber: itemNum,
+        itemDesc: itemDesc,
         quantity: qtyToAdd,
         discount: 0,
         discountType: 'percent',
-        unitPrice: item.basePrice || 0,
+        unitPrice: getBasePrice(item),
+        currency: getCurrency(item),
       }]);
     }
   };
@@ -429,10 +459,11 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     const onhandQty = getOnhandQty(item);
     const cartQty = getCartQty(item);
     const availableQty = onhandQty - cartQty;
+    const itemDesc = getItemDesc(item);
 
     if (availableQty <= 0) {
       Vibration.vibrate([0, 50, 50, 50]);
-      Alert.alert('Out of Stock', `${item.itemDesc || item.itemNumber} is out of stock.`);
+      Alert.alert('Out of Stock', `${itemDesc} is out of stock.`);
       return;
     }
 
@@ -451,16 +482,18 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     const onhandQty = getOnhandQty(item);
     const cartQty = getCartQty(item);
     const availableQty = onhandQty - cartQty;
+    const itemNum = getItemNumber(item);
+    const itemDesc = getItemDesc(item);
 
     if (availableQty <= 0) {
       Vibration.vibrate([0, 50, 50, 50]);
-      Alert.alert('Stock Limit', `No more stock available for ${item.itemDesc || item.itemNumber}.`);
+      Alert.alert('Stock Limit', `No more stock available for ${itemDesc}.`);
       return;
     }
 
     Vibration.vibrate(10);
     const newCart = cart.map(c => {
-      if (c.itemNumber === item.itemNumber) {
+      if (getItemNumber(c) === itemNum) {
         return { ...c, quantity: c.quantity + 1 };
       }
       return c;
@@ -470,8 +503,9 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
   const handleDecreaseQty = (item) => {
     Vibration.vibrate(10);
+    const itemNum = getItemNumber(item);
     const newCart = cart.map(c => {
-      if (c.itemNumber === item.itemNumber) {
+      if (getItemNumber(c) === itemNum) {
         if (c.quantity > 1) {
           return { ...c, quantity: c.quantity - 1 };
         }
@@ -483,7 +517,8 @@ const ItemSelectionScreen = ({ navigation, route }) => {
   };
 
   const handleRemoveItem = (item) => {
-    setCart(cart.filter(c => c.itemNumber !== item.itemNumber));
+    const itemNum = getItemNumber(item);
+    setCart(cart.filter(c => getItemNumber(c) !== itemNum));
   };
 
   const handleProceedToCheckout = () => {
@@ -585,7 +620,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
         ) : (
           <FlatList
             data={filteredItems}
-            keyExtractor={(item, index) => `item-${index}-${item.itemNumber || ''}`}
+            keyExtractor={(item, index) => `item-${index}-${getItemNumber(item)}`}
             renderItem={({ item }) => (
               <ItemRow
                 item={item}
@@ -633,7 +668,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
           setSelectedItem(null);
         }}
         onSelect={handleQtySelect}
-        itemName={selectedItem?.itemDesc || selectedItem?.itemNumber || ''}
+        itemName={selectedItem ? getItemDesc(selectedItem) : ''}
       />
 
       {/* Cart Modal */}
@@ -654,7 +689,7 @@ const ItemSelectionScreen = ({ navigation, route }) => {
 
             <FlatList
               data={cart}
-              keyExtractor={(item, index) => `cart-${index}-${item.itemNumber || ''}`}
+              keyExtractor={(item, index) => `cart-${index}-${getItemNumber(item)}`}
               renderItem={({ item }) => (
                 <CartItemRow
                   item={item}
