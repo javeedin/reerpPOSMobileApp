@@ -345,6 +345,10 @@ const InventoryScreen = ({ navigation }) => {
       if (priceListItems.length > 0) {
         const uniqueLists = [...new Set(priceListItems.map(i => i.priceListName || i.listName))];
         console.log('Unique price lists:', uniqueLists);
+        console.log('Sample pricelist item structure:', JSON.stringify(priceListItems[0], null, 2));
+      }
+      if (data && data.length > 0) {
+        console.log('Sample onhand item structure:', JSON.stringify(data[0], null, 2));
       }
 
       priceListItems.forEach(item => {
