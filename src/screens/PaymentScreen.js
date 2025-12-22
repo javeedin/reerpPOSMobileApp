@@ -39,8 +39,8 @@ const PaymentEntry = ({ payment, index, onRemove, onAmountChange, currency }) =>
     </View>
     <TextInput
       style={styles.paymentAmountInput}
-      value={payment.amount?.toString() || ''}
-      onChangeText={(val) => onAmountChange(index, parseFloat(val) || 0)}
+      value={payment.amount?.toFixed(2) || ''}
+      onChangeText={(val) => onAmountChange(index, Math.round((parseFloat(val) || 0) * 100) / 100)}
       keyboardType="numeric"
       placeholder="0.00"
     />
@@ -84,7 +84,8 @@ const PaymentScreen = ({ navigation, route }) => {
       return;
     }
 
-    const amount = parseFloat(paymentAmount) || remaining;
+    // Round amount to 2 decimal places
+    const amount = Math.round((parseFloat(paymentAmount) || remaining) * 100) / 100;
     if (amount <= 0) {
       Alert.alert('Invalid Amount', 'Please enter a valid amount');
       return;
@@ -110,7 +111,8 @@ const PaymentScreen = ({ navigation, route }) => {
 
   const handleAmountChange = (index, amount) => {
     const newPayments = [...payments];
-    newPayments[index].amount = amount;
+    // Round to 2 decimal places
+    newPayments[index].amount = Math.round(amount * 100) / 100;
     setPayments(newPayments);
   };
 
