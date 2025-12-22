@@ -601,14 +601,15 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
       await insertPricelistBatch(db, pendingItems);
     }
 
-    // Update sync status for this price list (still use AsyncStorage for metadata - it's small)
-    const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
+    // Update sync status for this price list (use direct AsyncStorage for object storage)
+    const statusStr = await AsyncStorage.getItem(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS);
+    const syncStatus = statusStr ? JSON.parse(statusStr) : {};
     syncStatus[priceListName] = {
       lastSync: new Date().toISOString(),
       count: totalItems,
       storage: 'sqlite', // Mark as SQLite storage
     };
-    await saveToStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS, syncStatus);
+    await AsyncStorage.setItem(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS, JSON.stringify(syncStatus));
 
     // Update overall metadata with total count
     const totalCount = await getTotalPriceListItemCount();
@@ -654,9 +655,15 @@ const insertPricelistBatch = async (db, items) => {
   await db.runAsync(sql, values);
 };
 
-// Get price list sync status
+// Get price list sync status (direct AsyncStorage, not chunked storage)
 export const getPriceListSyncStatus = async () => {
-  return await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
+  try {
+    const statusStr = await AsyncStorage.getItem(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS);
+    return statusStr ? JSON.parse(statusStr) : {};
+  } catch (error) {
+    console.error('Error loading pricelist sync status:', error);
+    return {};
+  }
 };
 
 // Sync all price lists (legacy function for backward compatibility)
@@ -664,7 +671,7 @@ export const syncPriceList = async (onProgress, username) => {
   try {
     // Clear existing data
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
-    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS);
 
     // Step 1: Get price list names
     const namesResult = await syncPriceListNames(onProgress, username);
@@ -929,8 +936,8 @@ const clearAllPriceListStorage = async () => {
       }
     }
 
-    // Also clear sync status
-    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS);
+    // Also clear sync status (direct AsyncStorage, not chunked)
+    await AsyncStorage.removeItem(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS);
   } catch (error) {
     console.error('Error clearing pricelist storage:', error);
   }
