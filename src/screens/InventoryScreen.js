@@ -343,7 +343,8 @@ const InventoryScreen = ({ navigation }) => {
       // Log for debugging
       console.log('Price list items loaded:', priceListItems.length);
       if (priceListItems.length > 0) {
-        const uniqueLists = [...new Set(priceListItems.map(i => i.priceListName || i.listName))];
+        // Support both old and new compressed format
+        const uniqueLists = [...new Set(priceListItems.map(i => i.priceListName || i.listName || i.l))];
         console.log('Unique price lists:', uniqueLists);
         console.log('Sample pricelist item structure:', JSON.stringify(priceListItems[0], null, 2));
       }
@@ -352,17 +353,19 @@ const InventoryScreen = ({ navigation }) => {
       }
 
       priceListItems.forEach(item => {
-        const itemNum = item.itemNumber;
-        const listName = (item.priceListName || item.listName || '').toLowerCase();
+        // Support both old format (itemNumber, basePrice, priceListName) and new compressed format (n, p, l)
+        const itemNum = item.itemNumber || item.n;
+        const price = item.basePrice || item.p;
+        const listName = (item.priceListName || item.listName || item.l || '').toLowerCase();
 
-        if (itemNum && item.basePrice) {
+        if (itemNum && price) {
           // Match "Wholesaler-ps"
           if (listName.includes('wholesaler') || listName === 'wholesaler-ps') {
-            wsMap[itemNum] = item.basePrice;
+            wsMap[itemNum] = price;
           }
-          // Match "Staff Grays"
-          if (listName.includes('staff') || listName.includes('gray') || listName === 'staff grays') {
-            stMap[itemNum] = item.basePrice;
+          // Match "Staff Grays" or "STAFFGRAYS"
+          if (listName.includes('staff') || listName.includes('gray') || listName === 'staff grays' || listName === 'staffgrays') {
+            stMap[itemNum] = price;
           }
         }
       });

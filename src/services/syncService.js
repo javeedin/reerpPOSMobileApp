@@ -87,16 +87,11 @@ const extractPriceListFields = (priceList) => ({
   currency: priceList.currency_code || priceList.CURRENCY_CODE || priceList.currency,
 });
 
-// Extract price list item fields - minimal fields to save storage
+// Extract price list item fields - ULTRA minimal to save storage
+// Only 3 essential fields: itemNumber (for matching), basePrice, and priceListName (added later)
 const extractPriceListItemFields = (item) => ({
-  itemNumber: item.item_number || item.ITEM_NUMBER,
-  itemDesc: item.item_desc || item.ITEM_DESC,
-  barcode: item.barcode || item.BARCODE,
-  basePrice: item.base_price || item.BASE_PRICE,
-  currency: item.currency_code || item.CURRENCY_CODE,
-  uom: item.pricing_uom_code || item.PRICING_UOM_CODE,
-  taxRate: item.tax_rate || item.TAX_RATE,
-  allowDiscount: item.allow_discount || item.ALLOW_DISCOUNT,
+  n: item.item_number || item.ITEM_NUMBER,  // itemNumber - shortened key
+  p: item.base_price || item.BASE_PRICE,     // basePrice - shortened key
 });
 
 // Extract onhand balance fields
@@ -468,9 +463,8 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
     }
 
     if (clearAllFirst) {
-      // Clear ALL synced data (not just pricelists) to ensure we have enough space
-      // This is necessary for large pricelists like STAFFGRAYS (36k+ items)
-      await clearAllDataForLargePricelistSync();
+      // Clear ALL pricelist data (but NOT customers, onhand, etc.)
+      await clearAllPriceListDataBeforeSync();
     } else {
       // Just clear this specific pricelist
       await clearPriceListStorageCompletely(storageKey);
@@ -501,10 +495,11 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
       if (items.length === 0) {
         hasMore = false;
       } else {
-        // Extract items
+        // Extract items with ultra-minimal fields
+        // Using 'l' for listName (shortened) to save storage
         const extractedItems = items.map(item => ({
           ...extractPriceListItemFields(item),
-          priceListName: priceListName,
+          l: priceListName,  // listName - shortened key
         }));
 
         // SAVE IMMEDIATELY - each batch as a separate chunk

@@ -300,9 +300,15 @@ const AgentCard = ({ item }) => (
   </View>
 );
 
-// Price List Item Detail Modal
+// Price List Item Detail Modal - supports both old format and compressed format (n, p, l)
 const PriceListItemDetailModal = ({ visible, item, onClose }) => {
   if (!item) return null;
+
+  // Support both old format and compressed format
+  const itemNumber = item.itemNumber || item.n || 'N/A';
+  const basePrice = item.basePrice || item.p;
+  const listName = item.listName || item.priceListName || item.l;
+  const itemDesc = item.itemDesc || itemNumber;
 
   const DetailRow = ({ label, value, icon }) => (
     value ? (
@@ -335,55 +341,63 @@ const PriceListItemDetailModal = ({ visible, item, onClose }) => {
               <View style={[modalStyles.avatarLarge, { backgroundColor: colors.accentOrange + '20' }]}>
                 <Ionicons name="cube" size={36} color={colors.accentOrange} />
               </View>
-              <Text style={modalStyles.customerName}>{item.itemDesc || 'Unknown Item'}</Text>
-              <Text style={modalStyles.accountNumber}>#{item.itemNumber}</Text>
-              <View style={[
-                modalStyles.statusBadge,
-                { backgroundColor: item.itemStatus === 'Active' ? colors.accentGreen + '20' : colors.accentOrange + '20' }
-              ]}>
-                <Text style={[
-                  modalStyles.statusText,
-                  { color: item.itemStatus === 'Active' ? colors.accentGreen : colors.accentOrange }
+              <Text style={modalStyles.customerName}>{itemDesc}</Text>
+              <Text style={modalStyles.accountNumber}>#{itemNumber}</Text>
+              {item.itemStatus && (
+                <View style={[
+                  modalStyles.statusBadge,
+                  { backgroundColor: item.itemStatus === 'Active' ? colors.accentGreen + '20' : colors.accentOrange + '20' }
                 ]}>
-                  {item.itemStatus || 'N/A'}
-                </Text>
-              </View>
+                  <Text style={[
+                    modalStyles.statusText,
+                    { color: item.itemStatus === 'Active' ? colors.accentGreen : colors.accentOrange }
+                  ]}>
+                    {item.itemStatus}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Pricing Info */}
             <View style={modalStyles.section}>
               <Text style={modalStyles.sectionTitle}>Pricing Information</Text>
-              <DetailRow label="Base Price" value={item.basePrice ? `${item.currency || 'MUR'} ${formatCurrency(item.basePrice)}` : null} icon="cash-outline" />
-              <DetailRow label="Price List" value={item.listName || item.priceListName} icon="pricetag-outline" />
+              <DetailRow label="Base Price" value={basePrice ? `${item.currency || 'MUR'} ${formatCurrency(basePrice)}` : null} icon="cash-outline" />
+              <DetailRow label="Price List" value={listName} icon="pricetag-outline" />
               <DetailRow label="UOM" value={item.uom} icon="resize-outline" />
               <DetailRow label="Tax Code" value={item.taxCode} icon="calculator-outline" />
               <DetailRow label="Tax Rate" value={item.taxRate ? `${item.taxRate}%` : null} icon="receipt-outline" />
               <DetailRow label="Allow Discount" value={item.allowDiscount === 'Y' ? 'Yes' : item.allowDiscount === 'N' ? 'No' : null} icon="gift-outline" />
             </View>
 
-            {/* Product Info */}
-            <View style={modalStyles.section}>
-              <Text style={modalStyles.sectionTitle}>Product Information</Text>
-              <DetailRow label="Barcode" value={item.barcode !== 'NA' ? item.barcode : null} icon="barcode-outline" />
-              <DetailRow label="Brand" value={item.brand} icon="bookmark-outline" />
-              <DetailRow label="Supplier" value={item.supplier} icon="business-outline" />
-              <DetailRow label="Profit Center" value={item.profitCenter} icon="trending-up-outline" />
-            </View>
+            {/* Product Info - only show section if any fields exist */}
+            {(item.barcode || item.brand || item.supplier || item.profitCenter) && (
+              <View style={modalStyles.section}>
+                <Text style={modalStyles.sectionTitle}>Product Information</Text>
+                <DetailRow label="Barcode" value={item.barcode !== 'NA' ? item.barcode : null} icon="barcode-outline" />
+                <DetailRow label="Brand" value={item.brand} icon="bookmark-outline" />
+                <DetailRow label="Supplier" value={item.supplier} icon="business-outline" />
+                <DetailRow label="Profit Center" value={item.profitCenter} icon="trending-up-outline" />
+              </View>
+            )}
 
-            {/* Category Info */}
-            <View style={modalStyles.section}>
-              <Text style={modalStyles.sectionTitle}>Classification</Text>
-              <DetailRow label="Category" value={item.category} icon="folder-outline" />
-              <DetailRow label="Sub Category" value={item.subCategory} icon="folder-open-outline" />
-              <DetailRow label="Super Category" value={item.superCategory} icon="albums-outline" />
-              <DetailRow label="Alcoholic" value={item.alcoholicFlag === 'Y' ? 'Yes' : item.alcoholicFlag === 'N' ? 'No' : null} icon="wine-outline" />
-            </View>
+            {/* Category Info - only show section if any fields exist */}
+            {(item.category || item.subCategory || item.superCategory || item.alcoholicFlag) && (
+              <View style={modalStyles.section}>
+                <Text style={modalStyles.sectionTitle}>Classification</Text>
+                <DetailRow label="Category" value={item.category} icon="folder-outline" />
+                <DetailRow label="Sub Category" value={item.subCategory} icon="folder-open-outline" />
+                <DetailRow label="Super Category" value={item.superCategory} icon="albums-outline" />
+                <DetailRow label="Alcoholic" value={item.alcoholicFlag === 'Y' ? 'Yes' : item.alcoholicFlag === 'N' ? 'No' : null} icon="wine-outline" />
+              </View>
+            )}
 
-            {/* Dates */}
-            <View style={modalStyles.section}>
-              <Text style={modalStyles.sectionTitle}>Validity</Text>
-              <DetailRow label="Start Date" value={item.startDate ? new Date(item.startDate).toLocaleDateString() : null} icon="calendar-outline" />
-            </View>
+            {/* Dates - only show section if startDate exists */}
+            {item.startDate && (
+              <View style={modalStyles.section}>
+                <Text style={modalStyles.sectionTitle}>Validity</Text>
+                <DetailRow label="Start Date" value={new Date(item.startDate).toLocaleDateString()} icon="calendar-outline" />
+              </View>
+            )}
 
             <View style={{ height: 30 }} />
           </ScrollView>
@@ -393,58 +407,66 @@ const PriceListItemDetailModal = ({ visible, item, onClose }) => {
   );
 };
 
-// Price List Item Card
-const PriceListCard = ({ item, onViewDetails }) => (
-  <View style={styles.dataCard}>
-    <View style={styles.cardHeader}>
-      <View style={[styles.avatar, { backgroundColor: colors.accentOrange + '20' }]}>
-        <Ionicons name="cube" size={24} color={colors.accentOrange} />
-      </View>
-      <View style={styles.cardInfo}>
-        <Text style={styles.priceListItemName} numberOfLines={2}>
-          {item.itemDesc || 'Unknown Item'}
-        </Text>
-        <Text style={styles.cardSubtitle}>
-          #{item.itemNumber || 'N/A'}
-        </Text>
-      </View>
-      <TouchableOpacity onPress={() => onViewDetails(item)} style={styles.moreButton}>
-        <Ionicons name="information-circle-outline" size={24} color={colors.accentOrange} />
-      </TouchableOpacity>
-    </View>
+// Price List Item Card - supports both old format and compressed format (n, p, l)
+const PriceListCard = ({ item, onViewDetails }) => {
+  // Support both old format (itemNumber, basePrice, listName) and compressed format (n, p, l)
+  const itemNumber = item.itemNumber || item.n || 'N/A';
+  const basePrice = item.basePrice || item.p;
+  const listName = item.listName || item.priceListName || item.l;
+  const itemDesc = item.itemDesc || itemNumber; // Fall back to itemNumber if no description
 
-    <View style={styles.cardDetails}>
-      {item.listName && (
-        <View style={styles.detailRow}>
-          <Ionicons name="pricetag-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.detailText} numberOfLines={1}>{item.listName}</Text>
+  return (
+    <View style={styles.dataCard}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.avatar, { backgroundColor: colors.accentOrange + '20' }]}>
+          <Ionicons name="cube" size={24} color={colors.accentOrange} />
         </View>
-      )}
-      <View style={styles.tagsRow}>
-        {item.basePrice && (
-          <View style={[styles.tag, { backgroundColor: colors.accentGreen + '15' }]}>
-            <Ionicons name="cash" size={12} color={colors.accentGreen} />
-            <Text style={[styles.tagText, { color: colors.accentGreen }]}>
-              {item.currency || 'MUR'} {formatCurrency(item.basePrice)}
-            </Text>
+        <View style={styles.cardInfo}>
+          <Text style={styles.priceListItemName} numberOfLines={2}>
+            {itemDesc}
+          </Text>
+          <Text style={styles.cardSubtitle}>
+            #{itemNumber}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={() => onViewDetails(item)} style={styles.moreButton}>
+          <Ionicons name="information-circle-outline" size={24} color={colors.accentOrange} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.cardDetails}>
+        {listName && (
+          <View style={styles.detailRow}>
+            <Ionicons name="pricetag-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.detailText} numberOfLines={1}>{listName}</Text>
           </View>
         )}
-        {item.brand && (
-          <View style={styles.tag}>
-            <Ionicons name="bookmark" size={12} color={colors.accentPurple} />
-            <Text style={styles.tagText}>{item.brand}</Text>
-          </View>
-        )}
-        {item.category && (
-          <View style={[styles.tag, { backgroundColor: colors.accentOrange + '15' }]}>
-            <Ionicons name="folder" size={12} color={colors.accentOrange} />
-            <Text style={[styles.tagText, { color: colors.accentOrange }]}>{item.category}</Text>
-          </View>
-        )}
+        <View style={styles.tagsRow}>
+          {basePrice && (
+            <View style={[styles.tag, { backgroundColor: colors.accentGreen + '15' }]}>
+              <Ionicons name="cash" size={12} color={colors.accentGreen} />
+              <Text style={[styles.tagText, { color: colors.accentGreen }]}>
+                {item.currency || 'MUR'} {formatCurrency(basePrice)}
+              </Text>
+            </View>
+          )}
+          {item.brand && (
+            <View style={styles.tag}>
+              <Ionicons name="bookmark" size={12} color={colors.accentPurple} />
+              <Text style={styles.tagText}>{item.brand}</Text>
+            </View>
+          )}
+          {item.category && (
+            <View style={[styles.tag, { backgroundColor: colors.accentOrange + '15' }]}>
+              <Ionicons name="folder" size={12} color={colors.accentOrange} />
+              <Text style={[styles.tagText, { color: colors.accentOrange }]}>{item.category}</Text>
+            </View>
+          )}
+        </View>
       </View>
     </View>
-  </View>
-);
+  );
+};
 
 // Onhand Card
 const OnhandCard = ({ item }) => {
@@ -607,9 +629,10 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
       setAllPriceListItems(allItems);
 
       // Calculate item count per price list
+      // Support both old format (priceListName/listName) and compressed format (l)
       const counts = {};
       allItems.forEach((item) => {
-        const listName = item.priceListName || item.listName;
+        const listName = item.priceListName || item.listName || item.l;
         if (listName) {
           counts[listName] = (counts[listName] || 0) + 1;
         }
@@ -648,10 +671,12 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
       if (matchedSuggestions.length >= 6) break;
 
       // Get the display name based on type
+      // Support both old format (itemDesc, itemNumber) and compressed format (n for itemNumber)
       let name, secondary;
       if (type === 'priceList' || type === 'priceListSingle') {
-        name = item.itemDesc || '';
-        secondary = item.itemNumber || '';
+        const itemNumber = item.itemNumber || item.n || '';
+        name = item.itemDesc || itemNumber; // Fall back to itemNumber if no description
+        secondary = itemNumber;
       } else {
         name = item.name || '';
         secondary = item.accountNumber || item.number || item.id || '';
@@ -676,8 +701,11 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     let baseData = data;
     if (type === 'priceList' && activeTab === 'items') {
       if (selectedPriceListFilter) {
+        // Support both old format (priceListName/listName) and compressed format (l)
         baseData = allPriceListItems.filter(
-          (item) => item.priceListName === selectedPriceListFilter || item.listName === selectedPriceListFilter
+          (item) => item.priceListName === selectedPriceListFilter ||
+                    item.listName === selectedPriceListFilter ||
+                    item.l === selectedPriceListFilter
         );
       } else {
         baseData = allPriceListItems;
@@ -694,6 +722,7 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
 
     const lowerQuery = searchQuery.toLowerCase();
     const filtered = baseData.filter((item) => {
+      // For compressed format, also search in n (itemNumber) and l (listName)
       const searchFields = Object.values(item)
         .filter((v) => typeof v === 'string')
         .join(' ')
