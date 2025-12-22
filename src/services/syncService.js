@@ -408,6 +408,41 @@ const clearAllPriceListDataBeforeSync = async () => {
   }
 };
 
+// Clear EVERYTHING except pricelist names to make room for large pricelists
+export const clearAllDataForLargePricelistSync = async () => {
+  try {
+    console.log('Clearing ALL data to make room for large pricelist...');
+
+    // Clear all sync data
+    await clearFromStorage(STORAGE_KEYS.CUSTOMERS);
+    await clearFromStorage(STORAGE_KEYS.ITEMS);
+    await clearFromStorage(STORAGE_KEYS.AGENTS);
+    await clearFromStorage(STORAGE_KEYS.ONHAND);
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
+
+    // Clear all pricelist data
+    const allKeys = await AsyncStorage.getAllKeys();
+    const pricelistKeys = allKeys.filter(key =>
+      key.startsWith(PRICELIST_KEY_PREFIX) ||
+      key.startsWith(STORAGE_KEYS.PRICE_LIST_ITEMS) ||
+      key.startsWith(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS)
+    );
+
+    if (pricelistKeys.length > 0) {
+      await AsyncStorage.multiRemove(pricelistKeys);
+    }
+
+    // Reset metadata (but keep pricelist names)
+    await AsyncStorage.removeItem(STORAGE_KEYS.SYNC_META);
+
+    console.log('All data cleared for large pricelist sync');
+    return { success: true };
+  } catch (error) {
+    console.error('Error clearing all data:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Sync a single price list with pagination (2000 items per fetch using p_start_row/p_end_row)
 // Each price list is stored in its own AsyncStorage key to avoid storage limits
 // Saves incrementally to avoid memory issues with large datasets
@@ -433,8 +468,9 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
     }
 
     if (clearAllFirst) {
-      // Clear ALL pricelist data to ensure we have enough space
-      await clearAllPriceListDataBeforeSync();
+      // Clear ALL synced data (not just pricelists) to ensure we have enough space
+      // This is necessary for large pricelists like STAFFGRAYS (36k+ items)
+      await clearAllDataForLargePricelistSync();
     } else {
       // Just clear this specific pricelist
       await clearPriceListStorageCompletely(storageKey);
