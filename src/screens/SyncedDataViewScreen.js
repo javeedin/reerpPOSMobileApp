@@ -300,15 +300,22 @@ const AgentCard = ({ item }) => (
   </View>
 );
 
-// Price List Item Detail Modal - supports both old format and compressed format (n, p, l)
+// Price List Item Detail Modal - supports SQLite format (snake_case) and legacy formats
 const PriceListItemDetailModal = ({ visible, item, onClose }) => {
   if (!item) return null;
 
-  // Support both old format and compressed format
-  const itemNumber = item.itemNumber || item.n || 'N/A';
-  const basePrice = item.basePrice || item.p;
-  const listName = item.listName || item.priceListName || item.l;
-  const itemDesc = item.itemDesc || itemNumber;
+  // Support SQLite snake_case format and legacy camelCase/compressed formats
+  const itemNumber = item.item_number || item.itemNumber || item.n || 'N/A';
+  const basePrice = item.base_price || item.basePrice || item.p;
+  const listName = item.list_name || item.listName || item.priceListName || item.l;
+  const itemDesc = item.item_desc || item.itemDesc || itemNumber;
+  const currencyCode = item.currency_code || item.currency || 'MUR';
+  const pricingUom = item.pricing_uom_code || item.uom;
+  const taxCode = item.tax_code || item.taxCode;
+  const taxRate = item.tax_rate || item.taxRate;
+  const allowDiscount = item.allow_discount || item.allowDiscount;
+  const alcoholicFlag = item.alcoholic_flag || item.alcoholicFlag;
+  const barcode = item.barcode;
 
   const DetailRow = ({ label, value, icon }) => (
     value ? (
@@ -343,61 +350,27 @@ const PriceListItemDetailModal = ({ visible, item, onClose }) => {
               </View>
               <Text style={modalStyles.customerName}>{itemDesc}</Text>
               <Text style={modalStyles.accountNumber}>#{itemNumber}</Text>
-              {item.itemStatus && (
-                <View style={[
-                  modalStyles.statusBadge,
-                  { backgroundColor: item.itemStatus === 'Active' ? colors.accentGreen + '20' : colors.accentOrange + '20' }
-                ]}>
-                  <Text style={[
-                    modalStyles.statusText,
-                    { color: item.itemStatus === 'Active' ? colors.accentGreen : colors.accentOrange }
-                  ]}>
-                    {item.itemStatus}
-                  </Text>
-                </View>
-              )}
             </View>
 
             {/* Pricing Info */}
             <View style={modalStyles.section}>
               <Text style={modalStyles.sectionTitle}>Pricing Information</Text>
-              <DetailRow label="Base Price" value={basePrice ? `${item.currency || 'MUR'} ${formatCurrency(basePrice)}` : null} icon="cash-outline" />
+              <DetailRow label="Base Price" value={basePrice ? `${currencyCode} ${formatCurrency(basePrice)}` : null} icon="cash-outline" />
               <DetailRow label="Price List" value={listName} icon="pricetag-outline" />
-              <DetailRow label="UOM" value={item.uom} icon="resize-outline" />
-              <DetailRow label="Tax Code" value={item.taxCode} icon="calculator-outline" />
-              <DetailRow label="Tax Rate" value={item.taxRate ? `${item.taxRate}%` : null} icon="receipt-outline" />
-              <DetailRow label="Allow Discount" value={item.allowDiscount === 'Y' ? 'Yes' : item.allowDiscount === 'N' ? 'No' : null} icon="gift-outline" />
+              <DetailRow label="UOM" value={pricingUom} icon="resize-outline" />
+              <DetailRow label="Currency" value={currencyCode} icon="logo-usd" />
+              <DetailRow label="Tax Code" value={taxCode} icon="calculator-outline" />
+              <DetailRow label="Tax Rate" value={taxRate ? `${taxRate}%` : null} icon="receipt-outline" />
+              <DetailRow label="Allow Discount" value={allowDiscount === 'Y' ? 'Yes' : allowDiscount === 'N' ? 'No' : null} icon="gift-outline" />
             </View>
 
-            {/* Product Info - only show section if any fields exist */}
-            {(item.barcode || item.brand || item.supplier || item.profitCenter) && (
-              <View style={modalStyles.section}>
-                <Text style={modalStyles.sectionTitle}>Product Information</Text>
-                <DetailRow label="Barcode" value={item.barcode !== 'NA' ? item.barcode : null} icon="barcode-outline" />
-                <DetailRow label="Brand" value={item.brand} icon="bookmark-outline" />
-                <DetailRow label="Supplier" value={item.supplier} icon="business-outline" />
-                <DetailRow label="Profit Center" value={item.profitCenter} icon="trending-up-outline" />
-              </View>
-            )}
-
-            {/* Category Info - only show section if any fields exist */}
-            {(item.category || item.subCategory || item.superCategory || item.alcoholicFlag) && (
-              <View style={modalStyles.section}>
-                <Text style={modalStyles.sectionTitle}>Classification</Text>
-                <DetailRow label="Category" value={item.category} icon="folder-outline" />
-                <DetailRow label="Sub Category" value={item.subCategory} icon="folder-open-outline" />
-                <DetailRow label="Super Category" value={item.superCategory} icon="albums-outline" />
-                <DetailRow label="Alcoholic" value={item.alcoholicFlag === 'Y' ? 'Yes' : item.alcoholicFlag === 'N' ? 'No' : null} icon="wine-outline" />
-              </View>
-            )}
-
-            {/* Dates - only show section if startDate exists */}
-            {item.startDate && (
-              <View style={modalStyles.section}>
-                <Text style={modalStyles.sectionTitle}>Validity</Text>
-                <DetailRow label="Start Date" value={new Date(item.startDate).toLocaleDateString()} icon="calendar-outline" />
-              </View>
-            )}
+            {/* Product Info */}
+            <View style={modalStyles.section}>
+              <Text style={modalStyles.sectionTitle}>Product Information</Text>
+              <DetailRow label="Barcode" value={barcode && barcode !== 'NA' ? barcode : null} icon="barcode-outline" />
+              <DetailRow label="Inventory Item ID" value={item.inventory_item_id} icon="id-card-outline" />
+              <DetailRow label="Alcoholic" value={alcoholicFlag === 'Y' ? 'Yes' : alcoholicFlag === 'N' ? 'No' : null} icon="wine-outline" />
+            </View>
 
             <View style={{ height: 30 }} />
           </ScrollView>
@@ -407,13 +380,16 @@ const PriceListItemDetailModal = ({ visible, item, onClose }) => {
   );
 };
 
-// Price List Item Card - supports both old format and compressed format (n, p, l)
+// Price List Item Card - supports SQLite format (snake_case) and legacy formats
 const PriceListCard = ({ item, onViewDetails }) => {
-  // Support both old format (itemNumber, basePrice, listName) and compressed format (n, p, l)
-  const itemNumber = item.itemNumber || item.n || 'N/A';
-  const basePrice = item.basePrice || item.p;
-  const listName = item.listName || item.priceListName || item.l;
-  const itemDesc = item.itemDesc || itemNumber; // Fall back to itemNumber if no description
+  // Support SQLite snake_case format and legacy camelCase/compressed formats
+  const itemNumber = item.item_number || item.itemNumber || item.n || 'N/A';
+  const basePrice = item.base_price || item.basePrice || item.p;
+  const listName = item.list_name || item.listName || item.priceListName || item.l;
+  const itemDesc = item.item_desc || item.itemDesc || itemNumber;
+  const currencyCode = item.currency_code || item.currency || 'MUR';
+  const barcode = item.barcode;
+  const taxCode = item.tax_code || item.taxCode;
 
   return (
     <View style={styles.dataCard}>
@@ -441,25 +417,25 @@ const PriceListCard = ({ item, onViewDetails }) => {
             <Text style={styles.detailText} numberOfLines={1}>{listName}</Text>
           </View>
         )}
+        {barcode && barcode !== 'NA' && (
+          <View style={styles.detailRow}>
+            <Ionicons name="barcode-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.detailText} numberOfLines={1}>{barcode}</Text>
+          </View>
+        )}
         <View style={styles.tagsRow}>
           {basePrice && (
             <View style={[styles.tag, { backgroundColor: colors.accentGreen + '15' }]}>
               <Ionicons name="cash" size={12} color={colors.accentGreen} />
               <Text style={[styles.tagText, { color: colors.accentGreen }]}>
-                {item.currency || 'MUR'} {formatCurrency(basePrice)}
+                {currencyCode} {formatCurrency(basePrice)}
               </Text>
             </View>
           )}
-          {item.brand && (
+          {taxCode && (
             <View style={styles.tag}>
-              <Ionicons name="bookmark" size={12} color={colors.accentPurple} />
-              <Text style={styles.tagText}>{item.brand}</Text>
-            </View>
-          )}
-          {item.category && (
-            <View style={[styles.tag, { backgroundColor: colors.accentOrange + '15' }]}>
-              <Ionicons name="folder" size={12} color={colors.accentOrange} />
-              <Text style={[styles.tagText, { color: colors.accentOrange }]}>{item.category}</Text>
+              <Ionicons name="receipt" size={12} color={colors.accentPurple} />
+              <Text style={styles.tagText}>{taxCode}</Text>
             </View>
           )}
         </View>
@@ -629,10 +605,10 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
       setAllPriceListItems(allItems);
 
       // Calculate item count per price list
-      // Support both old format (priceListName/listName) and compressed format (l)
+      // Support SQLite snake_case format (list_name) and legacy formats
       const counts = {};
       allItems.forEach((item) => {
-        const listName = item.priceListName || item.listName || item.l;
+        const listName = item.list_name || item.priceListName || item.listName || item.l;
         if (listName) {
           counts[listName] = (counts[listName] || 0) + 1;
         }
@@ -671,11 +647,11 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
       if (matchedSuggestions.length >= 6) break;
 
       // Get the display name based on type
-      // Support both old format (itemDesc, itemNumber) and compressed format (n for itemNumber)
+      // Support SQLite snake_case format and legacy formats
       let name, secondary;
       if (type === 'priceList' || type === 'priceListSingle') {
-        const itemNumber = item.itemNumber || item.n || '';
-        name = item.itemDesc || itemNumber; // Fall back to itemNumber if no description
+        const itemNumber = item.item_number || item.itemNumber || item.n || '';
+        name = item.item_desc || item.itemDesc || itemNumber;
         secondary = itemNumber;
       } else {
         name = item.name || '';
@@ -684,7 +660,7 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
 
       if (name.toLowerCase().includes(lowerQuery) || secondary.toString().toLowerCase().includes(lowerQuery)) {
         matchedSuggestions.push({
-          id: item.id || secondary,
+          id: item.id || item.inventory_item_id || secondary,
           name: name,
           secondary: secondary,
           item: item,
@@ -701,9 +677,10 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
     let baseData = data;
     if (type === 'priceList' && activeTab === 'items') {
       if (selectedPriceListFilter) {
-        // Support both old format (priceListName/listName) and compressed format (l)
+        // Support SQLite snake_case format (list_name) and legacy formats
         baseData = allPriceListItems.filter(
-          (item) => item.priceListName === selectedPriceListFilter ||
+          (item) => item.list_name === selectedPriceListFilter ||
+                    item.priceListName === selectedPriceListFilter ||
                     item.listName === selectedPriceListFilter ||
                     item.l === selectedPriceListFilter
         );
@@ -722,7 +699,7 @@ const SyncedDataViewScreen = ({ navigation, route }) => {
 
     const lowerQuery = searchQuery.toLowerCase();
     const filtered = baseData.filter((item) => {
-      // For compressed format, also search in n (itemNumber) and l (listName)
+      // Search in all string values
       const searchFields = Object.values(item)
         .filter((v) => typeof v === 'string')
         .join(' ')
