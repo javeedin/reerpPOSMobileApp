@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 import { getItemsForPriceList, getPriceListItems, getOnhand, syncSinglePriceList, getPriceListSyncStatus } from '../services/syncService';
 import { calculateLineTotal, calculateOrderTotals } from '../services/orderService';
@@ -323,12 +324,13 @@ const CartItemRow = ({ item, onIncrease, onDecrease, onRemove, menuConfig }) => 
 };
 
 const ItemSelectionScreen = ({ navigation, route }) => {
-  const { menuConfig, customer } = route.params || {};
+  const { menuConfig, customer, existingCart } = route.params || {};
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(existingCart || []);
   const [showCart, setShowCart] = useState(false);
   const [showQtyPicker, setShowQtyPicker] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -354,6 +356,14 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     loadItems();
     loadOnhandData();
   }, []);
+
+  // Update cart when existingCart changes (when returning from CheckoutScreen)
+  useEffect(() => {
+    if (existingCart && existingCart.length > 0) {
+      console.log('Restoring existing cart with discounts:', existingCart.length, 'items');
+      setCart(existingCart);
+    }
+  }, [existingCart]);
 
   const loadItems = async () => {
     setLoading(true);
@@ -827,9 +837,9 @@ const ItemSelectionScreen = ({ navigation, route }) => {
         )}
       </View>
 
-      {/* Bottom Bar */}
+      {/* Bottom Bar - with safe area padding */}
       {cart.length > 0 && (
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
           <View style={styles.totalInfo}>
             <Text style={styles.totalLabel}>{totals.totalItems} items</Text>
             <Text style={styles.totalAmount}>

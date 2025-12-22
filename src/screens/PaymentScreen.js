@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 import { createOrder, confirmOrder, ORDER_STATUS, PAYMENT_METHODS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
@@ -162,6 +163,7 @@ const PaymentEntry = ({ payment, index, onRemove, onAmountChange, currency }) =>
 const PaymentScreen = ({ navigation, route }) => {
   const { menuConfig, customer, cart, totals, notes, currency } = route.params || {};
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [payments, setPayments] = useState([]);
   const [selectedMethod, setSelectedMethod] = useState(null);
@@ -364,8 +366,8 @@ const PaymentScreen = ({ navigation, route }) => {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Confirm Button */}
-      <View style={styles.actionBar}>
+      {/* Confirm Button - with safe area padding */}
+      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
         <TouchableOpacity
           style={[styles.confirmBtn, (processing || totalPaid < totals.totalNet) && styles.confirmBtnDisabled]}
           onPress={handleConfirmOrder}

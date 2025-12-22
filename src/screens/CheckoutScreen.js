@@ -9,9 +9,11 @@ import {
   StatusBar,
   Alert,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 import { calculateLineTotal, calculateOrderTotals, createOrder, ORDER_STATUS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
@@ -323,6 +325,7 @@ const BogoLineCard = ({ item, index, menuConfig, currency, parentItemDesc }) => 
 const CheckoutScreen = ({ navigation, route }) => {
   const { menuConfig, customer, cart: initialCart, saveAsDraft } = route.params || {};
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [cart, setCart] = useState(initialCart || []);
   const [bogoItems, setBogoItems] = useState([]);
   const [notes, setNotes] = useState('');
@@ -613,6 +616,15 @@ const CheckoutScreen = ({ navigation, route }) => {
     }
   }, [saveAsDraft]);
 
+  // Navigate back to add more items while preserving cart with discounts
+  const handleAddMoreItems = () => {
+    navigation.navigate('ItemSelection', {
+      menuConfig,
+      customer,
+      existingCart: cart, // Pass current cart with discounts preserved
+    });
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
@@ -624,7 +636,9 @@ const CheckoutScreen = ({ navigation, route }) => {
           <Text style={styles.headerTitle}>Order Preview</Text>
           <Text style={styles.headerSubtitle}>{customer?.name || 'Walk-in Customer'}</Text>
         </View>
-        <View style={styles.placeholder} />
+        <TouchableOpacity onPress={handleAddMoreItems} style={styles.addItemsButton}>
+          <Ionicons name="add-circle-outline" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
       </LinearGradient>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -708,8 +722,8 @@ const CheckoutScreen = ({ navigation, route }) => {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* Action Buttons */}
-      <View style={styles.actionBar}>
+      {/* Action Buttons - with safe area padding for bottom navigation */}
+      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
         <TouchableOpacity
           style={styles.draftBtn}
           onPress={handleSaveAsDraft}
@@ -768,8 +782,8 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
-  placeholder: {
-    width: 40,
+  addItemsButton: {
+    padding: 8,
   },
   content: {
     flex: 1,
