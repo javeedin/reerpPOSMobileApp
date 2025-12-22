@@ -313,13 +313,14 @@ const SyncDataScreen = ({ navigation }) => {
   };
 
   // Internal function to sync a single price list (no alert)
-  const syncPriceListInternal = async (priceListName) => {
+  // clearAllFirst: if true, clears ALL pricelist data before sync (default for single sync)
+  const syncPriceListInternal = async (priceListName, clearAllFirst = true) => {
     setSyncingPriceList(priceListName);
     setPriceListProgressMap((prev) => ({ ...prev, [priceListName]: null }));
 
     const result = await syncSinglePriceList(priceListName, (progress) => {
       setPriceListProgressMap((prev) => ({ ...prev, [priceListName]: progress }));
-    });
+    }, clearAllFirst);
 
     setSyncingPriceList(null);
     loadPriceListData();
@@ -329,8 +330,9 @@ const SyncDataScreen = ({ navigation }) => {
   };
 
   // Handler for individual price list sync (shows alert)
+  // Always clears all pricelist data first to ensure space
   const handleSyncSinglePriceList = async (priceListName) => {
-    const result = await syncPriceListInternal(priceListName);
+    const result = await syncPriceListInternal(priceListName, true);
 
     if (result.success) {
       Alert.alert('Success', `Synced ${result.count.toLocaleString()} items for ${priceListName}`);
@@ -345,8 +347,11 @@ const SyncDataScreen = ({ navigation }) => {
     let successCount = 0;
     let failedLists = [];
 
-    for (const pl of priceLists) {
-      const result = await syncPriceListInternal(pl.name);
+    for (let i = 0; i < priceLists.length; i++) {
+      const pl = priceLists[i];
+      // Only clear all data on the first pricelist, otherwise we'd delete what we just synced
+      const clearAllFirst = (i === 0);
+      const result = await syncPriceListInternal(pl.name, clearAllFirst);
       if (result.success) {
         totalItems += result.count;
         successCount++;

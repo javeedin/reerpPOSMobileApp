@@ -381,10 +381,37 @@ const clearPriceListStorageCompletely = async (storageKey) => {
   }
 };
 
+// Clear ALL pricelist data from ALL pricelists to free up space
+const clearAllPriceListDataBeforeSync = async () => {
+  try {
+    console.log('Clearing ALL pricelist data to free up space...');
+    const allKeys = await AsyncStorage.getAllKeys();
+
+    // Find ALL keys related to pricelists (both old format and new format)
+    const pricelistKeys = allKeys.filter(key =>
+      key.startsWith(PRICELIST_KEY_PREFIX) ||
+      key.startsWith(STORAGE_KEYS.PRICE_LIST_ITEMS) ||
+      key.startsWith(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS)
+    );
+
+    if (pricelistKeys.length > 0) {
+      console.log(`Clearing ${pricelistKeys.length} pricelist storage keys`);
+      await AsyncStorage.multiRemove(pricelistKeys);
+    }
+
+    // Also clear any legacy pricelist data
+    await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
+
+    console.log('All pricelist data cleared');
+  } catch (error) {
+    console.error('Error clearing all pricelist data:', error);
+  }
+};
+
 // Sync a single price list with pagination (2000 items per fetch using p_start_row/p_end_row)
 // Each price list is stored in its own AsyncStorage key to avoid storage limits
 // Saves incrementally to avoid memory issues with large datasets
-export const syncSinglePriceList = async (priceListName, onProgress) => {
+export const syncSinglePriceList = async (priceListName, onProgress, clearAllFirst = true) => {
   try {
     const encodedName = encodeURIComponent(priceListName);
     const storageKey = getPriceListStorageKey(priceListName);
@@ -396,7 +423,7 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
 
     console.log(`Syncing price list: ${priceListName} -> storage key: ${storageKey}`);
 
-    // FIRST: Clear ALL old data for this specific price list
+    // FIRST: Clear old data to free up space
     if (onProgress) {
       onProgress({
         status: 'Clearing old data...',
@@ -404,7 +431,14 @@ export const syncSinglePriceList = async (priceListName, onProgress) => {
         priceListName,
       });
     }
-    await clearPriceListStorageCompletely(storageKey);
+
+    if (clearAllFirst) {
+      // Clear ALL pricelist data to ensure we have enough space
+      await clearAllPriceListDataBeforeSync();
+    } else {
+      // Just clear this specific pricelist
+      await clearPriceListStorageCompletely(storageKey);
+    }
 
     while (hasMore) {
       const endRow = startRow + batchSize - 1;
