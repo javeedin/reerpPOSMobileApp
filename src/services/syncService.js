@@ -1260,12 +1260,34 @@ export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
     const totalCount = await db.getFirstAsync('SELECT COUNT(*) as count FROM bogo_promotions');
     console.log(`[getBogoForItem] Total BOGO records in database: ${totalCount?.count || 0}`);
 
+    // Show ALL main_item_codes in database for debugging
+    const allMainCodes = await db.getAllAsync('SELECT DISTINCT main_item_code FROM bogo_promotions LIMIT 20');
+    console.log(`[getBogoForItem] Main item codes in DB (first 20):`, allMainCodes.map(r => r.main_item_code).join(', '));
+
     // Check if any BOGO exists for this main item (without date/customer filter)
     const itemBogos = await db.getAllAsync(
       'SELECT * FROM bogo_promotions WHERE main_item_code = ?',
       [mainItemCode]
     );
     console.log(`[getBogoForItem] BOGO records for item ${mainItemCode} (no filters): ${itemBogos.length}`);
+
+    // Try case-insensitive match
+    const itemBogosCaseInsensitive = await db.getAllAsync(
+      'SELECT * FROM bogo_promotions WHERE UPPER(main_item_code) = UPPER(?)',
+      [mainItemCode]
+    );
+    console.log(`[getBogoForItem] BOGO records (case-insensitive): ${itemBogosCaseInsensitive.length}`);
+
+    // Try partial match (LIKE)
+    const itemBogosPartial = await db.getAllAsync(
+      'SELECT * FROM bogo_promotions WHERE main_item_code LIKE ?',
+      [`%${mainItemCode.substring(0, 10)}%`]
+    );
+    console.log(`[getBogoForItem] BOGO records (partial match on first 10 chars): ${itemBogosPartial.length}`);
+    if (itemBogosPartial.length > 0) {
+      console.log(`[getBogoForItem] Partial matches:`, itemBogosPartial.map(r => r.main_item_code).join(', '));
+    }
+
     if (itemBogos.length > 0) {
       console.log(`[getBogoForItem] Sample BOGO record:`, JSON.stringify(itemBogos[0], null, 2));
     }
@@ -1276,8 +1298,8 @@ export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
       `SELECT * FROM bogo_promotions
        WHERE main_item_code = ?
        AND (customer_number = ? OR customer_number = 'ALL')
-       AND (start_date IS NULL OR start_date <= ?)
-       AND (end_date IS NULL OR end_date >= ?)`,
+       AND (start_date IS NULL OR start_date = '' OR start_date <= ?)
+       AND (end_date IS NULL OR end_date = '' OR end_date >= ?)`,
       [mainItemCode, customerNumber, now, now]
     );
 
