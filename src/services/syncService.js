@@ -1214,9 +1214,25 @@ export const syncBogo = async (onProgress) => {
 
 // Get BOGO promotions for a specific main item code
 export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
+  console.log(`[getBogoForItem] Looking up BOGO for item: ${mainItemCode}, customer: ${customerNumber}`);
   try {
     const db = await getPricelistDb();
     const now = new Date().toISOString();
+    console.log(`[getBogoForItem] Current date for filtering: ${now}`);
+
+    // First, check how many BOGO records exist in total
+    const totalCount = await db.getFirstAsync('SELECT COUNT(*) as count FROM bogo_promotions');
+    console.log(`[getBogoForItem] Total BOGO records in database: ${totalCount?.count || 0}`);
+
+    // Check if any BOGO exists for this main item (without date/customer filter)
+    const itemBogos = await db.getAllAsync(
+      'SELECT * FROM bogo_promotions WHERE main_item_code = ?',
+      [mainItemCode]
+    );
+    console.log(`[getBogoForItem] BOGO records for item ${mainItemCode} (no filters): ${itemBogos.length}`);
+    if (itemBogos.length > 0) {
+      console.log(`[getBogoForItem] Sample BOGO record:`, JSON.stringify(itemBogos[0], null, 2));
+    }
 
     // Get BOGO rules for this item that are currently active
     // Match either the specific customer or 'ALL' customers
@@ -1229,9 +1245,10 @@ export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
       [mainItemCode, customerNumber, now, now]
     );
 
+    console.log(`[getBogoForItem] Filtered BOGO records (with date/customer): ${bogos.length}`);
     return bogos;
   } catch (error) {
-    console.error('Error getting BOGO for item:', error);
+    console.error('[getBogoForItem] Error getting BOGO for item:', error);
     return [];
   }
 };

@@ -346,22 +346,44 @@ const CheckoutScreen = ({ navigation, route }) => {
 
   // Calculate BOGO items based on cart contents
   const calculateBogoItems = async () => {
+    console.log('=== BOGO CALCULATION START ===');
+    console.log('Cart items count:', cart.length);
+    console.log('Customer:', customer?.name, '| Account:', customer?.accountNumber);
+
     try {
       const customerNumber = customer?.accountNumber || 'ALL';
+      console.log('Using customerNumber for BOGO lookup:', customerNumber);
       const newBogoItems = [];
 
       for (const cartItem of cart) {
         const mainItemCode = cartItem.itemNumber || cartItem.item_number;
-        if (!mainItemCode) continue;
+        console.log(`\n--- Processing cart item: ${mainItemCode} ---`);
+        console.log('Cart item details:', JSON.stringify(cartItem, null, 2));
+
+        if (!mainItemCode) {
+          console.log('SKIP: No item code found for this cart item');
+          continue;
+        }
 
         // Get BOGO rules for this item
+        console.log(`Querying BOGO rules for item: ${mainItemCode}, customer: ${customerNumber}`);
         const bogos = await getBogoForItem(mainItemCode, customerNumber);
+        console.log(`Found ${bogos.length} BOGO rules for ${mainItemCode}`);
+
+        if (bogos.length > 0) {
+          console.log('BOGO rules:', JSON.stringify(bogos, null, 2));
+        }
 
         for (const bogo of bogos) {
+          console.log(`\nProcessing BOGO rule: ${bogo.promo_name}`);
+          console.log(`  Buy ${bogo.buy_qty} → Get ${bogo.get_qty}`);
+          console.log(`  Cart qty: ${cartItem.quantity}`);
+
           const bogoQty = calculateBogoQty(cartItem.quantity, bogo.buy_qty, bogo.get_qty);
+          console.log(`  Calculated BOGO qty: ${bogoQty}`);
 
           if (bogoQty > 0) {
-            newBogoItems.push({
+            const bogoItem = {
               // Identification
               itemNumber: bogo.promo_item_code,
               itemDesc: bogo.promo_item_desc,
@@ -385,14 +407,26 @@ const CheckoutScreen = ({ navigation, route }) => {
               tax_rate: 0, // BOGO items typically don't have tax
               // Currency (inherit from parent or default)
               currency: cartItem.currency || currency || 'MUR',
-            });
+            };
+            console.log('  Adding BOGO item:', bogoItem.itemNumber, '| Qty:', bogoItem.quantity);
+            newBogoItems.push(bogoItem);
+          } else {
+            console.log('  SKIP: BOGO qty is 0 (not enough main items)');
           }
         }
       }
 
+      console.log('\n=== BOGO CALCULATION COMPLETE ===');
+      console.log('Total BOGO items to add:', newBogoItems.length);
+      if (newBogoItems.length > 0) {
+        console.log('BOGO items:', newBogoItems.map(b => `${b.itemNumber} x${b.quantity}`).join(', '));
+      }
+
       setBogoItems(newBogoItems);
     } catch (error) {
+      console.error('=== BOGO CALCULATION ERROR ===');
       console.error('Error calculating BOGO items:', error);
+      console.error('Stack:', error.stack);
     }
   };
 
