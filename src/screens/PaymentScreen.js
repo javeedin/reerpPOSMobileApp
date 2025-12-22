@@ -272,11 +272,11 @@ const PaymentScreen = ({ navigation, route }) => {
   };
 
   const handleDone = () => {
-    navigation.navigate('Home');
+    navigation.navigate('MainTabs');
   };
 
   const handleNewOrder = () => {
-    navigation.navigate('Home');
+    navigation.navigate('MainTabs');
   };
 
   return (
