@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
 import { calculateLineTotal, calculateOrderTotals, createOrder, ORDER_STATUS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
+import { getOnhand } from '../services/syncService';
+import { getAllLocalAdjustments } from '../services/onhandService';
 
 // Format number with commas (e.g., 1,250.00)
 const formatNumber = (num) => {
@@ -80,11 +82,15 @@ const TotalsFlow = ({ totals, currency, menuConfig }) => {
   );
 };
 
-const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemove, onDiscountChange, currency }) => {
+const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemove, onDiscountChange, currency, onhandQty }) => {
   const [editDiscount, setEditDiscount] = useState(false);
   const [discountValue, setDiscountValue] = useState(item.discount?.toString() || '0');
   const lineTotals = calculateLineTotal(item, menuConfig);
   const discountPercent = item.discount || 0;
+
+  // Check if quantity exceeds available stock
+  const exceedsStock = onhandQty !== undefined && item.quantity > onhandQty;
+  const canIncrease = onhandQty === undefined || item.quantity < onhandQty;
 
   const handleSaveDiscount = () => {
     const discount = parseFloat(discountValue) || 0;
@@ -92,21 +98,48 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
     setEditDiscount(false);
   };
 
+  // Get stock status color
+  const getStockColor = (qty) => {
+    if (qty <= 0) return colors.accentRed || '#E53935';
+    if (qty < 10) return colors.accentOrange || '#FF9800';
+    return colors.accentGreen || '#4CAF50';
+  };
+
   return (
-    <View style={styles.orderLineCard}>
+    <View style={[styles.orderLineCard, exceedsStock && styles.orderLineCardWarning]}>
       {/* Header Row - Item Name and Delete */}
       <View style={styles.lineHeader}>
-        <View style={styles.lineNumberBadge}>
+        <View style={[styles.lineNumberBadge, exceedsStock && styles.lineNumberBadgeWarning]}>
           <Text style={styles.lineNumberText}>{index + 1}</Text>
         </View>
         <View style={styles.lineHeaderInfo}>
           <Text style={styles.lineName} numberOfLines={2}>{item.itemDesc || item.itemNumber}</Text>
-          <Text style={styles.lineCode}>{item.itemNumber}</Text>
+          <View style={styles.lineCodeRow}>
+            <Text style={styles.lineCode}>{item.itemNumber}</Text>
+            {onhandQty !== undefined && (
+              <View style={[styles.qohBadge, { backgroundColor: getStockColor(onhandQty) + '20' }]}>
+                <Ionicons name="cube-outline" size={10} color={getStockColor(onhandQty)} />
+                <Text style={[styles.qohText, { color: getStockColor(onhandQty) }]}>
+                  QOH: {onhandQty}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
         <TouchableOpacity style={styles.deleteBtn} onPress={() => onRemove(index)}>
           <Ionicons name="trash-outline" size={18} color={colors.accentRed || '#E53935'} />
         </TouchableOpacity>
       </View>
+
+      {/* Stock Warning */}
+      {exceedsStock && (
+        <View style={styles.stockWarning}>
+          <Ionicons name="warning" size={14} color={colors.accentRed || '#E53935'} />
+          <Text style={styles.stockWarningText}>
+            Quantity ({item.quantity}) exceeds available stock ({onhandQty})
+          </Text>
+        </View>
+      )}
 
       {/* Details Row */}
       <View style={styles.lineDetails}>
@@ -117,9 +150,13 @@ const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemo
             <TouchableOpacity style={styles.qtyBtn} onPress={() => onDecrease(index)}>
               <Ionicons name="remove" size={16} color={colors.textPrimary} />
             </TouchableOpacity>
-            <Text style={styles.qtyValue}>{item.quantity}</Text>
-            <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnAdd]} onPress={() => onIncrease(index)}>
-              <Ionicons name="add" size={16} color="#FFFFFF" />
+            <Text style={[styles.qtyValue, exceedsStock && styles.qtyValueWarning]}>{item.quantity}</Text>
+            <TouchableOpacity
+              style={[styles.qtyBtn, styles.qtyBtnAdd, !canIncrease && styles.qtyBtnDisabled]}
+              onPress={() => canIncrease && onIncrease(index)}
+              disabled={!canIncrease}
+            >
+              <Ionicons name="add" size={16} color={canIncrease ? "#FFFFFF" : colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -194,9 +231,57 @@ const CheckoutScreen = ({ navigation, route }) => {
   const [cart, setCart] = useState(initialCart || []);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [onhandMap, setOnhandMap] = useState({});
 
   const totals = calculateOrderTotals(cart, menuConfig);
   const currency = cart[0]?.currency || 'MUR';
+
+  // Load onhand data on mount
+  useEffect(() => {
+    loadOnhandData();
+  }, []);
+
+  const loadOnhandData = async () => {
+    try {
+      const onhandData = await getOnhand() || [];
+      const adjustments = await getAllLocalAdjustments() || {};
+
+      // Build a map of itemNumber -> available qty
+      const map = {};
+      onhandData.forEach(item => {
+        const itemNum = item.itemNumber;
+        if (itemNum) {
+          map[itemNum] = (map[itemNum] || 0) + (item.primaryQuantity || 0);
+        }
+      });
+
+      // Apply local adjustments
+      Object.keys(adjustments).forEach(itemNum => {
+        if (map[itemNum] !== undefined) {
+          map[itemNum] += adjustments[itemNum];
+        } else {
+          map[itemNum] = adjustments[itemNum];
+        }
+      });
+
+      setOnhandMap(map);
+    } catch (error) {
+      console.error('Load onhand error:', error);
+    }
+  };
+
+  // Get onhand qty for an item
+  const getOnhandQty = (item) => {
+    const itemNum = item.itemNumber || item.item_number;
+    const qty = onhandMap[itemNum];
+    return qty !== undefined ? Math.max(0, qty) : undefined;
+  };
+
+  // Check if any item exceeds stock
+  const hasStockIssues = cart.some(item => {
+    const onhandQty = getOnhandQty(item);
+    return onhandQty !== undefined && item.quantity > onhandQty;
+  });
 
   const handleDiscountChange = (index, discount, discountType = 'percent') => {
     const newCart = [...cart];
@@ -205,6 +290,15 @@ const CheckoutScreen = ({ navigation, route }) => {
   };
 
   const handleIncreaseQty = (index) => {
+    const item = cart[index];
+    const onhandQty = getOnhandQty(item);
+
+    // Check stock limit
+    if (onhandQty !== undefined && item.quantity >= onhandQty) {
+      Alert.alert('Stock Limit', `Only ${onhandQty} units available for ${item.itemDesc || item.itemNumber}.`);
+      return;
+    }
+
     const newCart = [...cart];
     newCart[index] = { ...newCart[index], quantity: newCart[index].quantity + 1 };
     setCart(newCart);
@@ -285,6 +379,26 @@ const CheckoutScreen = ({ navigation, route }) => {
       return;
     }
 
+    // Check for stock issues
+    if (hasStockIssues) {
+      const itemsWithIssues = cart.filter(item => {
+        const onhandQty = getOnhandQty(item);
+        return onhandQty !== undefined && item.quantity > onhandQty;
+      });
+
+      const itemsList = itemsWithIssues.map(item => {
+        const onhandQty = getOnhandQty(item);
+        return `• ${item.itemDesc || item.itemNumber}: ${item.quantity} ordered, ${onhandQty} available`;
+      }).join('\n');
+
+      Alert.alert(
+        'Stock Issues',
+        `The following items exceed available stock:\n\n${itemsList}\n\nPlease adjust quantities before proceeding.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     navigation.navigate('Payment', {
       menuConfig,
       customer,
@@ -350,6 +464,7 @@ const CheckoutScreen = ({ navigation, route }) => {
             onRemove={handleRemoveItem}
             onDiscountChange={handleDiscountChange}
             currency={currency}
+            onhandQty={getOnhandQty(item)}
           />
         ))}
 
@@ -381,12 +496,19 @@ const CheckoutScreen = ({ navigation, route }) => {
           <Text style={styles.draftBtnText}>Save Draft</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.paymentBtn, cart.length === 0 && styles.paymentBtnDisabled]}
+          style={[
+            styles.paymentBtn,
+            cart.length === 0 && styles.paymentBtnDisabled,
+            hasStockIssues && styles.paymentBtnWarning
+          ]}
           onPress={handleProceedToPayment}
           disabled={saving || cart.length === 0}
         >
-          <Text style={styles.paymentBtnText}>Proceed to Payment</Text>
-          <Ionicons name="card-outline" size={20} color="#FFFFFF" />
+          {hasStockIssues && <Ionicons name="warning" size={18} color="#FFFFFF" />}
+          <Text style={styles.paymentBtnText}>
+            {hasStockIssues ? 'Stock Issues' : 'Proceed to Payment'}
+          </Text>
+          <Ionicons name={hasStockIssues ? "alert-circle" : "card-outline"} size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
     </View>
@@ -549,6 +671,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 12,
     padding: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  orderLineCardWarning: {
+    borderColor: colors.accentRed || '#E53935',
+    backgroundColor: (colors.accentRed || '#E53935') + '05',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -569,6 +697,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 10,
   },
+  lineNumberBadgeWarning: {
+    backgroundColor: colors.accentRed || '#E53935',
+  },
   lineNumberText: {
     fontSize: 12,
     fontWeight: 'bold',
@@ -588,6 +719,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     fontFamily: 'monospace',
+  },
+  lineCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  qohBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  qohText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  stockWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: (colors.accentRed || '#E53935') + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 10,
+    gap: 6,
+  },
+  stockWarningText: {
+    fontSize: 11,
+    color: colors.accentRed || '#E53935',
+    fontWeight: '500',
+    flex: 1,
   },
   deleteBtn: {
     width: 36,
@@ -644,6 +808,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     minWidth: 20,
     textAlign: 'center',
+  },
+  qtyValueWarning: {
+    color: colors.accentRed || '#E53935',
+  },
+  qtyBtnDisabled: {
+    backgroundColor: colors.surface,
   },
   priceValue: {
     fontSize: 14,
@@ -795,6 +965,9 @@ const styles = StyleSheet.create({
   },
   paymentBtnDisabled: {
     backgroundColor: colors.textMuted,
+  },
+  paymentBtnWarning: {
+    backgroundColor: colors.accentRed || '#E53935',
   },
   paymentBtnText: {
     color: '#FFFFFF',
