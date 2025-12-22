@@ -1,7 +1,39 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SQLite from 'expo-sqlite';
 import axios from 'axios';
 
 const BASE_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP';
+
+// SQLite database for pricelist (NO size limit!)
+let pricelistDb = null;
+
+const getPricelistDb = async () => {
+  if (!pricelistDb) {
+    pricelistDb = await SQLite.openDatabaseAsync('pricelist.db');
+    // Create table if not exists
+    await pricelistDb.execAsync(`
+      CREATE TABLE IF NOT EXISTS pricelist_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_name TEXT,
+        item_desc TEXT,
+        barcode TEXT,
+        item_number TEXT,
+        currency_code TEXT,
+        pricing_uom_code TEXT,
+        tax_code TEXT,
+        tax_rate TEXT,
+        base_price TEXT,
+        allow_discount TEXT,
+        alcoholic_flag TEXT,
+        inventory_item_id TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_list_name ON pricelist_items(list_name);
+      CREATE INDEX IF NOT EXISTS idx_item_number ON pricelist_items(item_number);
+      CREATE INDEX IF NOT EXISTS idx_barcode ON pricelist_items(barcode);
+    `);
+  }
+  return pricelistDb;
+};
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -424,14 +456,14 @@ export const clearAllDataForLargePricelistSync = async () => {
   try {
     console.log('Clearing ALL data to make room for large pricelist...');
 
-    // Clear all sync data
+    // Clear all sync data from AsyncStorage
     await clearFromStorage(STORAGE_KEYS.CUSTOMERS);
     await clearFromStorage(STORAGE_KEYS.ITEMS);
     await clearFromStorage(STORAGE_KEYS.AGENTS);
     await clearFromStorage(STORAGE_KEYS.ONHAND);
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS);
 
-    // Clear all pricelist data
+    // Clear all pricelist data from AsyncStorage (legacy)
     const allKeys = await AsyncStorage.getAllKeys();
     const pricelistKeys = allKeys.filter(key =>
       key.startsWith(PRICELIST_KEY_PREFIX) ||
@@ -441,6 +473,15 @@ export const clearAllDataForLargePricelistSync = async () => {
 
     if (pricelistKeys.length > 0) {
       await AsyncStorage.multiRemove(pricelistKeys);
+    }
+
+    // Clear SQLite pricelist data
+    try {
+      const db = await getPricelistDb();
+      await db.runAsync('DELETE FROM pricelist_items');
+      console.log('Cleared pricelist data from SQLite');
+    } catch (sqliteError) {
+      console.error('Error clearing SQLite pricelist:', sqliteError);
     }
 
     // Reset metadata (but keep pricelist names)
@@ -454,22 +495,22 @@ export const clearAllDataForLargePricelistSync = async () => {
   }
 };
 
-// Sync a single price list with pagination (2000 items per fetch using p_start_row/p_end_row)
-// Each price list is stored in multiple keys: sync_pricelist_NAME_0, sync_pricelist_NAME_1, etc.
-// Each key holds 5000 items, merged when loading for reporting
+// Sync a single price list with pagination - stores in SQLite (NO size limit!)
+// SQLite can store unlimited items, unlike AsyncStorage which has a 6MB limit
 export const syncSinglePriceList = async (priceListName, onProgress, clearAllFirst = true) => {
   try {
     const encodedName = encodeURIComponent(priceListName);
-    const storageKey = getPriceListStorageKey(priceListName);
     let startRow = 1;
-    const batchSize = PRICELIST_FETCH_BATCH_SIZE; // Fetch 500 items at a time
+    const batchSize = PRICELIST_FETCH_BATCH_SIZE; // Fetch 2000 items at a time
     let hasMore = true;
-    let chunkIndex = 0;
     let totalItems = 0;
 
-    console.log(`Syncing price list: ${priceListName} -> storage key: ${storageKey}`);
+    console.log(`Syncing price list: ${priceListName} -> SQLite database`);
 
-    // FIRST: Clear old data to free up space
+    // Get SQLite database
+    const db = await getPricelistDb();
+
+    // FIRST: Clear old data for this pricelist
     if (onProgress) {
       onProgress({
         status: 'Clearing old data...',
@@ -479,14 +520,17 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
     }
 
     if (clearAllFirst) {
-      // Clear ALL pricelist data (but NOT customers, onhand, etc.)
-      await clearAllPriceListDataBeforeSync();
+      // Clear ALL pricelist data from SQLite
+      await db.runAsync('DELETE FROM pricelist_items');
+      console.log('Cleared all pricelist data from SQLite');
     } else {
       // Just clear this specific pricelist
-      await clearPriceListStorageCompletely(storageKey);
+      await db.runAsync('DELETE FROM pricelist_items WHERE list_name = ?', [priceListName]);
+      console.log(`Cleared pricelist ${priceListName} from SQLite`);
     }
 
-    // Accumulate items and save in 5000-item chunks
+    // Batch insert size (insert 500 items at a time for efficiency)
+    const INSERT_BATCH_SIZE = 500;
     let pendingItems = [];
 
     while (hasMore) {
@@ -519,34 +563,21 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
         pendingItems = [...pendingItems, ...extractedItems];
         totalItems += extractedItems.length;
 
-        // Save when we have 5000 items (or more)
-        while (pendingItems.length >= PRICELIST_CHUNK_SIZE) {
-          const chunk = pendingItems.slice(0, PRICELIST_CHUNK_SIZE);
-          pendingItems = pendingItems.slice(PRICELIST_CHUNK_SIZE);
+        // Insert in batches of 500
+        while (pendingItems.length >= INSERT_BATCH_SIZE) {
+          const batch = pendingItems.slice(0, INSERT_BATCH_SIZE);
+          pendingItems = pendingItems.slice(INSERT_BATCH_SIZE);
 
-          try {
-            if (onProgress) {
-              onProgress({
-                status: `Saving key ${chunkIndex + 1} (${(chunkIndex * PRICELIST_CHUNK_SIZE).toLocaleString()} - ${((chunkIndex + 1) * PRICELIST_CHUNK_SIZE).toLocaleString()} items)...`,
-                fetched: totalItems,
-                priceListName,
-              });
-            }
-            await AsyncStorage.setItem(`${storageKey}_${chunkIndex}`, JSON.stringify(chunk));
-            console.log(`Saved ${storageKey}_${chunkIndex} with ${chunk.length} items`);
-            chunkIndex++;
-          } catch (saveError) {
-            console.error('Storage save error:', saveError);
-            if (saveError.message && saveError.message.includes('full')) {
-              await clearPriceListStorageCompletely(storageKey);
-              return {
-                success: false,
-                error: `Storage full at ${totalItems.toLocaleString()} items. Use "Clear All & Sync" option.`,
-                priceListName
-              };
-            }
-            throw saveError;
+          if (onProgress) {
+            onProgress({
+              status: `Saving to SQLite... ${totalItems.toLocaleString()} items`,
+              fetched: totalItems,
+              priceListName,
+            });
           }
+
+          // Insert batch into SQLite
+          await insertPricelistBatch(db, batch);
         }
 
         startRow = endRow + 1;
@@ -558,52 +589,34 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
       }
     }
 
-    // Save any remaining items (less than 5000)
+    // Insert any remaining items
     if (pendingItems.length > 0) {
-      try {
-        if (onProgress) {
-          onProgress({
-            status: `Saving final key ${chunkIndex + 1} (${pendingItems.length} items)...`,
-            fetched: totalItems,
-            priceListName,
-          });
-        }
-        await AsyncStorage.setItem(`${storageKey}_${chunkIndex}`, JSON.stringify(pendingItems));
-        console.log(`Saved ${storageKey}_${chunkIndex} with ${pendingItems.length} items (final)`);
-        chunkIndex++;
-      } catch (saveError) {
-        console.error('Storage save error:', saveError);
-        if (saveError.message && saveError.message.includes('full')) {
-          await clearPriceListStorageCompletely(storageKey);
-          return {
-            success: false,
-            error: `Storage full at ${totalItems.toLocaleString()} items. Use "Clear All & Sync" option.`,
-            priceListName
-          };
-        }
-        throw saveError;
+      if (onProgress) {
+        onProgress({
+          status: `Saving final batch... ${pendingItems.length} items`,
+          fetched: totalItems,
+          priceListName,
+        });
       }
+      await insertPricelistBatch(db, pendingItems);
     }
 
-    // Save the chunk count at the end
-    await AsyncStorage.setItem(`${storageKey}_count`, JSON.stringify(chunkIndex));
-
-    // Update sync status for this price list
+    // Update sync status for this price list (still use AsyncStorage for metadata - it's small)
     const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
     syncStatus[priceListName] = {
       lastSync: new Date().toISOString(),
       count: totalItems,
-      storageKey: storageKey,
+      storage: 'sqlite', // Mark as SQLite storage
     };
     await saveToStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS, syncStatus);
 
-    // Update overall metadata with total count from all pricelists
+    // Update overall metadata with total count
     const totalCount = await getTotalPriceListItemCount();
     await updateSyncMetadata('priceList', totalCount);
 
     if (onProgress) {
       onProgress({
-        status: `Done: ${totalItems.toLocaleString()} items`,
+        status: `Done: ${totalItems.toLocaleString()} items (SQLite)`,
         fetched: totalItems,
         priceListName,
         complete: true,
@@ -615,6 +628,30 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
     console.error(`Sync price list ${priceListName} error:`, error);
     return { success: false, error: error.message, priceListName };
   }
+};
+
+// Helper function to insert a batch of pricelist items into SQLite
+const insertPricelistBatch = async (db, items) => {
+  // Use a transaction for better performance
+  const placeholders = items.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+  const values = items.flatMap(item => [
+    item.list_name || '',
+    item.item_desc || '',
+    item.barcode || '',
+    item.item_number || '',
+    item.currency_code || '',
+    item.pricing_uom_code || '',
+    item.tax_code || '',
+    item.tax_rate || '',
+    item.base_price || '',
+    item.allow_discount || '',
+    item.alcoholic_flag || '',
+    item.inventory_item_id || '',
+  ]);
+
+  const sql = `INSERT INTO pricelist_items (list_name, item_desc, barcode, item_number, currency_code, pricing_uom_code, tax_code, tax_rate, base_price, allow_discount, alcoholic_flag, inventory_item_id) VALUES ${placeholders}`;
+
+  await db.runAsync(sql, values);
 };
 
 // Get price list sync status
@@ -676,38 +713,83 @@ export const syncPriceList = async (onProgress, username) => {
 // Get price list names (for displaying list)
 export const getPriceListNames = async () => loadFromStorage(STORAGE_KEYS.PRICE_LIST);
 
-// Get total item count from all pricelists
+// Get total item count from SQLite
 const getTotalPriceListItemCount = async () => {
-  const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
-  let total = 0;
-  for (const name of Object.keys(syncStatus)) {
-    total += syncStatus[name].count || 0;
+  try {
+    const db = await getPricelistDb();
+    const result = await db.getFirstAsync('SELECT COUNT(*) as count FROM pricelist_items');
+    return result?.count || 0;
+  } catch (error) {
+    console.error('Error getting pricelist count from SQLite:', error);
+    // Fallback to metadata if SQLite fails
+    const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
+    let total = 0;
+    for (const name of Object.keys(syncStatus)) {
+      total += syncStatus[name].count || 0;
+    }
+    return total;
   }
-  return total;
 };
 
-// Get price list items (all items from all price lists - merged in memory)
+// Search pricelist items by barcode or item number (fast with SQLite indexes)
+export const searchPriceListItems = async (query, limit = 50) => {
+  try {
+    const db = await getPricelistDb();
+    const items = await db.getAllAsync(
+      `SELECT * FROM pricelist_items
+       WHERE barcode LIKE ? OR item_number LIKE ? OR item_desc LIKE ?
+       LIMIT ?`,
+      [`%${query}%`, `%${query}%`, `%${query}%`, limit]
+    );
+    return items;
+  } catch (error) {
+    console.error('Error searching pricelist items:', error);
+    return [];
+  }
+};
+
+// Get pricelist item by exact barcode (fast lookup)
+export const getPriceListItemByBarcode = async (barcode) => {
+  try {
+    const db = await getPricelistDb();
+    const item = await db.getFirstAsync(
+      'SELECT * FROM pricelist_items WHERE barcode = ?',
+      [barcode]
+    );
+    return item;
+  } catch (error) {
+    console.error('Error getting pricelist item by barcode:', error);
+    return null;
+  }
+};
+
+// Get price list items (all items from all price lists - from SQLite)
 export const getPriceListItems = async () => {
-  const syncStatus = await loadFromStorage(STORAGE_KEYS.PRICE_LIST_SYNC_STATUS) || {};
-  let allItems = [];
-
-  // Load from each individual pricelist storage key
-  for (const priceListName of Object.keys(syncStatus)) {
-    const storageKey = syncStatus[priceListName].storageKey || getPriceListStorageKey(priceListName);
-    const items = await loadFromStorage(storageKey) || [];
-    allItems = [...allItems, ...items];
+  try {
+    const db = await getPricelistDb();
+    const items = await db.getAllAsync('SELECT * FROM pricelist_items');
+    console.log(`Loaded ${items.length} total pricelist items from SQLite`);
+    return items;
+  } catch (error) {
+    console.error('Error loading pricelist items from SQLite:', error);
+    return [];
   }
-
-  console.log(`Loaded ${allItems.length} total pricelist items from ${Object.keys(syncStatus).length} pricelists`);
-  return allItems;
 };
 
-// Get items for a specific price list
+// Get items for a specific price list (from SQLite)
 export const getItemsForPriceList = async (priceListName) => {
-  // Load directly from this pricelist's individual storage key
-  const storageKey = getPriceListStorageKey(priceListName);
-  const items = await loadFromStorage(storageKey) || [];
-  return items;
+  try {
+    const db = await getPricelistDb();
+    const items = await db.getAllAsync(
+      'SELECT * FROM pricelist_items WHERE list_name = ?',
+      [priceListName]
+    );
+    console.log(`Loaded ${items.length} items for pricelist ${priceListName} from SQLite`);
+    return items;
+  } catch (error) {
+    console.error(`Error loading pricelist ${priceListName} from SQLite:`, error);
+    return [];
+  }
 };
 
 // Sync Fusion Onhand Balances
@@ -854,7 +936,7 @@ const clearAllPriceListStorage = async () => {
   }
 };
 
-// Clear all synced data
+// Clear all synced data (including SQLite pricelist data)
 export const clearAllSyncData = async () => {
   try {
     await clearFromStorage(STORAGE_KEYS.CUSTOMERS);
@@ -862,9 +944,19 @@ export const clearAllSyncData = async () => {
     await clearFromStorage(STORAGE_KEYS.AGENTS);
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST);
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS); // Legacy key
-    await clearAllPriceListStorage(); // Clear all individual pricelist keys
+    await clearAllPriceListStorage(); // Clear all individual pricelist keys (legacy AsyncStorage)
     await clearFromStorage(STORAGE_KEYS.ONHAND);
     await AsyncStorage.removeItem(STORAGE_KEYS.SYNC_META);
+
+    // Clear SQLite pricelist data
+    try {
+      const db = await getPricelistDb();
+      await db.runAsync('DELETE FROM pricelist_items');
+      console.log('Cleared pricelist data from SQLite');
+    } catch (sqliteError) {
+      console.error('Error clearing SQLite pricelist:', sqliteError);
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
