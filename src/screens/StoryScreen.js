@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,335 +7,375 @@ import {
   StatusBar,
   Dimensions,
   Animated,
-  Image,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
-import { getOrders } from '../services/orderService';
+import { getOrders, ORDER_STATUS, PAYMENT_METHODS } from '../services/orderService';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const STORY_DURATION = 4000; // 4 seconds per story
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SNAKE_WIDTH = 4;
+const NODE_SIZE = 16;
+const ANIMATION_DELAY = 150; // ms between each node animation
 
 // Sample story data for demo
 const SAMPLE_STORY_EVENTS = [
-  {
-    id: '1',
-    type: 'day_start',
-    time: '10:00 AM',
-    title: 'Store Opened',
-    subtitle: 'A new day begins!',
-    icon: 'sunny',
-    color: '#FF9500',
-  },
-  {
-    id: '2',
-    type: 'order',
-    time: '10:15 AM',
-    title: 'First Order!',
-    subtitle: 'Customer: John Smith',
-    amount: 'MUR 1,250.00',
-    items: 3,
-    icon: 'cart',
-    color: '#4CAF50',
-  },
-  {
-    id: '3',
-    type: 'idle',
-    time: '10:30 AM',
-    title: 'Quiet Time',
-    subtitle: '45 minutes of peace',
-    icon: 'cafe',
-    color: '#9C27B0',
-  },
-  {
-    id: '4',
-    type: 'order',
-    time: '11:15 AM',
-    title: 'Order #102',
-    subtitle: 'Customer: Sarah Johnson',
-    amount: 'MUR 3,450.00',
-    items: 7,
-    icon: 'cart',
-    color: '#2196F3',
-  },
-  {
-    id: '5',
-    type: 'order',
-    time: '11:45 AM',
-    title: 'Order #103',
-    subtitle: 'Customer: Mike Chen',
-    amount: 'MUR 890.00',
-    items: 2,
-    icon: 'cart',
-    color: '#00BCD4',
-  },
-  {
-    id: '6',
-    type: 'milestone',
-    time: '12:00 PM',
-    title: 'Lunch Rush!',
-    subtitle: '5 orders in the last hour',
-    icon: 'trending-up',
-    color: '#FF5722',
-  },
-  {
-    id: '7',
-    type: 'order',
-    time: '12:30 PM',
-    title: 'Big Order!',
-    subtitle: 'Customer: ABC Corp',
-    amount: 'MUR 12,500.00',
-    items: 15,
-    icon: 'star',
-    color: '#FFD700',
-    highlight: true,
-  },
-  {
-    id: '8',
-    type: 'idle',
-    time: '02:00 PM',
-    title: 'Afternoon Break',
-    subtitle: '1 hour 30 minutes quiet',
-    icon: 'partly-sunny',
-    color: '#607D8B',
-  },
-  {
-    id: '9',
-    type: 'order',
-    time: '03:30 PM',
-    title: 'Order #108',
-    subtitle: 'Customer: Lisa Wong',
-    amount: 'MUR 2,100.00',
-    items: 4,
-    icon: 'cart',
-    color: '#E91E63',
-  },
-  {
-    id: '10',
-    type: 'payment',
-    time: '04:00 PM',
-    title: 'Payment Received',
-    subtitle: 'Invoice #INV-2024-001 paid',
-    amount: 'MUR 15,000.00',
-    icon: 'card',
-    color: '#4CAF50',
-  },
-  {
-    id: '11',
-    type: 'summary',
-    time: '08:00 PM',
-    title: 'Day Complete!',
-    subtitle: 'Great work today!',
-    totalOrders: 12,
-    totalAmount: 'MUR 45,890.00',
-    icon: 'trophy',
-    color: '#FFD700',
-  },
+  { id: '1', type: 'day_start', time: '10:00 AM', title: 'Store Opened', subtitle: 'Ready for business!', icon: 'sunny', color: '#FF9500' },
+  { id: '2', type: 'order', time: '10:15 AM', title: 'First Order!', customer: 'John Smith', amount: 1250, items: 3, paymentMethod: 'CASH', icon: 'cart', color: '#4CAF50' },
+  { id: '3', type: 'idle', time: '10:30 AM', title: 'Quiet Time', duration: '45 min', icon: 'cafe', color: '#9C27B0' },
+  { id: '4', type: 'order', time: '11:15 AM', title: 'Order #102', customer: 'Sarah Johnson', amount: 3450, items: 7, paymentMethod: 'CARD', icon: 'cart', color: '#2196F3' },
+  { id: '5', type: 'order', time: '11:45 AM', title: 'Order #103', customer: 'Mike Chen', amount: 890, items: 2, paymentMethod: 'MCB_JUICE', icon: 'cart', color: '#00BCD4' },
+  { id: '6', type: 'rush', time: '12:00 PM', title: 'Lunch Rush!', subtitle: '5 orders in 1 hour', icon: 'trending-up', color: '#FF5722' },
+  { id: '7', type: 'order', time: '12:30 PM', title: 'Big Order!', customer: 'ABC Corp', amount: 12500, items: 15, paymentMethod: 'CARD', icon: 'star', color: '#FFD700', highlight: true },
+  { id: '8', type: 'order', time: '01:00 PM', title: 'Order #105', customer: 'Emma Wilson', amount: 2200, items: 4, paymentMethod: 'CASH', icon: 'cart', color: '#4CAF50' },
+  { id: '9', type: 'idle', time: '02:00 PM', title: 'Afternoon Break', duration: '1h 30min', icon: 'partly-sunny', color: '#607D8B' },
+  { id: '10', type: 'order', time: '03:30 PM', title: 'Order #108', customer: 'Lisa Wong', amount: 2100, items: 4, paymentMethod: 'CARD', icon: 'cart', color: '#E91E63' },
+  { id: '11', type: 'order', time: '04:15 PM', title: 'Order #109', customer: 'Tom Brown', amount: 1800, items: 3, paymentMethod: 'MCB_JUICE', icon: 'cart', color: '#3F51B5' },
+  { id: '12', type: 'order', time: '05:00 PM', title: 'Order #110', customer: 'Grace Lee', amount: 4500, items: 8, paymentMethod: 'CASH', icon: 'cart', color: '#009688' },
+  { id: '13', type: 'order', time: '06:30 PM', title: 'Order #111', customer: 'David Park', amount: 3200, items: 5, paymentMethod: 'CARD', icon: 'cart', color: '#795548' },
+  { id: '14', type: 'order', time: '07:30 PM', title: 'Last Order', customer: 'Amy Chen', amount: 1560, items: 3, paymentMethod: 'CASH', icon: 'cart', color: '#607D8B' },
+  { id: '15', type: 'day_end', time: '08:00 PM', title: 'Store Closed', subtitle: 'Great day!', icon: 'moon', color: '#1A237E' },
 ];
 
-// Get background gradient based on time
-const getTimeGradient = (time) => {
-  const hour = parseInt(time.split(':')[0]);
-  const isPM = time.includes('PM');
-  const hour24 = isPM && hour !== 12 ? hour + 12 : hour;
+// Timeline Node Component with snake animation
+const TimelineNode = ({ event, index, isLeft, animValue, isLast }) => {
+  const translateY = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [50, 0],
+  });
 
-  if (hour24 >= 6 && hour24 < 10) {
-    return ['#FF9500', '#FF5722']; // Morning
-  } else if (hour24 >= 10 && hour24 < 14) {
-    return ['#2196F3', '#00BCD4']; // Late Morning
-  } else if (hour24 >= 14 && hour24 < 17) {
-    return ['#9C27B0', '#E91E63']; // Afternoon
-  } else if (hour24 >= 17 && hour24 < 20) {
-    return ['#FF5722', '#E91E63']; // Evening
-  } else {
-    return ['#1A237E', '#311B92']; // Night
-  }
-};
-
-// Story Card Component
-const StoryCard = ({ event, isActive }) => {
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (isActive) {
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          friction: 6,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      scaleAnim.setValue(0.8);
-      opacityAnim.setValue(0);
-    }
-  }, [isActive]);
-
-  if (event.type === 'summary') {
-    return (
-      <Animated.View
-        style={[
-          styles.storyCard,
-          styles.summaryCard,
-          { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
-        ]}
-      >
-        <View style={[styles.iconContainer, { backgroundColor: event.color + '30' }]}>
-          <Ionicons name={event.icon} size={60} color={event.color} />
-        </View>
-        <Text style={styles.summaryTitle}>{event.title}</Text>
-        <Text style={styles.summarySubtitle}>{event.subtitle}</Text>
-
-        <View style={styles.summaryStats}>
-          <View style={styles.summaryStat}>
-            <Text style={styles.summaryStatValue}>{event.totalOrders}</Text>
-            <Text style={styles.summaryStatLabel}>Orders</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryStat}>
-            <Text style={styles.summaryStatValue}>{event.totalAmount}</Text>
-            <Text style={styles.summaryStatLabel}>Total Sales</Text>
-          </View>
-        </View>
-      </Animated.View>
-    );
-  }
+  const scale = animValue.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 1.2, 1],
+  });
 
   return (
     <Animated.View
       style={[
-        styles.storyCard,
-        event.highlight && styles.highlightCard,
-        { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
+        styles.nodeContainer,
+        isLeft ? styles.nodeLeft : styles.nodeRight,
+        { opacity: animValue, transform: [{ translateY }] },
       ]}
     >
-      <Text style={styles.storyTime}>{event.time}</Text>
+      {/* Connection line to center */}
+      <View style={[styles.connectionLine, isLeft ? styles.connectionLeft : styles.connectionRight]} />
 
-      <View style={[styles.iconContainer, { backgroundColor: event.color + '30' }]}>
-        <Ionicons name={event.icon} size={48} color={event.color} />
-      </View>
+      {/* Node dot on the snake */}
+      <Animated.View
+        style={[
+          styles.nodeDot,
+          { backgroundColor: event.color, transform: [{ scale }] },
+          isLeft ? styles.nodeDotLeft : styles.nodeDotRight,
+        ]}
+      />
 
-      <Text style={styles.storyTitle}>{event.title}</Text>
-      <Text style={styles.storySubtitle}>{event.subtitle}</Text>
-
-      {event.amount && (
-        <View style={styles.amountContainer}>
-          <Text style={styles.amountLabel}>Amount</Text>
-          <Text style={styles.amountValue}>{event.amount}</Text>
+      {/* Event Card */}
+      <Animated.View
+        style={[
+          styles.eventCard,
+          event.highlight && styles.highlightCard,
+          { transform: [{ scale: animValue }] },
+        ]}
+      >
+        <View style={styles.eventHeader}>
+          <View style={[styles.eventIcon, { backgroundColor: event.color + '20' }]}>
+            <Ionicons name={event.icon} size={20} color={event.color} />
+          </View>
+          <Text style={styles.eventTime}>{event.time}</Text>
         </View>
-      )}
 
-      {event.items && (
-        <View style={styles.itemsContainer}>
-          <Ionicons name="cube-outline" size={16} color={colors.textMuted} />
+        <Text style={styles.eventTitle}>{event.title}</Text>
+
+        {event.customer && (
+          <Text style={styles.eventCustomer}>{event.customer}</Text>
+        )}
+
+        {event.subtitle && (
+          <Text style={styles.eventSubtitle}>{event.subtitle}</Text>
+        )}
+
+        {event.duration && (
+          <View style={styles.durationBadge}>
+            <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+            <Text style={styles.durationText}>{event.duration}</Text>
+          </View>
+        )}
+
+        {event.amount && (
+          <View style={styles.amountRow}>
+            <Text style={styles.amountText}>MUR {event.amount.toLocaleString()}</Text>
+            {event.paymentMethod && (
+              <View style={[styles.paymentBadge, { backgroundColor: getPaymentColor(event.paymentMethod) + '20' }]}>
+                <Ionicons name={getPaymentIcon(event.paymentMethod)} size={12} color={getPaymentColor(event.paymentMethod)} />
+                <Text style={[styles.paymentBadgeText, { color: getPaymentColor(event.paymentMethod) }]}>
+                  {formatPaymentMethod(event.paymentMethod)}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {event.items > 0 && (
           <Text style={styles.itemsText}>{event.items} items</Text>
-        </View>
-      )}
+        )}
 
-      {event.highlight && (
-        <View style={styles.highlightBadge}>
-          <Ionicons name="star" size={14} color="#FFD700" />
-          <Text style={styles.highlightText}>Best Order!</Text>
+        {event.highlight && (
+          <View style={styles.starBadge}>
+            <Ionicons name="star" size={12} color="#FFD700" />
+            <Text style={styles.starText}>Best Order!</Text>
+          </View>
+        )}
+      </Animated.View>
+    </Animated.View>
+  );
+};
+
+// Helper functions for payment methods
+const getPaymentIcon = (method) => {
+  switch (method) {
+    case 'CASH': return 'cash-outline';
+    case 'CARD': return 'card-outline';
+    case 'MCB_JUICE': return 'phone-portrait-outline';
+    case 'BANK_TRANSFER': return 'business-outline';
+    default: return 'wallet-outline';
+  }
+};
+
+const getPaymentColor = (method) => {
+  switch (method) {
+    case 'CASH': return '#4CAF50';
+    case 'CARD': return '#2196F3';
+    case 'MCB_JUICE': return '#FF9800';
+    case 'BANK_TRANSFER': return '#9C27B0';
+    default: return colors.textMuted;
+  }
+};
+
+const formatPaymentMethod = (method) => {
+  switch (method) {
+    case 'MCB_JUICE': return 'Juice';
+    case 'BANK_TRANSFER': return 'Bank';
+    default: return method?.charAt(0) + method?.slice(1).toLowerCase();
+  }
+};
+
+// Day Summary Report Component
+const DaySummaryReport = ({ events, animValue }) => {
+  // Calculate summary data
+  const orderEvents = events.filter(e => e.type === 'order');
+  const totalSales = orderEvents.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const totalOrders = orderEvents.length;
+  const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+
+  // Payment breakdown
+  const paymentBreakdown = {};
+  orderEvents.forEach(e => {
+    const method = e.paymentMethod || 'OTHER';
+    if (!paymentBreakdown[method]) {
+      paymentBreakdown[method] = { count: 0, total: 0 };
+    }
+    paymentBreakdown[method].count++;
+    paymentBreakdown[method].total += e.amount || 0;
+  });
+
+  // Find best order
+  const bestOrder = orderEvents.reduce((best, curr) =>
+    (curr.amount || 0) > (best?.amount || 0) ? curr : best, null);
+
+  // Find busiest hour
+  const hourCounts = {};
+  orderEvents.forEach(e => {
+    const hour = e.time?.split(':')[0];
+    hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+  });
+  const busiestHour = Object.entries(hourCounts).reduce(
+    (max, [hour, count]) => count > max.count ? { hour, count } : max,
+    { hour: '12', count: 0 }
+  );
+
+  const translateY = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [100, 0],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.summaryContainer,
+        { opacity: animValue, transform: [{ translateY }] },
+      ]}
+    >
+      <LinearGradient
+        colors={['#1A237E', '#311B92']}
+        style={styles.summaryGradient}
+      >
+        {/* Trophy Icon */}
+        <View style={styles.trophyContainer}>
+          <Ionicons name="trophy" size={50} color="#FFD700" />
         </View>
-      )}
+
+        <Text style={styles.summaryTitle}>Day Complete!</Text>
+        <Text style={styles.summaryDate}>{new Date().toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })}</Text>
+
+        {/* Main Stats */}
+        <View style={styles.mainStats}>
+          <View style={styles.mainStat}>
+            <Text style={styles.mainStatValue}>MUR {totalSales.toLocaleString()}</Text>
+            <Text style={styles.mainStatLabel}>Total Sales</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.mainStat}>
+            <Text style={styles.mainStatValue}>{totalOrders}</Text>
+            <Text style={styles.mainStatLabel}>Orders</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.mainStat}>
+            <Text style={styles.mainStatValue}>MUR {Math.round(avgOrderValue).toLocaleString()}</Text>
+            <Text style={styles.mainStatLabel}>Avg Order</Text>
+          </View>
+        </View>
+
+        {/* Payment Breakdown */}
+        <View style={styles.breakdownSection}>
+          <Text style={styles.breakdownTitle}>Payment Breakdown</Text>
+          <View style={styles.breakdownGrid}>
+            {Object.entries(paymentBreakdown).map(([method, data]) => (
+              <View key={method} style={styles.breakdownItem}>
+                <View style={styles.breakdownItemHeader}>
+                  <View style={[styles.breakdownIcon, { backgroundColor: getPaymentColor(method) + '30' }]}>
+                    <Ionicons name={getPaymentIcon(method)} size={18} color={getPaymentColor(method)} />
+                  </View>
+                  <Text style={styles.breakdownMethodName}>{formatPaymentMethod(method)}</Text>
+                </View>
+                <Text style={styles.breakdownAmount}>MUR {data.total.toLocaleString()}</Text>
+                <Text style={styles.breakdownCount}>{data.count} orders</Text>
+                <View style={styles.breakdownBar}>
+                  <View
+                    style={[
+                      styles.breakdownBarFill,
+                      {
+                        width: `${(data.total / totalSales) * 100}%`,
+                        backgroundColor: getPaymentColor(method),
+                      }
+                    ]}
+                  />
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Highlights */}
+        <View style={styles.highlightsSection}>
+          <Text style={styles.breakdownTitle}>Highlights</Text>
+          <View style={styles.highlightCards}>
+            {bestOrder && (
+              <View style={styles.highlightCard}>
+                <Ionicons name="star" size={20} color="#FFD700" />
+                <Text style={styles.highlightLabel}>Best Order</Text>
+                <Text style={styles.highlightValue}>MUR {bestOrder.amount?.toLocaleString()}</Text>
+                <Text style={styles.highlightSub}>{bestOrder.customer}</Text>
+              </View>
+            )}
+            <View style={styles.highlightCard}>
+              <Ionicons name="time" size={20} color="#FF9800" />
+              <Text style={styles.highlightLabel}>Busiest Hour</Text>
+              <Text style={styles.highlightValue}>{busiestHour.hour}:00</Text>
+              <Text style={styles.highlightSub}>{busiestHour.count} orders</Text>
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
     </Animated.View>
   );
 };
 
 const StoryScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
   const [storyEvents, setStoryEvents] = useState(SAMPLE_STORY_EVENTS);
   const [isLoading, setIsLoading] = useState(false);
-  const progressAnims = useRef(storyEvents.map(() => new Animated.Value(0))).current;
-  const timerRef = useRef(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const scrollRef = useRef(null);
 
-  // Start progress animation
-  const startProgress = (index) => {
-    // Reset current and future progress bars
-    for (let i = index; i < progressAnims.length; i++) {
-      progressAnims[i].setValue(0);
-    }
+  // Animation values for each node
+  const nodeAnims = useRef(storyEvents.map(() => new Animated.Value(0))).current;
+  const snakeAnim = useRef(new Animated.Value(0)).current;
+  const summaryAnim = useRef(new Animated.Value(0)).current;
 
-    // Animate current progress bar
-    Animated.timing(progressAnims[index], {
+  // Animate the snake flowing and nodes appearing
+  const startSnakeAnimation = useCallback(() => {
+    // Reset all animations
+    nodeAnims.forEach(anim => anim.setValue(0));
+    snakeAnim.setValue(0);
+    summaryAnim.setValue(0);
+    setShowSummary(false);
+
+    // Animate snake line first
+    Animated.timing(snakeAnim, {
       toValue: 1,
-      duration: STORY_DURATION,
+      duration: storyEvents.length * ANIMATION_DELAY + 500,
       useNativeDriver: false,
-    }).start(({ finished }) => {
-      if (finished && !isPaused) {
-        goToNext();
-      }
+    }).start();
+
+    // Stagger animate each node
+    const animations = nodeAnims.map((anim, index) =>
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 400,
+        delay: index * ANIMATION_DELAY,
+        useNativeDriver: true,
+      })
+    );
+
+    Animated.stagger(ANIMATION_DELAY, animations).start(() => {
+      // Show summary after all nodes
+      setShowSummary(true);
+      Animated.spring(summaryAnim, {
+        toValue: 1,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
     });
-  };
+  }, [storyEvents.length, nodeAnims, snakeAnim, summaryAnim]);
 
-  // Go to next story
-  const goToNext = () => {
-    if (currentIndex < storyEvents.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    } else {
-      // End of stories
-      navigation.goBack();
-    }
-  };
-
-  // Go to previous story
-  const goToPrevious = () => {
-    if (currentIndex > 0) {
-      progressAnims[currentIndex].setValue(0);
-      setCurrentIndex(currentIndex - 1);
-    }
-  };
-
-  // Handle screen tap
-  const handleTap = (event) => {
-    const { locationX } = event.nativeEvent;
-    if (locationX < SCREEN_WIDTH / 3) {
-      goToPrevious();
-    } else if (locationX > (SCREEN_WIDTH * 2) / 3) {
-      goToNext();
-    } else {
-      setIsPaused(!isPaused);
-    }
-  };
-
-  // Start/pause progress when index changes
+  // Start animation on mount
   useEffect(() => {
-    if (!isPaused) {
-      startProgress(currentIndex);
-    }
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
-    };
-  }, [currentIndex, isPaused]);
+    const timer = setTimeout(startSnakeAnimation, 500);
+    return () => clearTimeout(timer);
+  }, [startSnakeAnimation]);
 
-  // Load today's story
+  // Load today's real story
   const loadTodayStory = async () => {
     setIsLoading(true);
     try {
       const orders = await getOrders();
-      const today = new Date().toDateString();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      // Filter today's orders
+      // Filter today's confirmed orders
       const todayOrders = orders.filter(order => {
-        const orderDate = new Date(order.createdAt).toDateString();
-        return orderDate === today;
-      });
+        if (order.status !== ORDER_STATUS.CONFIRMED) return false;
+        const orderDate = new Date(order.orderDate || order.createdAt);
+        orderDate.setHours(0, 0, 0, 0);
+        return orderDate.getTime() === today.getTime();
+      }).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
       if (todayOrders.length === 0) {
-        // No orders today, show sample
         setStoryEvents(SAMPLE_STORY_EVENTS);
+        // Re-initialize animation values
+        nodeAnims.length = SAMPLE_STORY_EVENTS.length;
+        for (let i = 0; i < SAMPLE_STORY_EVENTS.length; i++) {
+          if (!nodeAnims[i]) nodeAnims[i] = new Animated.Value(0);
+        }
+        startSnakeAnimation();
         return;
       }
 
@@ -348,13 +388,13 @@ const StoryScreen = ({ navigation }) => {
         type: 'day_start',
         time: '10:00 AM',
         title: 'Store Opened',
-        subtitle: "Let's see what happened today!",
+        subtitle: "Let's see today's story!",
         icon: 'sunny',
         color: '#FF9500',
       });
 
-      let totalAmount = 0;
       let lastOrderTime = null;
+      const eventColors = ['#4CAF50', '#2196F3', '#00BCD4', '#E91E63', '#9C27B0', '#FF5722', '#009688', '#3F51B5'];
 
       todayOrders.forEach((order, index) => {
         const orderTime = new Date(order.createdAt);
@@ -364,7 +404,7 @@ const StoryScreen = ({ navigation }) => {
           hour12: true,
         });
 
-        // Check for idle time
+        // Check for idle time (more than 30 minutes)
         if (lastOrderTime) {
           const idleMinutes = (orderTime - lastOrderTime) / (1000 * 60);
           if (idleMinutes > 30) {
@@ -377,48 +417,53 @@ const StoryScreen = ({ navigation }) => {
                 hour12: true,
               }),
               title: 'Quiet Time',
-              subtitle: `${Math.round(idleMinutes)} minutes break`,
+              duration: `${Math.round(idleMinutes)} min`,
               icon: 'cafe',
-              color: '#9C27B0',
+              color: '#607D8B',
             });
           }
         }
 
-        const orderAmount = order.total || order.totalAmount || 0;
-        totalAmount += orderAmount;
+        const orderAmount = order.totals?.totalNet || order.total || 0;
+        const paymentMethod = order.payments?.[0]?.method || 'CASH';
+        const isBigOrder = orderAmount > 5000;
 
         events.push({
           id: order.id,
           type: 'order',
           time: timeStr,
-          title: `Order #${order.orderNumber || index + 1}`,
-          subtitle: `Customer: ${order.customerName || 'Walk-in'}`,
-          amount: `MUR ${orderAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+          title: isBigOrder ? 'Big Order!' : `Order #${order.orderNumber || index + 1}`,
+          customer: order.customer?.name || 'Walk-in Customer',
+          amount: orderAmount,
           items: order.items?.length || 0,
-          icon: orderAmount > 5000 ? 'star' : 'cart',
-          color: orderAmount > 5000 ? '#FFD700' : '#4CAF50',
-          highlight: orderAmount > 5000,
+          paymentMethod: paymentMethod,
+          icon: isBigOrder ? 'star' : 'cart',
+          color: isBigOrder ? '#FFD700' : eventColors[index % eventColors.length],
+          highlight: isBigOrder,
         });
 
         lastOrderTime = orderTime;
       });
 
-      // Day summary
+      // Day end
       events.push({
-        id: 'summary',
-        type: 'summary',
+        id: 'end',
+        type: 'day_end',
         time: '08:00 PM',
-        title: 'Day Complete!',
-        subtitle: 'Great work today!',
-        totalOrders: todayOrders.length,
-        totalAmount: `MUR ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-        icon: 'trophy',
-        color: '#FFD700',
+        title: 'Store Closed',
+        subtitle: 'Great day!',
+        icon: 'moon',
+        color: '#1A237E',
       });
 
       setStoryEvents(events);
-      setCurrentIndex(0);
-      progressAnims.forEach(anim => anim.setValue(0));
+
+      // Re-initialize animation values for new events
+      while (nodeAnims.length < events.length) {
+        nodeAnims.push(new Animated.Value(0));
+      }
+
+      setTimeout(startSnakeAnimation, 100);
     } catch (error) {
       console.error('Error loading story:', error);
     } finally {
@@ -426,102 +471,81 @@ const StoryScreen = ({ navigation }) => {
     }
   };
 
-  const currentEvent = storyEvents[currentIndex];
-  const gradientColors = getTimeGradient(currentEvent?.time || '12:00 PM');
+  // Calculate snake height
+  const snakeHeight = snakeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      <LinearGradient colors={gradientColors} style={styles.background}>
-        {/* Progress Bars */}
-        <View style={[styles.progressContainer, { paddingTop: insets.top + 10 }]}>
-          {storyEvents.map((_, index) => (
-            <View key={index} style={styles.progressBarBg}>
-              <Animated.View
-                style={[
-                  styles.progressBarFill,
-                  {
-                    width: progressAnims[index].interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0%', '100%'],
-                    }),
-                  },
-                ]}
-              />
-            </View>
-          ))}
-        </View>
-
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
-            <Ionicons name="close" size={28} color="#FFFFFF" />
+      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
+        <View style={{ height: insets.top }} />
+        <View style={styles.headerContent}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Ionicons name="today" size={20} color="#FFFFFF" />
+            <Ionicons name="film-outline" size={22} color="#FFFFFF" />
             <Text style={styles.headerTitle}>Today's Story</Text>
           </View>
-          <TouchableOpacity onPress={loadTodayStory} style={styles.refreshBtn}>
-            <Ionicons name="refresh" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Touch Areas */}
-        <TouchableOpacity
-          style={styles.touchArea}
-          activeOpacity={1}
-          onPress={handleTap}
-        >
-          {/* Story Card */}
-          <View style={styles.cardContainer}>
-            {currentEvent && (
-              <StoryCard event={currentEvent} isActive={true} />
+          <TouchableOpacity onPress={loadTodayStory} style={styles.refreshBtn} disabled={isLoading}>
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="refresh" size={22} color="#FFFFFF" />
             )}
-          </View>
-
-          {/* Pause Indicator */}
-          {isPaused && (
-            <View style={styles.pauseIndicator}>
-              <Ionicons name="pause" size={40} color="rgba(255,255,255,0.8)" />
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* Navigation Hints */}
-        <View style={[styles.navHints, { paddingBottom: insets.bottom + 20 }]}>
-          <View style={styles.navHint}>
-            <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.navHintText}>Previous</Text>
-          </View>
-          <View style={styles.navHint}>
-            <Ionicons name="pause" size={16} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.navHintText}>Pause</Text>
-          </View>
-          <View style={styles.navHint}>
-            <Text style={styles.navHintText}>Next</Text>
-            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
-          </View>
-        </View>
-
-        {/* Load Today Button */}
-        <View style={[styles.loadTodayContainer, { bottom: insets.bottom + 60 }]}>
-          <TouchableOpacity
-            style={styles.loadTodayBtn}
-            onPress={loadTodayStory}
-            disabled={isLoading}
-          >
-            <Ionicons
-              name={isLoading ? 'hourglass' : 'calendar-outline'}
-              size={18}
-              color="#FFFFFF"
-            />
-            <Text style={styles.loadTodayText}>
-              {isLoading ? 'Loading...' : "Load Today's Story"}
-            </Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>
+
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Snake Timeline */}
+        <View style={styles.timelineContainer}>
+          {/* The Snake (center line) */}
+          <View style={styles.snakeLine}>
+            <Animated.View style={[styles.snakeLineFill, { height: snakeHeight }]} />
+          </View>
+
+          {/* Timeline Nodes */}
+          {storyEvents.map((event, index) => (
+            <TimelineNode
+              key={event.id}
+              event={event}
+              index={index}
+              isLeft={index % 2 === 0}
+              animValue={nodeAnims[index] || new Animated.Value(0)}
+              isLast={index === storyEvents.length - 1}
+            />
+          ))}
+        </View>
+
+        {/* Day Summary Report */}
+        {showSummary && (
+          <DaySummaryReport events={storyEvents} animValue={summaryAnim} />
+        )}
+
+        {/* Replay Button */}
+        <TouchableOpacity style={styles.replayBtn} onPress={startSnakeAnimation}>
+          <Ionicons name="play-circle" size={20} color={colors.accent} />
+          <Text style={styles.replayText}>Replay Animation</Text>
+        </TouchableOpacity>
+
+        {/* Load Today Button */}
+        <TouchableOpacity style={styles.loadTodayBtn} onPress={loadTodayStory} disabled={isLoading}>
+          <Ionicons name="calendar" size={20} color="#FFFFFF" />
+          <Text style={styles.loadTodayText}>
+            {isLoading ? 'Loading...' : "Load Today's Actual Story"}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
 };
@@ -529,35 +553,19 @@ const StoryScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  background: {
-    flex: 1,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    gap: 4,
-  },
-  progressBarBg: {
-    flex: 1,
-    height: 3,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 2,
+    backgroundColor: colors.background,
   },
   header: {
+    paddingBottom: 16,
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
   },
-  closeBtn: {
+  backBtn: {
     padding: 4,
   },
   headerCenter: {
@@ -566,189 +574,376 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
   },
   refreshBtn: {
     padding: 4,
-  },
-  touchArea: {
-    flex: 1,
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cardContainer: {
-    width: SCREEN_WIDTH - 40,
-    alignItems: 'center',
+  scrollView: {
+    flex: 1,
   },
-  storyCard: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 24,
-    padding: 32,
-    alignItems: 'center',
+  scrollContent: {
+    paddingTop: 20,
+    paddingHorizontal: 16,
+  },
+  timelineContainer: {
+    position: 'relative',
+    paddingVertical: 20,
+  },
+  // The Snake Line (center)
+  snakeLine: {
+    position: 'absolute',
+    left: '50%',
+    marginLeft: -SNAKE_WIDTH / 2,
+    top: 0,
+    bottom: 0,
+    width: SNAKE_WIDTH,
+    backgroundColor: colors.border,
+    borderRadius: SNAKE_WIDTH / 2,
+    overflow: 'hidden',
+  },
+  snakeLineFill: {
     width: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: SNAKE_WIDTH / 2,
+  },
+  // Node Container
+  nodeContainer: {
+    width: '50%',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    position: 'relative',
+  },
+  nodeLeft: {
+    alignSelf: 'flex-start',
+    paddingRight: 24,
+  },
+  nodeRight: {
+    alignSelf: 'flex-end',
+    paddingLeft: 24,
+  },
+  // Connection line from card to snake
+  connectionLine: {
+    position: 'absolute',
+    top: '50%',
+    height: 2,
+    width: 20,
+    backgroundColor: colors.accent,
+  },
+  connectionLeft: {
+    right: 8,
+  },
+  connectionRight: {
+    left: 8,
+  },
+  // Node dot on the snake
+  nodeDot: {
+    position: 'absolute',
+    width: NODE_SIZE,
+    height: NODE_SIZE,
+    borderRadius: NODE_SIZE / 2,
+    top: '50%',
+    marginTop: -NODE_SIZE / 2,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  nodeDotLeft: {
+    right: -NODE_SIZE / 2 - 8,
+  },
+  nodeDotRight: {
+    left: -NODE_SIZE / 2 - 8,
+  },
+  // Event Card
+  eventCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
   },
   highlightCard: {
     backgroundColor: '#FFF9E6',
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#FFD700',
   },
-  summaryCard: {
-    backgroundColor: 'rgba(255,255,255,0.98)',
+  eventHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  storyTime: {
-    fontSize: 14,
-    color: colors.textMuted,
-    fontWeight: '500',
-    marginBottom: 16,
-  },
-  iconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  eventIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
   },
-  storyTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  storySubtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  amountContainer: {
-    backgroundColor: colors.accentGreen + '15',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  amountLabel: {
-    fontSize: 12,
+  eventTime: {
+    fontSize: 11,
     color: colors.textMuted,
-    textAlign: 'center',
-    marginBottom: 4,
+    fontWeight: '500',
   },
-  amountValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.accentGreen,
-    textAlign: 'center',
-  },
-  itemsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    gap: 6,
-  },
-  itemsText: {
+  eventTitle: {
     fontSize: 14,
-    color: colors.textMuted,
-  },
-  highlightBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFD700',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginTop: 16,
-    gap: 6,
-  },
-  highlightText: {
-    fontSize: 12,
     fontWeight: '600',
-    color: '#000',
-  },
-  summaryTitle: {
-    fontSize: 32,
-    fontWeight: '800',
     color: colors.textPrimary,
-    marginBottom: 8,
+    marginBottom: 2,
   },
-  summarySubtitle: {
-    fontSize: 18,
+  eventCustomer: {
+    fontSize: 12,
     color: colors.textSecondary,
-    marginBottom: 24,
   },
-  summaryStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    width: '100%',
-  },
-  summaryStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryStatValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.accent,
-    marginBottom: 4,
-  },
-  summaryStatLabel: {
+  eventSubtitle: {
     fontSize: 12,
     color: colors.textMuted,
   },
-  summaryDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: colors.border,
-    marginHorizontal: 16,
-  },
-  pauseIndicator: {
-    position: 'absolute',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 50,
-    padding: 20,
-  },
-  navHints: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-  },
-  navHint: {
+  durationBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    marginTop: 6,
   },
-  navHintText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
+  durationText: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
-  loadTodayContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
+  amountRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  amountText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.accentGreen,
+  },
+  paymentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  paymentBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  itemsText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  starBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  starText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#000',
+  },
+  // Day Summary Report
+  summaryContainer: {
+    marginTop: 30,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  summaryGradient: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  trophyContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,215,0,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  summaryTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  summaryDate: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    marginBottom: 24,
+  },
+  mainStats: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    marginBottom: 24,
+  },
+  mainStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  mainStatValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  mainStatLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginHorizontal: 8,
+  },
+  breakdownSection: {
+    width: '100%',
+    marginBottom: 24,
+  },
+  breakdownTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  breakdownGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  breakdownItem: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    padding: 12,
+    width: '48%',
+  },
+  breakdownItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  breakdownIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  breakdownMethodName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  breakdownAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  breakdownCount: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 8,
+  },
+  breakdownBar: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  breakdownBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  highlightsSection: {
+    width: '100%',
+  },
+  highlightCards: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  highlightCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  highlightLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  highlightValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  highlightSub: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
+  },
+  // Buttons
+  replayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent + '15',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 24,
+    gap: 8,
+  },
+  replayText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accent,
   },
   loadTodayBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 25,
-    gap: 8,
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 10,
   },
   loadTodayText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
   },
