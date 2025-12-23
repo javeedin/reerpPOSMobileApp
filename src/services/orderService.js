@@ -384,3 +384,15 @@ export const getOrderStats = async (dateFrom = null, dateTo = null) => {
     return { totalOrders: 0, totalSales: 0, draftCount: 0, averageOrderValue: 0 };
   }
 };
+
+// Clear all orders (for logout)
+export const clearAllOrders = async () => {
+  try {
+    await AsyncStorage.removeItem(ORDER_KEYS.ORDERS);
+    await AsyncStorage.removeItem(ORDER_KEYS.ORDER_COUNTER);
+    return { success: true };
+  } catch (error) {
+    console.error('Clear orders error:', error);
+    return { success: false, error: error.message };
+  }
+};

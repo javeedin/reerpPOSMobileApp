@@ -8,6 +8,8 @@ import {
   Dimensions,
   RefreshControl,
   StatusBar,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -231,7 +233,7 @@ const QuickLinks = ({ menuData, onItemPress, onSyncPress }) => {
 };
 
 const HomeScreen = ({ navigation }) => {
-  const { user, menuData, refreshMenuData } = useAuth();
+  const { user, menuData, refreshMenuData, isSyncing, syncProgress } = useAuth();
   const [expandedModule, setExpandedModule] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [kpiData, setKpiData] = useState([
@@ -355,6 +357,22 @@ const HomeScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+
+      {/* Sync Progress Modal */}
+      <Modal
+        visible={isSyncing}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.syncOverlay}>
+          <View style={styles.syncModal}>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={styles.syncTitle}>Syncing Data</Text>
+            <Text style={styles.syncProgress}>{syncProgress}</Text>
+            <Text style={styles.syncHint}>Please wait...</Text>
+          </View>
+        </View>
+      </Modal>
 
       {/* Blue Header Only */}
       <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
@@ -695,6 +713,43 @@ const styles = StyleSheet.create({
   emptyStateText: {
     marginTop: 12,
     fontSize: 14,
+    color: colors.textMuted,
+  },
+  // Sync Modal Styles
+  syncOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  syncModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    width: '80%',
+    maxWidth: 300,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  syncTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  syncProgress: {
+    fontSize: 14,
+    color: colors.accent,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  syncHint: {
+    fontSize: 12,
     color: colors.textMuted,
   },
 });

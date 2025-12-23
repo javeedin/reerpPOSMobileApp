@@ -1,5 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { loginUser, getMenuOptions, saveUserData, getUserData, saveMenuData, getMenuData, clearAllData } from '../services/api';
+import { clearAllSyncData, getSyncMetadata, syncCustomers, syncOnhand, syncBogo } from '../services/syncService';
+import { clearAllOrders } from '../services/orderService';
+import { clearAdjustments } from '../services/onhandService';
 
 const AuthContext = createContext({});
 
@@ -8,6 +11,8 @@ export const AuthProvider = ({ children }) => {
   const [menuData, setMenuDataState] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState('');
 
   // Check for existing session on app load
   useEffect(() => {
@@ -92,6 +97,10 @@ export const AuthProvider = ({ children }) => {
           }
 
           setIsLoading(false);
+
+          // Check and sync data after login (runs in background)
+          checkAndSyncData(fullUserData);
+
           return { success: true };
         } else {
           console.log('=== LOGIN FAILED - No username in response ===');
@@ -114,10 +123,20 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     setIsLoading(true);
     try {
+      // Clear user and menu data
       await clearAllData();
+      // Clear all synced data (customers, items, onhand, pricelists, bogo)
+      await clearAllSyncData();
+      // Clear all orders
+      await clearAllOrders();
+      // Clear inventory adjustments
+      await clearAdjustments();
+
       setUser(null);
       setMenuDataState([]);
       setIsLoggedIn(false);
+      setSyncProgress('');
+      console.log('Logout: All data cleared');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
@@ -135,6 +154,61 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Check if initial data sync is needed and perform sync
+  const checkAndSyncData = async (userData) => {
+    try {
+      const meta = await getSyncMetadata();
+      const needsSync = {
+        customers: !meta.customers?.lastSync || meta.customers.count === 0,
+        onhand: !meta.onhand?.lastSync || meta.onhand.count === 0,
+        bogo: !meta.bogo?.lastSync,
+      };
+
+      const syncNeeded = needsSync.customers || needsSync.onhand || needsSync.bogo;
+
+      if (syncNeeded) {
+        setIsSyncing(true);
+
+        // Sync customers
+        if (needsSync.customers) {
+          setSyncProgress('Syncing customers...');
+          await syncCustomers((progress) => {
+            if (progress?.status) setSyncProgress(progress.status);
+          });
+        }
+
+        // Sync onhand (use user's warehouse/subinventory if available)
+        if (needsSync.onhand) {
+          setSyncProgress('Syncing inventory...');
+          const warehouse = userData?.warehouse || 'GLC_MAIN';
+          const subinventory = userData?.subinventory || 'MAIN_STORES';
+          await syncOnhand(
+            (progress) => {
+              if (progress?.status) setSyncProgress(progress.status);
+            },
+            warehouse,
+            subinventory
+          );
+        }
+
+        // Sync BOGO promotions
+        if (needsSync.bogo) {
+          setSyncProgress('Syncing promotions...');
+          await syncBogo((progress) => {
+            if (progress?.status) setSyncProgress(progress.status);
+          });
+        }
+
+        setSyncProgress('Sync complete!');
+        setIsSyncing(false);
+      }
+    } catch (error) {
+      console.error('Auto-sync error:', error);
+      setIsSyncing(false);
+      setSyncProgress('');
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -142,6 +216,8 @@ export const AuthProvider = ({ children }) => {
         menuData,
         isLoading,
         isLoggedIn,
+        isSyncing,
+        syncProgress,
         login,
         logout,
         refreshMenuData,
