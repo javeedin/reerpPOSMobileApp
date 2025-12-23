@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,11 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
+import { getOrders, ORDER_STATUS, PAYMENT_METHODS } from '../services/orderService';
+import { getOnhand } from '../services/syncService';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 60) / 2;
@@ -96,13 +99,13 @@ const getModuleIcon = (moduleName) => {
 };
 
 // KPI Card Component
-const KPICard = ({ title, value, icon, color, trend, trendValue }) => (
+const KPICard = ({ title, value, icon, color, trend, trendValue, isMultiline }) => (
   <View style={[styles.kpiCard, { borderLeftColor: color }]}>
     <View style={styles.kpiHeader}>
       <View style={[styles.kpiIconContainer, { backgroundColor: `${color}15` }]}>
         <Ionicons name={icon} size={24} color={color} />
       </View>
-      {trend && (
+      {trend && trendValue && (
         <View style={[styles.trendBadge, { backgroundColor: trend === 'up' ? colors.accentGreen + '15' : colors.accentRed + '15' }]}>
           <Ionicons
             name={trend === 'up' ? 'trending-up' : 'trending-down'}
@@ -114,8 +117,17 @@ const KPICard = ({ title, value, icon, color, trend, trendValue }) => (
           </Text>
         </View>
       )}
+      {!trend && trendValue && (
+        <View style={[styles.trendBadge, { backgroundColor: colors.textMuted + '15' }]}>
+          <Text style={[styles.trendText, { color: colors.textMuted }]}>
+            {trendValue}
+          </Text>
+        </View>
+      )}
     </View>
-    <Text style={styles.kpiValue}>{value}</Text>
+    <Text style={[styles.kpiValue, isMultiline && styles.kpiValueMultiline]} numberOfLines={isMultiline ? 4 : 1}>
+      {value}
+    </Text>
     <Text style={styles.kpiTitle}>{title}</Text>
   </View>
 );
@@ -221,10 +233,105 @@ const HomeScreen = ({ navigation }) => {
   const { user, menuData, refreshMenuData } = useAuth();
   const [expandedModule, setExpandedModule] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [kpiData, setKpiData] = useState([
+    { title: "Today's Sales", value: 'MUR 0', icon: 'cart', color: colors.accent },
+    { title: 'Orders', value: '0', icon: 'receipt', color: colors.accentGreen },
+    { title: 'Payments', value: 'Loading...', icon: 'wallet', color: colors.accentOrange },
+    { title: 'Inventory', value: '0 items', icon: 'cube', color: colors.accentPurple },
+  ]);
+
+  // Load KPI data from real sources
+  const loadKpiData = useCallback(async () => {
+    try {
+      // Get all orders
+      const allOrders = await getOrders();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Filter today's orders (confirmed only)
+      const todaysOrders = allOrders.filter(order => {
+        if (order.status !== ORDER_STATUS.CONFIRMED) return false;
+        const orderDate = new Date(order.orderDate);
+        orderDate.setHours(0, 0, 0, 0);
+        return orderDate.getTime() === today.getTime();
+      });
+
+      // Calculate today's sales total
+      const todaysSales = todaysOrders.reduce((sum, order) => {
+        return sum + (order.totals?.totalNet || 0);
+      }, 0);
+
+      // Count total orders today
+      const ordersCount = todaysOrders.length;
+
+      // Calculate payment breakdown
+      const paymentBreakdown = {};
+      todaysOrders.forEach(order => {
+        (order.payments || []).forEach(payment => {
+          const method = payment.method || 'OTHER';
+          paymentBreakdown[method] = (paymentBreakdown[method] || 0) + (payment.amount || 0);
+        });
+      });
+
+      // Format payment breakdown for display
+      const paymentMethods = Object.keys(paymentBreakdown);
+      let paymentDisplay = 'No payments';
+      if (paymentMethods.length > 0) {
+        paymentDisplay = paymentMethods.map(m => `${m}: ${paymentBreakdown[m].toFixed(0)}`).join('\n');
+      }
+
+      // Get inventory data
+      const onhandData = await getOnhand() || [];
+      const totalItems = onhandData.length;
+      const totalQty = onhandData.reduce((sum, item) => sum + (parseFloat(item.onHandQty) || 0), 0);
+
+      // Update KPI data
+      setKpiData([
+        {
+          title: "Today's Sales",
+          value: `MUR ${todaysSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          icon: 'cart',
+          color: colors.accent,
+          trend: todaysSales > 0 ? 'up' : undefined,
+          trendValue: `${ordersCount} orders`
+        },
+        {
+          title: 'Orders Today',
+          value: ordersCount.toString(),
+          icon: 'receipt',
+          color: colors.accentGreen,
+        },
+        {
+          title: 'Payments',
+          value: paymentDisplay,
+          icon: 'wallet',
+          color: colors.accentOrange,
+          isMultiline: true,
+        },
+        {
+          title: 'Inventory',
+          value: `${totalItems} items`,
+          icon: 'cube',
+          color: colors.accentPurple,
+          trend: totalQty > 0 ? undefined : undefined,
+          trendValue: `Qty: ${totalQty.toLocaleString()}`
+        },
+      ]);
+    } catch (error) {
+      console.error('Error loading KPI data:', error);
+    }
+  }, []);
+
+  // Load KPI data on mount and when screen focuses
+  useFocusEffect(
+    useCallback(() => {
+      loadKpiData();
+    }, [loadKpiData])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refreshMenuData();
+    await Promise.all([refreshMenuData(), loadKpiData()]);
     setRefreshing(false);
   };
 
@@ -235,14 +342,6 @@ const HomeScreen = ({ navigation }) => {
   const handleMenuItemPress = (item) => {
     navigation.navigate('MenuDetail', { item });
   };
-
-  // Sample KPI data
-  const kpiData = [
-    { title: "Today's Sales", value: '$12,450', icon: 'cart', color: colors.accent, trend: 'up', trendValue: '12%' },
-    { title: 'Orders', value: '48', icon: 'receipt', color: colors.accentGreen, trend: 'up', trendValue: '8%' },
-    { title: 'Pending', value: '5', icon: 'time', color: colors.accentOrange, trend: 'down', trendValue: '3%' },
-    { title: 'Inventory', value: '2,340', icon: 'cube', color: colors.accentPurple },
-  ];
 
   return (
     <View style={styles.container}>
@@ -445,6 +544,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.textPrimary,
     marginBottom: 4,
+  },
+  kpiValueMultiline: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   kpiTitle: {
     fontSize: 13,
