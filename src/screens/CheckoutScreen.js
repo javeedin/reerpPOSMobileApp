@@ -435,7 +435,12 @@ const CheckoutScreen = ({ navigation, route }) => {
 
   // Get BOGO items for a specific main item
   const getBogoItemsForParent = (parentItemCode) => {
-    return bogoItems.filter(b => b.bogoParentItemCode === parentItemCode);
+    const linked = bogoItems.filter(b => b.bogoParentItemCode === parentItemCode);
+    console.log(`[getBogoItemsForParent] Looking for parent: ${parentItemCode}, found: ${linked.length}`);
+    if (linked.length === 0 && bogoItems.length > 0) {
+      console.log(`[getBogoItemsForParent] Available BOGO parent codes:`, bogoItems.map(b => b.bogoParentItemCode).join(', '));
+    }
+    return linked;
   };
 
   const loadOnhandData = async () => {

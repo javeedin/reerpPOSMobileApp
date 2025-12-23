@@ -64,17 +64,34 @@ const LineItem = ({ item, index, currency }) => {
   const taxRate = parseFloat(item.tax_rate) || 0;
   const taxAmount = afterDiscount * (taxRate / 100);
   const net = item.lineTotal || (afterDiscount + taxAmount);
+  const isBogo = item.isBogo === true;
 
   return (
-    <View style={styles.lineItemContainer}>
+    <View style={[styles.lineItemContainer, isBogo && styles.bogoLineItemContainer]}>
+      {/* BOGO Badge */}
+      {isBogo && (
+        <View style={styles.bogoBadgeRow}>
+          <View style={styles.bogoBadge}>
+            <Ionicons name="gift" size={12} color="#FFFFFF" />
+            <Text style={styles.bogoBadgeText}>{item.bogoPromoType || 'BOGO'}</Text>
+          </View>
+          <Text style={styles.bogoPromoName}>{item.bogoPromoName}</Text>
+        </View>
+      )}
+
       {/* Item Description Row */}
       <View style={styles.lineItemHeader}>
-        <View style={styles.lineNumber}>
-          <Text style={styles.lineNumberText}>{index + 1}</Text>
+        <View style={[styles.lineNumber, isBogo && styles.bogoLineNumber]}>
+          <Text style={[styles.lineNumberText, isBogo && styles.bogoLineNumberText]}>
+            {isBogo ? <Ionicons name="gift" size={11} color={colors.secondary || '#FF6B6B'} /> : index + 1}
+          </Text>
         </View>
         <View style={styles.lineInfoFull}>
-          <Text style={styles.lineName}>{item.itemDesc || item.itemNumber}</Text>
-          <Text style={styles.lineCode}>{item.itemNumber} • Qty: {qty} × {unitPrice.toFixed(2)}</Text>
+          <Text style={[styles.lineName, isBogo && styles.bogoLineName]}>{item.itemDesc || item.itemNumber}</Text>
+          <Text style={styles.lineCode}>
+            {item.itemNumber} • Qty: {qty} × {unitPrice.toFixed(2)}
+            {isBogo && ` • Buy ${item.bogoBuyQty} Get ${item.bogoGetQty}`}
+          </Text>
         </View>
       </View>
 
@@ -96,9 +113,17 @@ const LineItem = ({ item, index, currency }) => {
         </View>
         <View style={styles.lineValueColNet}>
           <Text style={styles.lineValueLabel}>Net</Text>
-          <Text style={styles.lineNetValue}>{net.toFixed(2)}</Text>
+          <Text style={[styles.lineNetValue, isBogo && styles.bogoNetValue]}>{net.toFixed(2)}</Text>
         </View>
       </View>
+
+      {/* BOGO Parent Link */}
+      {isBogo && item.bogoParentItemCode && (
+        <View style={styles.bogoParentRow}>
+          <Ionicons name="link" size={12} color={colors.textMuted} />
+          <Text style={styles.bogoParentText}>Linked to: {item.bogoParentItemDesc || item.bogoParentItemCode}</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -674,6 +699,66 @@ const styles = StyleSheet.create({
   },
   discountText: {
     color: colors.secondary || '#FF6B6B',
+  },
+  // BOGO Item Styles
+  bogoLineItemContainer: {
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: (colors.secondary || '#FF6B6B') + '40',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.secondary || '#FF6B6B',
+  },
+  bogoBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  bogoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.secondary || '#FF6B6B',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    gap: 4,
+  },
+  bogoBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+  },
+  bogoPromoName: {
+    fontSize: 11,
+    color: colors.secondary || '#FF6B6B',
+    fontWeight: '500',
+  },
+  bogoLineNumber: {
+    backgroundColor: (colors.secondary || '#FF6B6B') + '20',
+  },
+  bogoLineNumberText: {
+    color: colors.secondary || '#FF6B6B',
+  },
+  bogoLineName: {
+    color: colors.textPrimary,
+  },
+  bogoNetValue: {
+    color: colors.secondary || '#FF6B6B',
+  },
+  bogoParentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 6,
+  },
+  bogoParentText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontStyle: 'italic',
   },
   paymentRow: {
     flexDirection: 'row',
