@@ -182,7 +182,7 @@ const MenuItem = ({ item, onPress }) => (
 );
 
 // Quick Links Section
-const QuickLinks = ({ menuData, onItemPress, onSyncPress }) => {
+const QuickLinks = ({ menuData, onItemPress, onSyncPress, onScanPress }) => {
   const quickLinkItems = [];
   menuData?.forEach(module => {
     module.SubMenuItems?.forEach(item => {
@@ -200,6 +200,19 @@ const QuickLinks = ({ menuData, onItemPress, onSyncPress }) => {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.quickLinksContainer}
       >
+        {/* Scan - Static Quick Action */}
+        <TouchableOpacity
+          style={styles.quickLinkItem}
+          onPress={onScanPress}
+        >
+          <View style={[styles.quickLinkIconContainer, { backgroundColor: (colors.accentPurple || '#9C27B0') + '15' }]}>
+            <Ionicons name="scan" size={28} color={colors.accentPurple || '#9C27B0'} />
+          </View>
+          <Text style={styles.quickLinkName} numberOfLines={2}>
+            Scan
+          </Text>
+        </TouchableOpacity>
+
         {/* Sync Data - Static Quick Action */}
         <TouchableOpacity
           style={styles.quickLinkItem}
@@ -414,6 +427,7 @@ const HomeScreen = ({ navigation }) => {
         <QuickLinks
           menuData={menuData}
           onItemPress={handleMenuItemPress}
+          onScanPress={() => navigation.navigate('Scan')}
           onSyncPress={() => navigation.navigate('SyncData')}
         />
 
