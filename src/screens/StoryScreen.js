@@ -20,8 +20,47 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SNAKE_WIDTH = 4;
 const NODE_SIZE = 16;
 const ANIMATION_DELAY = 150; // ms between each node animation
+const STORE_CLOSE_HOUR = 20; // 8 PM
 
-// Sample story data for demo
+// Get the current status event (dynamic based on time)
+const getCurrentStatusEvent = () => {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  if (currentHour >= STORE_CLOSE_HOUR) {
+    return {
+      id: 'end',
+      type: 'day_end',
+      time: '08:00 PM',
+      title: 'Store Closed',
+      subtitle: 'Great day! See you tomorrow!',
+      icon: 'moon',
+      color: '#1A237E',
+    };
+  } else {
+    // Store is still open - show waiting message
+    const waitingMessages = [
+      { title: 'Ready for Next Order!', subtitle: 'Waiting for customers...', icon: 'hourglass-outline', color: '#4CAF50' },
+      { title: 'Standing By...', subtitle: 'Your next order awaits!', icon: 'pulse', color: '#2196F3' },
+      { title: 'Open for Business', subtitle: "Let's keep the momentum going!", icon: 'storefront', color: '#FF9800' },
+    ];
+    const randomMsg = waitingMessages[Math.floor(Math.random() * waitingMessages.length)];
+
+    return {
+      id: 'waiting',
+      type: 'waiting',
+      time: timeStr,
+      title: randomMsg.title,
+      subtitle: randomMsg.subtitle,
+      icon: randomMsg.icon,
+      color: randomMsg.color,
+      isLive: true,
+    };
+  }
+};
+
+// Sample story data for demo (showing a complete day)
 const SAMPLE_STORY_EVENTS = [
   { id: '1', type: 'day_start', time: '10:00 AM', title: 'Store Opened', subtitle: 'Ready for business!', icon: 'sunny', color: '#FF9500' },
   { id: '2', type: 'order', time: '10:15 AM', title: 'First Order!', customer: 'John Smith', amount: 1250, items: 3, paymentMethod: 'CASH', icon: 'cart', color: '#4CAF50' },
@@ -126,6 +165,13 @@ const TimelineNode = ({ event, index, isLeft, animValue, isLast }) => {
           <View style={styles.starBadge}>
             <Ionicons name="star" size={12} color="#FFD700" />
             <Text style={styles.starText}>Best Order!</Text>
+          </View>
+        )}
+
+        {event.isLive && (
+          <View style={styles.liveBadge}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>LIVE</Text>
           </View>
         )}
       </Animated.View>
@@ -445,16 +491,8 @@ const StoryScreen = ({ navigation }) => {
         lastOrderTime = orderTime;
       });
 
-      // Day end
-      events.push({
-        id: 'end',
-        type: 'day_end',
-        time: '08:00 PM',
-        title: 'Store Closed',
-        subtitle: 'Great day!',
-        icon: 'moon',
-        color: '#1A237E',
-      });
+      // Add current status (closed if after 8 PM, or waiting for orders if still open)
+      events.push(getCurrentStatusEvent());
 
       setStoryEvents(events);
 
@@ -765,6 +803,29 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#000',
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FF3B30',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+  },
+  liveText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 1,
   },
   // Day Summary Report
   summaryContainer: {
