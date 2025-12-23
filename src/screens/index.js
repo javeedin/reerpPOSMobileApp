@@ -16,3 +16,6 @@ export { default as PaymentScreen } from './PaymentScreen';
 export { default as OrderDetailScreen } from './OrderDetailScreen';
 // Report screens
 export { default as LodgementReportScreen } from './LodgementReportScreen';
+// Scan & Reconciliation screens
+export { default as ScanScreen } from './ScanScreen';
+export { default as BatchReconciliationScreen } from './BatchReconciliationScreen';

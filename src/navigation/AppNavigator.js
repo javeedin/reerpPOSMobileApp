@@ -15,6 +15,8 @@ import {
   PaymentScreen,
   OrderDetailScreen,
   LodgementReportScreen,
+  ScanScreen,
+  BatchReconciliationScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -47,6 +49,9 @@ const MainStack = () => {
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
       {/* Report screens */}
       <Stack.Screen name="LodgementReport" component={LodgementReportScreen} />
+      {/* Scan & Reconciliation screens */}
+      <Stack.Screen name="Scan" component={ScanScreen} />
+      <Stack.Screen name="BatchReconciliation" component={BatchReconciliationScreen} />
     </Stack.Navigator>
   );
 };

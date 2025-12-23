@@ -37,6 +37,12 @@ const MenuDetailScreen = ({ navigation, route }) => {
     return name.includes('report') || name.includes('lodgement') || name.includes('lodgment');
   };
 
+  // Check if this is a scan/reconciliation menu item
+  const isScan = () => {
+    const name = (item?.name || '').toLowerCase();
+    return name.includes('scan') || name.includes('reconcil') || name.includes('batch');
+  };
+
   // Get the report type for navigation
   const getReportScreen = () => {
     const name = (item?.name || '').toLowerCase();
@@ -76,6 +82,10 @@ const MenuDetailScreen = ({ navigation, route }) => {
     } else {
       Alert.alert('Coming Soon', 'This report is not yet available.');
     }
+  };
+
+  const handleOpenScan = () => {
+    navigation.navigate('Scan');
   };
 
   if (!item) {
@@ -185,14 +195,20 @@ const MenuDetailScreen = ({ navigation, route }) => {
         {/* Floating Action Button */}
         <TouchableOpacity
           style={styles.floatingButton}
-          onPress={isReport() ? handleOpenReport : handleOpenNewOrder}
+          onPress={isScan() ? handleOpenScan : isReport() ? handleOpenReport : handleOpenNewOrder}
         >
           <LinearGradient
-            colors={isReport() ? [colors.accent, colors.primary] : [colors.secondary, colors.secondaryDark]}
+            colors={isScan() ? [colors.accentPurple || '#9C27B0', colors.primary] : isReport() ? [colors.accent, colors.primary] : [colors.secondary, colors.secondaryDark]}
             style={styles.floatingButtonGradient}
           >
-            <Ionicons name={isReport() ? 'document-text' : 'add'} size={28} color="#FFFFFF" />
-            <Text style={styles.floatingButtonText}>{isReport() ? 'View Report' : 'New Order'}</Text>
+            <Ionicons
+              name={isScan() ? 'scan' : isReport() ? 'document-text' : 'add'}
+              size={28}
+              color="#FFFFFF"
+            />
+            <Text style={styles.floatingButtonText}>
+              {isScan() ? 'Start Scan' : isReport() ? 'View Report' : 'New Order'}
+            </Text>
           </LinearGradient>
         </TouchableOpacity>
       </LinearGradient>
