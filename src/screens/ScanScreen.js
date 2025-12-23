@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import colors from '../theme/colors';
 import { parseBatchReport, extractTextFromImage } from '../services/ocrService';
 
@@ -192,15 +193,64 @@ const ScanScreen = ({ navigation }) => {
     }
   };
 
+  // Compress image to fit within OCR.space 1MB limit
+  const compressImage = async (uri) => {
+    try {
+      // First, resize to a reasonable max dimension (1200px max width/height)
+      // Then compress with lower quality for smaller file size
+      const manipulated = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 1200 } }], // Resize to max 1200px width
+        {
+          compress: 0.6, // 60% quality
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        }
+      );
+
+      // Check size (base64 is ~33% larger than binary)
+      const base64Size = manipulated.base64.length * 0.75; // Approximate binary size
+      console.log(`Compressed image size: ${(base64Size / 1024).toFixed(0)} KB`);
+
+      // If still too large, compress more
+      if (base64Size > 900000) { // 900KB to leave some margin
+        console.log('Image still too large, compressing further...');
+        const furtherCompressed = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 800 } }], // Smaller resize
+          {
+            compress: 0.4, // Lower quality
+            format: ImageManipulator.SaveFormat.JPEG,
+            base64: true,
+          }
+        );
+        return furtherCompressed.base64;
+      }
+
+      return manipulated.base64;
+    } catch (error) {
+      console.error('Image compression error:', error);
+      return null;
+    }
+  };
+
   const processImage = async (uri, base64) => {
     setProcessing(true);
     setExtractedData(null);
     setRawText('');
 
     try {
-      // Try OCR extraction
+      // Compress image for OCR (limit is 1MB)
+      console.log('Compressing image for OCR...');
+      const compressedBase64 = await compressImage(uri);
+
+      if (!compressedBase64) {
+        throw new Error('Failed to compress image');
+      }
+
+      // Try OCR extraction with compressed image
       console.log('Starting OCR extraction...');
-      const text = await extractTextFromImage(base64);
+      const text = await extractTextFromImage(compressedBase64);
       console.log('OCR result:', text ? 'Text extracted' : 'No text');
 
       if (text) {
