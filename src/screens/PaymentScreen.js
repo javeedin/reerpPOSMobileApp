@@ -134,10 +134,10 @@ const PaymentMethodButton = ({ method, icon, label, isSelected, onSelect }) => (
     onPress={() => onSelect(method)}
   >
     <View style={[styles.methodIcon, isSelected && styles.methodIconSelected]}>
-      <Ionicons name={icon} size={24} color={isSelected ? '#FFFFFF' : colors.accent} />
+      <Ionicons name={icon} size={18} color={isSelected ? '#FFFFFF' : colors.accent} />
     </View>
     <Text style={[styles.methodLabel, isSelected && styles.methodLabelSelected]}>{label}</Text>
-    {isSelected && <Ionicons name="checkmark-circle" size={20} color={colors.secondary} />}
+    {isSelected && <Ionicons name="checkmark-circle" size={16} color={colors.secondary} />}
   </TouchableOpacity>
 );
 
@@ -800,9 +800,9 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
   },
   methodIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: colors.accent + '15',
     justifyContent: 'center',
     alignItems: 'center',
