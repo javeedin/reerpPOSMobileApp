@@ -20,6 +20,7 @@ import {
   syncPriceList,
   syncOnhand,
   syncBogo,
+  syncPaymentMethods,
   getSyncMetadata,
   clearAllSyncData,
   syncPriceListNames,
@@ -266,6 +267,7 @@ const SyncDataScreen = ({ navigation }) => {
     priceList: { lastSync: null, count: 0 },
     onhand: { lastSync: null, count: 0 },
     bogo: { lastSync: null, count: 0 },
+    paymentMethods: { lastSync: null, count: 0 },
   });
 
   const [syncingStates, setSyncingStates] = useState({
@@ -275,6 +277,7 @@ const SyncDataScreen = ({ navigation }) => {
     priceList: false,
     onhand: false,
     bogo: false,
+    paymentMethods: false,
   });
 
   const [progressStates, setProgressStates] = useState({
@@ -284,6 +287,7 @@ const SyncDataScreen = ({ navigation }) => {
     priceList: null,
     onhand: null,
     bogo: null,
+    paymentMethods: null,
   });
 
   // Price list specific states
@@ -510,6 +514,13 @@ const SyncDataScreen = ({ navigation }) => {
       icon: 'gift',
       color: colors.secondary || '#FF6B6B',
       syncFn: syncBogo,
+    },
+    {
+      key: 'paymentMethods',
+      title: 'Payment Methods',
+      icon: 'card',
+      color: colors.accentPurple || '#9C27B0',
+      syncFn: syncPaymentMethods,
     },
   ];
 
