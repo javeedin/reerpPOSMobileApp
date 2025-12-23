@@ -12,12 +12,14 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
-import { createOrder, confirmOrder, ORDER_STATUS, PAYMENT_METHODS } from '../services/orderService';
+import { createOrder, ORDER_STATUS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import { getPaymentMethods } from '../services/syncService';
 
@@ -128,19 +130,94 @@ const ConfettiBurst = ({ active }) => {
   );
 };
 
-const PaymentMethodButton = ({ method, icon, label, isSelected, onSelect }) => (
-  <TouchableOpacity
-    style={[styles.methodBtn, isSelected && styles.methodBtnSelected]}
-    onPress={() => onSelect(method)}
-  >
-    <View style={[styles.methodIcon, isSelected && styles.methodIconSelected]}>
-      <Ionicons name={icon} size={18} color={isSelected ? '#FFFFFF' : colors.accent} />
-    </View>
-    <Text style={[styles.methodLabel, isSelected && styles.methodLabelSelected]}>{label}</Text>
-    {isSelected && <Ionicons name="checkmark-circle" size={16} color={colors.secondary} />}
-  </TouchableOpacity>
-);
+// Map payment mode to icon
+const getPaymentIcon = (paymentMode) => {
+  const modeUpper = (paymentMode || '').toUpperCase();
+  if (modeUpper.includes('CASH')) return 'cash-outline';
+  if (modeUpper.includes('CARD') || modeUpper.includes('CREDIT')) return 'card-outline';
+  if (modeUpper.includes('VOUCHER') || modeUpper.includes('GIFT')) return 'ticket-outline';
+  if (modeUpper.includes('BANK') || modeUpper.includes('TRANSFER')) return 'swap-horizontal-outline';
+  if (modeUpper.includes('CHEQUE') || modeUpper.includes('CHECK')) return 'document-text-outline';
+  if (modeUpper.includes('MOBILE') || modeUpper.includes('WALLET')) return 'phone-portrait-outline';
+  return 'wallet-outline';
+};
 
+// Payment Method Card with inline editing
+const PaymentMethodCard = ({
+  method,
+  icon,
+  label,
+  referenceRequired,
+  receiptMethodId,
+  isEnabled,
+  amount,
+  reference,
+  onToggle,
+  onAmountChange,
+  onReferenceChange,
+  suggestedAmount,
+  currency,
+}) => {
+  return (
+    <View style={[styles.methodCard, isEnabled && styles.methodCardEnabled]}>
+      <TouchableOpacity
+        style={styles.methodCardHeader}
+        onPress={onToggle}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.methodIconSmall, isEnabled && styles.methodIconEnabled]}>
+          <Ionicons name={icon} size={18} color={isEnabled ? '#FFFFFF' : colors.accent} />
+        </View>
+        <Text style={[styles.methodCardLabel, isEnabled && styles.methodCardLabelEnabled]}>
+          {label}
+        </Text>
+        <View style={[styles.checkbox, isEnabled && styles.checkboxEnabled]}>
+          {isEnabled && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+        </View>
+      </TouchableOpacity>
+
+      {isEnabled && (
+        <View style={styles.methodCardBody}>
+          <View style={styles.amountRow}>
+            <Text style={styles.amountLabel}>{currency}</Text>
+            <TextInput
+              style={styles.amountInputInline}
+              value={amount}
+              onChangeText={onAmountChange}
+              keyboardType="numeric"
+              placeholder={suggestedAmount.toFixed(2)}
+              placeholderTextColor={colors.textMuted}
+              selectTextOnFocus
+            />
+            {suggestedAmount > 0 && (
+              <TouchableOpacity
+                style={styles.fillBtn}
+                onPress={() => onAmountChange(suggestedAmount.toFixed(2))}
+              >
+                <Text style={styles.fillBtnText}>Fill {suggestedAmount.toFixed(2)}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {(referenceRequired || reference) && (
+            <View style={styles.referenceRow}>
+              <TextInput
+                style={[styles.referenceInputInline, referenceRequired && styles.referenceRequired]}
+                value={reference}
+                onChangeText={onReferenceChange}
+                placeholder={referenceRequired ? "Reference (Required)" : "Reference (Optional)"}
+                placeholderTextColor={colors.textMuted}
+              />
+              {referenceRequired && <Text style={styles.requiredStar}>*</Text>}
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+};
+
+// Payment Entry Display (for confirmed payments)
 const PaymentEntry = ({ payment, index, onRemove, onAmountChange, currency }) => (
   <View style={styles.paymentEntry}>
     <View style={styles.paymentEntryInfo}>
@@ -162,37 +239,31 @@ const PaymentEntry = ({ payment, index, onRemove, onAmountChange, currency }) =>
   </View>
 );
 
-// Map payment mode to icon
-const getPaymentIcon = (paymentMode) => {
-  const modeUpper = (paymentMode || '').toUpperCase();
-  if (modeUpper.includes('CASH')) return 'cash-outline';
-  if (modeUpper.includes('CARD') || modeUpper.includes('CREDIT')) return 'card-outline';
-  if (modeUpper.includes('VOUCHER') || modeUpper.includes('GIFT')) return 'ticket-outline';
-  if (modeUpper.includes('BANK') || modeUpper.includes('TRANSFER')) return 'swap-horizontal-outline';
-  if (modeUpper.includes('CHEQUE') || modeUpper.includes('CHECK')) return 'document-text-outline';
-  if (modeUpper.includes('MOBILE') || modeUpper.includes('WALLET')) return 'phone-portrait-outline';
-  return 'wallet-outline';
-};
-
 const PaymentScreen = ({ navigation, route }) => {
   const { menuConfig, customer, cart, totals, notes, currency } = route.params || {};
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [payments, setPayments] = useState([]);
-  const [selectedMethod, setSelectedMethod] = useState(null);
   const [showAddPayment, setShowAddPayment] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentReference, setPaymentReference] = useState('');
   const [processing, setProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState(null);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [loadingMethods, setLoadingMethods] = useState(true);
 
+  // Modal state - track enabled methods with their amounts/references
+  const [modalPayments, setModalPayments] = useState({});
+
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const remaining = totals.totalNet - totalPaid;
+  const remaining = Math.max(0, totals.totalNet - totalPaid);
   const change = totalPaid > totals.totalNet ? totalPaid - totals.totalNet : 0;
+
+  // Calculate modal totals
+  const modalTotalPaid = Object.values(modalPayments).reduce(
+    (sum, p) => sum + (parseFloat(p.amount) || 0), 0
+  );
+  const modalRemaining = Math.max(0, totals.totalNet - totalPaid - modalTotalPaid);
 
   // Load payment methods on mount
   useEffect(() => {
@@ -204,7 +275,6 @@ const PaymentScreen = ({ navigation, route }) => {
     try {
       const methods = await getPaymentMethods();
       if (methods && methods.length > 0) {
-        // Map synced methods to UI format
         const mappedMethods = methods.map(m => ({
           method: m.paymentMode,
           icon: getPaymentIcon(m.paymentMode),
@@ -214,7 +284,6 @@ const PaymentScreen = ({ navigation, route }) => {
         }));
         setPaymentMethods(mappedMethods);
       } else {
-        // Fallback to default methods if no synced data
         setPaymentMethods([
           { method: 'Cash', icon: 'cash-outline', label: 'Cash', referenceRequired: false },
           { method: 'Card', icon: 'card-outline', label: 'Card', referenceRequired: true },
@@ -222,7 +291,6 @@ const PaymentScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       console.error('Error loading payment methods:', error);
-      // Fallback
       setPaymentMethods([
         { method: 'Cash', icon: 'cash-outline', label: 'Cash', referenceRequired: false },
         { method: 'Card', icon: 'card-outline', label: 'Card', referenceRequired: true },
@@ -232,48 +300,84 @@ const PaymentScreen = ({ navigation, route }) => {
     }
   };
 
-  // Get selected method details
-  const getSelectedMethodDetails = () => {
-    return paymentMethods.find(m => m.method === selectedMethod);
+  const handleOpenModal = () => {
+    setModalPayments({});
+    setShowAddPayment(true);
   };
 
-  const handleAddPayment = () => {
-    if (!selectedMethod) {
-      Alert.alert('Select Method', 'Please select a payment method');
+  const handleToggleMethod = (method) => {
+    setModalPayments(prev => {
+      if (prev[method]) {
+        // Remove this method
+        const { [method]: removed, ...rest } = prev;
+        return rest;
+      } else {
+        // Add this method with suggested amount
+        const currentModalTotal = Object.values(prev).reduce(
+          (sum, p) => sum + (parseFloat(p.amount) || 0), 0
+        );
+        const suggestedAmount = Math.max(0, totals.totalNet - totalPaid - currentModalTotal);
+        const methodDetails = paymentMethods.find(m => m.method === method);
+        return {
+          ...prev,
+          [method]: {
+            amount: suggestedAmount > 0 ? suggestedAmount.toFixed(2) : '',
+            reference: '',
+            receiptMethodId: methodDetails?.receiptMethodId || null,
+            referenceRequired: methodDetails?.referenceRequired || false,
+          }
+        };
+      }
+    });
+  };
+
+  const handleModalAmountChange = (method, amount) => {
+    setModalPayments(prev => ({
+      ...prev,
+      [method]: { ...prev[method], amount }
+    }));
+  };
+
+  const handleModalReferenceChange = (method, reference) => {
+    setModalPayments(prev => ({
+      ...prev,
+      [method]: { ...prev[method], reference }
+    }));
+  };
+
+  const handleConfirmModalPayments = () => {
+    // Validate all enabled methods
+    const enabledMethods = Object.entries(modalPayments);
+
+    if (enabledMethods.length === 0) {
+      Alert.alert('No Payment', 'Please select at least one payment method');
       return;
     }
 
-    // Get selected method details for validation
-    const methodDetails = getSelectedMethodDetails();
-
-    // Validate reference if required
-    if (methodDetails?.referenceRequired && !paymentReference.trim()) {
-      Alert.alert(
-        'Reference Required',
-        `Please enter a reference for ${methodDetails.label} payment`
-      );
-      return;
+    // Validate each payment
+    for (const [method, data] of enabledMethods) {
+      const amount = parseFloat(data.amount) || 0;
+      if (amount <= 0) {
+        Alert.alert('Invalid Amount', `Please enter a valid amount for ${method}`);
+        return;
+      }
+      if (data.referenceRequired && !data.reference.trim()) {
+        Alert.alert('Reference Required', `Please enter a reference for ${method}`);
+        return;
+      }
     }
 
-    // Round amount to 2 decimal places
-    const amount = Math.round((parseFloat(paymentAmount) || remaining) * 100) / 100;
-    if (amount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount');
-      return;
-    }
-
-    const newPayment = {
-      method: selectedMethod,
-      amount,
-      reference: paymentReference,
-      receiptMethodId: methodDetails?.receiptMethodId || null,
+    // Add all payments
+    const newPayments = enabledMethods.map(([method, data]) => ({
+      method,
+      amount: Math.round((parseFloat(data.amount) || 0) * 100) / 100,
+      reference: data.reference,
+      receiptMethodId: data.receiptMethodId,
       timestamp: new Date().toISOString(),
-    };
+    }));
 
-    setPayments([...payments, newPayment]);
-    setSelectedMethod(null);
-    setPaymentAmount('');
-    setPaymentReference('');
+    setPayments([...payments, ...newPayments]);
+    setModalPayments({});
     setShowAddPayment(false);
   };
 
@@ -283,18 +387,15 @@ const PaymentScreen = ({ navigation, route }) => {
 
   const handleAmountChange = (index, amount) => {
     const newPayments = [...payments];
-    // Round to 2 decimal places
     newPayments[index].amount = Math.round(amount * 100) / 100;
     setPayments(newPayments);
   };
 
   const handleQuickCash = () => {
-    // Find cash method from synced payment methods
     const cashMethod = paymentMethods.find(m =>
       m.method.toUpperCase().includes('CASH')
     );
 
-    // Quick add exact cash payment
     setPayments([{
       method: cashMethod?.method || 'Cash',
       amount: totals.totalNet,
@@ -317,7 +418,6 @@ const PaymentScreen = ({ navigation, route }) => {
     try {
       const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
 
-      // Create and confirm order
       const result = await createOrder({
         customer,
         menuConfig,
@@ -348,6 +448,14 @@ const PaymentScreen = ({ navigation, route }) => {
     navigation.navigate('MainTabs');
   };
 
+  // Calculate suggested amount for each method in modal
+  const getSuggestedAmount = (method) => {
+    const otherPayments = Object.entries(modalPayments)
+      .filter(([m]) => m !== method)
+      .reduce((sum, [, data]) => sum + (parseFloat(data.amount) || 0), 0);
+    return Math.max(0, totals.totalNet - totalPaid - otherPayments);
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
@@ -362,7 +470,11 @@ const PaymentScreen = ({ navigation, route }) => {
         <View style={styles.placeholder} />
       </LinearGradient>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+      >
         {/* Order Total Card */}
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>Order Total</Text>
@@ -382,6 +494,12 @@ const PaymentScreen = ({ navigation, route }) => {
             <Text style={styles.quickCashText}>Quick Cash - Exact Amount</Text>
           </TouchableOpacity>
         )}
+
+        {/* Add Payment Button - Moved Up */}
+        <TouchableOpacity style={styles.addPaymentBtn} onPress={handleOpenModal}>
+          <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
+          <Text style={styles.addPaymentText}>Add Payment Method</Text>
+        </TouchableOpacity>
 
         {/* Added Payments */}
         {payments.length > 0 && (
@@ -423,18 +541,10 @@ const PaymentScreen = ({ navigation, route }) => {
             </View>
           )}
         </View>
-
-        {/* Add Payment Button */}
-        <TouchableOpacity style={styles.addPaymentBtn} onPress={() => setShowAddPayment(true)}>
-          <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
-          <Text style={styles.addPaymentText}>Add Payment Method</Text>
-        </TouchableOpacity>
-
-        <View style={styles.bottomSpacer} />
       </ScrollView>
 
       {/* Confirm Button - with safe area padding */}
-      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
+      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <TouchableOpacity
           style={[styles.confirmBtn, (processing || totalPaid < totals.totalNet) && styles.confirmBtnDisabled]}
           onPress={handleConfirmOrder}
@@ -447,82 +557,119 @@ const PaymentScreen = ({ navigation, route }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Add Payment Modal */}
+      {/* Add Payment Modal - Full Screen Style */}
       <Modal
         visible={showAddPayment}
         animationType="slide"
         transparent={true}
         onRequestClose={() => setShowAddPayment(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Payment</Text>
-              <TouchableOpacity onPress={() => setShowAddPayment(false)}>
+              <TouchableOpacity onPress={() => setShowAddPayment(false)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
+              <Text style={styles.modalTitle}>Select Payment Methods</Text>
+              <View style={styles.modalHeaderRight}>
+                <Text style={styles.modalRemaining}>
+                  {modalRemaining > 0 ? `${currency} ${modalRemaining.toFixed(2)} left` : 'Fully Paid'}
+                </Text>
+              </View>
             </View>
 
-            <Text style={styles.modalSectionLabel}>Payment Method</Text>
-            {loadingMethods ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={colors.accent} />
-                <Text style={styles.loadingText}>Loading payment methods...</Text>
+            {/* Order Total Mini Card */}
+            <View style={styles.modalTotalCard}>
+              <View style={styles.modalTotalRow}>
+                <Text style={styles.modalTotalLabel}>Order Total</Text>
+                <Text style={styles.modalTotalValue}>{currency} {totals.totalNet.toFixed(2)}</Text>
               </View>
-            ) : (
-              <View style={styles.methodsGrid}>
-                {paymentMethods.map((pm) => (
-                  <PaymentMethodButton
+              {totalPaid > 0 && (
+                <View style={styles.modalTotalRow}>
+                  <Text style={styles.modalPaidLabel}>Already Paid</Text>
+                  <Text style={styles.modalPaidValue}>- {currency} {totalPaid.toFixed(2)}</Text>
+                </View>
+              )}
+              {modalTotalPaid > 0 && (
+                <View style={styles.modalTotalRow}>
+                  <Text style={styles.modalNewPaidLabel}>New Payments</Text>
+                  <Text style={styles.modalNewPaidValue}>{currency} {modalTotalPaid.toFixed(2)}</Text>
+                </View>
+              )}
+              <View style={[styles.modalTotalRow, styles.modalTotalRowFinal]}>
+                <Text style={styles.modalRemainingLabel}>
+                  {modalRemaining > 0 ? 'Remaining' : 'Change'}
+                </Text>
+                <Text style={[
+                  styles.modalRemainingValue,
+                  modalRemaining === 0 && styles.modalFullyPaid,
+                  modalTotalPaid + totalPaid > totals.totalNet && styles.modalChangeValue
+                ]}>
+                  {currency} {modalRemaining > 0 ? modalRemaining.toFixed(2) :
+                    (modalTotalPaid + totalPaid - totals.totalNet).toFixed(2)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Payment Methods List */}
+            <ScrollView
+              style={styles.modalMethodsList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {loadingMethods ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={styles.loadingText}>Loading payment methods...</Text>
+                </View>
+              ) : (
+                paymentMethods.map((pm) => (
+                  <PaymentMethodCard
                     key={pm.method}
                     method={pm.method}
                     icon={pm.icon}
                     label={pm.label}
-                    isSelected={selectedMethod === pm.method}
-                    onSelect={setSelectedMethod}
+                    referenceRequired={pm.referenceRequired}
+                    receiptMethodId={pm.receiptMethodId}
+                    isEnabled={!!modalPayments[pm.method]}
+                    amount={modalPayments[pm.method]?.amount || ''}
+                    reference={modalPayments[pm.method]?.reference || ''}
+                    onToggle={() => handleToggleMethod(pm.method)}
+                    onAmountChange={(val) => handleModalAmountChange(pm.method, val)}
+                    onReferenceChange={(val) => handleModalReferenceChange(pm.method, val)}
+                    suggestedAmount={getSuggestedAmount(pm.method)}
+                    currency={currency}
                   />
-                ))}
-              </View>
-            )}
+                ))
+              )}
+            </ScrollView>
 
-            <Text style={styles.modalSectionLabel}>Amount</Text>
-            <View style={styles.amountInputContainer}>
-              <Text style={styles.currencyLabel}>{currency}</Text>
-              <TextInput
-                style={styles.amountInput}
-                value={paymentAmount}
-                onChangeText={setPaymentAmount}
-                keyboardType="numeric"
-                placeholder={remaining.toFixed(2)}
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-
-            {selectedMethod && (
-              <>
-                <Text style={styles.modalSectionLabel}>
-                  Reference {getSelectedMethodDetails()?.referenceRequired ? '(Required)' : '(Optional)'}
+            {/* Modal Action Button */}
+            <TouchableOpacity
+              style={[
+                styles.modalConfirmBtn,
+                Object.keys(modalPayments).length === 0 && styles.modalConfirmBtnDisabled
+              ]}
+              onPress={handleConfirmModalPayments}
+              disabled={Object.keys(modalPayments).length === 0}
+            >
+              <Text style={styles.modalConfirmBtnText}>
+                {Object.keys(modalPayments).length === 0
+                  ? 'Select Payment Method'
+                  : `Add ${Object.keys(modalPayments).length} Payment${Object.keys(modalPayments).length > 1 ? 's' : ''}`}
+              </Text>
+              {Object.keys(modalPayments).length > 0 && (
+                <Text style={styles.modalConfirmBtnAmount}>
+                  {currency} {modalTotalPaid.toFixed(2)}
                 </Text>
-                <TextInput
-                  style={[
-                    styles.referenceInput,
-                    getSelectedMethodDetails()?.referenceRequired && styles.referenceInputRequired
-                  ]}
-                  value={paymentReference}
-                  onChangeText={setPaymentReference}
-                  placeholder={getSelectedMethodDetails()?.referenceRequired
-                    ? "Enter reference number..."
-                    : "Transaction reference (optional)..."
-                  }
-                  placeholderTextColor={colors.textMuted}
-                />
-              </>
-            )}
-
-            <TouchableOpacity style={styles.modalAddBtn} onPress={handleAddPayment}>
-              <Text style={styles.modalAddBtnText}>Add Payment</Text>
+              )}
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Success Modal with Confetti */}
@@ -533,7 +680,6 @@ const PaymentScreen = ({ navigation, route }) => {
         onRequestClose={handleDone}
       >
         <View style={styles.successOverlay}>
-          {/* Confetti celebration */}
           <ConfettiBurst active={showSuccess} />
 
           <View style={styles.successContent}>
@@ -638,11 +784,29 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   quickCashText: {
     color: colors.secondary,
     fontSize: 15,
+    fontWeight: '600',
+  },
+  addPaymentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderStyle: 'dashed',
+    marginBottom: 16,
+  },
+  addPaymentText: {
+    color: colors.accent,
+    fontSize: 14,
     fontWeight: '600',
   },
   paymentsSection: {
@@ -705,30 +869,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
   },
-  addPaymentBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 14,
-    borderRadius: 10,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderStyle: 'dashed',
-  },
-  addPaymentText: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  bottomSpacer: {
-    height: 100,
-  },
   actionBar: {
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
@@ -749,6 +893,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -758,95 +903,102 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 20,
+    maxHeight: SCREEN_HEIGHT * 0.85,
+    paddingTop: 8,
   },
   modalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalCloseBtn: {
+    padding: 4,
   },
   modalTitle: {
-    fontSize: 18,
+    flex: 1,
+    fontSize: 17,
     fontWeight: '600',
     color: colors.textPrimary,
+    textAlign: 'center',
+    marginHorizontal: 8,
   },
-  modalSectionLabel: {
-    fontSize: 13,
+  modalHeaderRight: {
+    minWidth: 80,
+    alignItems: 'flex-end',
+  },
+  modalRemaining: {
+    fontSize: 12,
+    color: colors.accentGreen,
     fontWeight: '600',
-    color: colors.textMuted,
-    marginBottom: 10,
+  },
+  modalTotalCard: {
+    backgroundColor: colors.surface,
+    marginHorizontal: 16,
     marginTop: 12,
+    borderRadius: 12,
+    padding: 12,
   },
-  methodsGrid: {
+  modalTotalRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
-  methodBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-    gap: 8,
-    minWidth: '45%',
-    flex: 1,
+  modalTotalRowFinal: {
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginBottom: 0,
   },
-  methodBtnSelected: {
-    backgroundColor: colors.accent + '15',
-    borderWidth: 2,
-    borderColor: colors.accent,
-  },
-  methodIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.accent + '15',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  methodIconSelected: {
-    backgroundColor: colors.accent,
-  },
-  methodLabel: {
+  modalTotalLabel: {
     fontSize: 13,
-    color: colors.textPrimary,
-    flex: 1,
+    color: colors.textSecondary,
   },
-  methodLabelSelected: {
-    fontWeight: '600',
-  },
-  amountInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    padding: 12,
-  },
-  currencyLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginRight: 8,
-  },
-  amountInput: {
-    flex: 1,
-    fontSize: 24,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  referenceInput: {
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    padding: 12,
+  modalTotalValue: {
     fontSize: 14,
+    fontWeight: '600',
     color: colors.textPrimary,
   },
-  referenceInputRequired: {
-    borderWidth: 1,
-    borderColor: colors.accent,
+  modalPaidLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  modalPaidValue: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  modalNewPaidLabel: {
+    fontSize: 12,
+    color: colors.accentGreen,
+  },
+  modalNewPaidValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accentGreen,
+  },
+  modalRemainingLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  modalRemainingValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.accentRed || '#E53935',
+  },
+  modalFullyPaid: {
+    color: colors.accentGreen,
+  },
+  modalChangeValue: {
+    color: colors.accentGreen,
+  },
+  modalMethodsList: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -859,18 +1011,145 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textMuted,
   },
-  modalAddBtn: {
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 20,
+  // Payment Method Card Styles
+  methodCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
-  modalAddBtnText: {
+  methodCardEnabled: {
+    backgroundColor: colors.accent + '10',
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  methodCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
+  },
+  methodIconSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.accent + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  methodIconEnabled: {
+    backgroundColor: colors.accent,
+  },
+  methodCardLabel: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.textPrimary,
+  },
+  methodCardLabelEnabled: {
+    fontWeight: '600',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.textMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxEnabled: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  methodCardBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    gap: 10,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  amountLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textMuted,
+    marginRight: 8,
+  },
+  amountInputInline: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    paddingVertical: 8,
+  },
+  fillBtn: {
+    backgroundColor: colors.accent + '20',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  fillBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  referenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  referenceInputInline: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  referenceRequired: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  requiredStar: {
+    fontSize: 18,
+    color: colors.accentRed || '#E53935',
+    marginLeft: 6,
+  },
+  modalConfirmBtn: {
+    backgroundColor: colors.accent,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    paddingVertical: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  modalConfirmBtnDisabled: {
+    backgroundColor: colors.textMuted,
+  },
+  modalConfirmBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
+  modalConfirmBtnAmount: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  // Success Modal
   successOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
