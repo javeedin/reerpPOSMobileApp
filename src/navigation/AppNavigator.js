@@ -18,6 +18,7 @@ import {
   ScanScreen,
   ScanTemplateScreen,
   BatchReconciliationScreen,
+  StoryScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -54,6 +55,8 @@ const MainStack = () => {
       <Stack.Screen name="Scan" component={ScanScreen} />
       <Stack.Screen name="ScanTemplate" component={ScanTemplateScreen} />
       <Stack.Screen name="BatchReconciliation" component={BatchReconciliationScreen} />
+      {/* Story screen */}
+      <Stack.Screen name="Story" component={StoryScreen} />
     </Stack.Navigator>
   );
 };

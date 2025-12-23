@@ -396,12 +396,20 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.welcomeText}>Welcome back,</Text>
           <Text style={styles.userName}>{user?.username || 'User'}</Text>
         </View>
-        <TouchableOpacity style={styles.notificationButton}>
-          <Ionicons name="notifications-outline" size={26} color="#FFFFFF" />
-          <View style={styles.notificationBadge}>
-            <Text style={styles.notificationCount}>3</Text>
-          </View>
-        </TouchableOpacity>
+        <View style={styles.headerRightButtons}>
+          <TouchableOpacity
+            style={styles.storyButton}
+            onPress={() => navigation.navigate('Story')}
+          >
+            <Ionicons name="play-circle-outline" size={26} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.notificationButton}>
+            <Ionicons name="notifications-outline" size={26} color="#FFFFFF" />
+            <View style={styles.notificationBadge}>
+              <Text style={styles.notificationCount}>3</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       {/* White Content Area */}
@@ -497,6 +505,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     textTransform: 'capitalize',
+  },
+  headerRightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  storyButton: {
+    padding: 8,
   },
   notificationButton: {
     padding: 8,

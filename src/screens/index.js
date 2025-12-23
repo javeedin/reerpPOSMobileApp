@@ -20,3 +20,5 @@ export { default as LodgementReportScreen } from './LodgementReportScreen';
 export { default as ScanScreen } from './ScanScreen';
 export { default as ScanTemplateScreen } from './ScanTemplateScreen';
 export { default as BatchReconciliationScreen } from './BatchReconciliationScreen';
+// Story screen
+export { default as StoryScreen } from './StoryScreen';
