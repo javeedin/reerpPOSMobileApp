@@ -113,6 +113,25 @@ const ScanScreen = ({ navigation }) => {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
+  // Text mapping state
+  const [showTextMapper, setShowTextMapper] = useState(false);
+  const [selectedTextLine, setSelectedTextLine] = useState(null);
+  const [showFieldSelector, setShowFieldSelector] = useState(false);
+
+  // Field types for mapping
+  const MAPPABLE_FIELDS = [
+    { id: 'date', label: 'Date', icon: 'calendar' },
+    { id: 'time', label: 'Time', icon: 'time' },
+    { id: 'mid', label: 'MID (Merchant ID)', icon: 'business' },
+    { id: 'tid', label: 'TID (Terminal ID)', icon: 'hardware-chip' },
+    { id: 'batch', label: 'Batch Number', icon: 'layers' },
+    { id: 'totalDebit', label: 'Total Debit (DR)', icon: 'arrow-up-circle' },
+    { id: 'totalCredit', label: 'Total Credit (CR)', icon: 'arrow-down-circle' },
+    { id: 'totalCount', label: 'Transaction Count', icon: 'calculator' },
+    { id: 'storeName', label: 'Store Name', icon: 'storefront' },
+    { id: 'cardType', label: 'Card Type', icon: 'card' },
+  ];
+
   // Camera controls
   const [flashMode, setFlashMode] = useState('off');
   const [focusPoint, setFocusPoint] = useState({ x: 0, y: 0 });
@@ -430,6 +449,59 @@ const ScanScreen = ({ navigation }) => {
     setBatchData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Parse raw text into lines for mapping
+  const getTextLines = () => {
+    if (!rawText) return [];
+    return rawText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+  };
+
+  // Handle tapping on a text line to map it
+  const handleTextLineTap = (line) => {
+    setSelectedTextLine(line);
+    setShowFieldSelector(true);
+  };
+
+  // Map selected text to a field
+  const handleMapToField = (fieldId) => {
+    if (selectedTextLine) {
+      // Clean up the value - extract numbers for numeric fields
+      let value = selectedTextLine;
+
+      if (['totalDebit', 'totalCredit', 'totalCount'].includes(fieldId)) {
+        // Extract numeric value
+        const numMatch = value.match(/([\d,]+\.?\d*)/);
+        if (numMatch) {
+          value = numMatch[1].replace(/,/g, '');
+        }
+      } else if (fieldId === 'mid' || fieldId === 'tid' || fieldId === 'batch') {
+        // Extract ID numbers
+        const idMatch = value.match(/(\d+)/);
+        if (idMatch) {
+          value = idMatch[1];
+        }
+      } else if (fieldId === 'date') {
+        // Try to extract date pattern
+        const dateMatch = value.match(/(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/);
+        if (dateMatch) {
+          value = dateMatch[1];
+        }
+      } else if (fieldId === 'time') {
+        // Try to extract time pattern
+        const timeMatch = value.match(/(\d{1,2}[:\s]\d{2}(:\d{2})?)/);
+        if (timeMatch) {
+          value = timeMatch[1].replace(/\s/g, ':');
+        }
+      }
+
+      setBatchData(prev => ({ ...prev, [fieldId]: value }));
+    }
+    setShowFieldSelector(false);
+    setSelectedTextLine(null);
+  };
+
   const handleSaveReport = () => {
     // Validate required fields
     if (!batchData.date || !batchData.totalDebit) {
@@ -675,26 +747,44 @@ const ScanScreen = ({ navigation }) => {
               <Ionicons name="chevron-forward" size={18} color={colors.accent} />
             </TouchableOpacity>
 
-            {/* Raw Text Toggle */}
+            {/* Text Mapping Section */}
             {rawText && (
-              <TouchableOpacity
-                style={styles.rawTextToggle}
-                onPress={() => setShowRawText(!showRawText)}
-              >
-                <Ionicons
-                  name={showRawText ? 'chevron-up' : 'chevron-down'}
-                  size={20}
-                  color={colors.accent}
-                />
-                <Text style={styles.rawTextToggleText}>
-                  {showRawText ? 'Hide' : 'Show'} Extracted Text
-                </Text>
-              </TouchableOpacity>
-            )}
+              <View style={styles.textMappingSection}>
+                <View style={styles.textMappingHeader}>
+                  <TouchableOpacity
+                    style={styles.rawTextToggle}
+                    onPress={() => setShowRawText(!showRawText)}
+                  >
+                    <Ionicons
+                      name={showRawText ? 'chevron-up' : 'chevron-down'}
+                      size={20}
+                      color={colors.accent}
+                    />
+                    <Text style={styles.rawTextToggleText}>
+                      {showRawText ? 'Hide' : 'Show'} Extracted Text
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
-            {showRawText && rawText && (
-              <View style={styles.rawTextCard}>
-                <Text style={styles.rawText}>{rawText}</Text>
+                {showRawText && (
+                  <View style={styles.rawTextCard}>
+                    <Text style={styles.mapInstructions}>
+                      Tap on any line below to map it to a field:
+                    </Text>
+                    <View style={styles.textLinesContainer}>
+                      {getTextLines().map((line, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.textLine}
+                          onPress={() => handleTextLineTap(line)}
+                        >
+                          <Text style={styles.textLineText}>{line}</Text>
+                          <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
               </View>
             )}
 
@@ -917,6 +1007,69 @@ const ScanScreen = ({ navigation }) => {
                   <Ionicons name="checkmark-circle" size={24} color={colors.accent} />
                 )}
               </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Field Selector Modal for Text Mapping */}
+      <Modal
+        visible={showFieldSelector}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          setShowFieldSelector(false);
+          setSelectedTextLine(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.fieldSelectorContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Map to Field</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowFieldSelector(false);
+                  setSelectedTextLine(null);
+                }}
+              >
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Selected Text Preview */}
+            <View style={styles.selectedTextPreview}>
+              <Text style={styles.selectedTextLabel}>Selected text:</Text>
+              <Text style={styles.selectedTextValue} numberOfLines={2}>
+                {selectedTextLine}
+              </Text>
+            </View>
+
+            <Text style={styles.fieldSelectorSubtitle}>Select a field to map this text to:</Text>
+
+            <ScrollView style={styles.fieldSelectorList}>
+              {MAPPABLE_FIELDS.map((field) => (
+                <TouchableOpacity
+                  key={field.id}
+                  style={[
+                    styles.fieldSelectorItem,
+                    batchData[field.id] && styles.fieldSelectorItemFilled,
+                  ]}
+                  onPress={() => handleMapToField(field.id)}
+                >
+                  <Ionicons name={field.icon} size={22} color={colors.accent} />
+                  <View style={styles.fieldSelectorItemText}>
+                    <Text style={styles.fieldSelectorItemLabel}>{field.label}</Text>
+                    {batchData[field.id] ? (
+                      <Text style={styles.fieldSelectorItemValue} numberOfLines={1}>
+                        Current: {batchData[field.id]}
+                      </Text>
+                    ) : (
+                      <Text style={styles.fieldSelectorItemEmpty}>Not set</Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           </View>
         </View>
@@ -1481,6 +1634,110 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   templateItemFields: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  // Text Mapping Styles
+  textMappingSection: {
+    marginBottom: 16,
+  },
+  textMappingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  mapInstructions: {
+    fontSize: 13,
+    color: colors.accent,
+    fontWeight: '500',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  textLinesContainer: {
+    gap: 6,
+  },
+  textLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  textLineText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textPrimary,
+    fontFamily: 'monospace',
+    marginRight: 8,
+  },
+  // Field Selector Modal
+  fieldSelectorContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+  },
+  selectedTextPreview: {
+    backgroundColor: colors.accent + '15',
+    padding: 12,
+    marginHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  selectedTextLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  selectedTextValue: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    fontWeight: '500',
+    fontFamily: 'monospace',
+  },
+  fieldSelectorSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  fieldSelectorList: {
+    padding: 16,
+    paddingTop: 8,
+  },
+  fieldSelectorItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  fieldSelectorItemFilled: {
+    backgroundColor: colors.accentGreen + '15',
+    borderWidth: 1,
+    borderColor: colors.accentGreen + '30',
+  },
+  fieldSelectorItemText: {
+    flex: 1,
+  },
+  fieldSelectorItemLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  fieldSelectorItemValue: {
+    fontSize: 12,
+    color: colors.accentGreen,
+    marginTop: 2,
+  },
+  fieldSelectorItemEmpty: {
     fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
