@@ -115,12 +115,30 @@ const ScanScreen = ({ navigation }) => {
 
     try {
       // Try OCR extraction
+      console.log('Starting OCR extraction...');
       const text = await extractTextFromImage(base64);
+      console.log('OCR result:', text ? 'Text extracted' : 'No text');
 
       if (text) {
         setRawText(text);
         const parsed = parseBatchReport(text);
         setExtractedData(parsed);
+
+        // Show success message with extracted info
+        const foundFields = [];
+        if (parsed.date) foundFields.push('Date');
+        if (parsed.mid) foundFields.push('MID');
+        if (parsed.tid) foundFields.push('TID');
+        if (parsed.batch) foundFields.push('Batch');
+        if (parsed.grandTotal.debit > 0) foundFields.push('Amount');
+
+        Alert.alert(
+          'OCR Complete',
+          foundFields.length > 0
+            ? `Extracted: ${foundFields.join(', ')}\n\nPlease verify the details below.`
+            : 'Text extracted but could not identify fields. Please enter details manually.',
+          [{ text: 'OK' }]
+        );
 
         // Populate editable fields
         setBatchData({
