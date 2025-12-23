@@ -16,6 +16,7 @@ import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { getOrders, ORDER_STATUS, PAYMENT_METHODS } from '../services/orderService';
 import { getOnhand } from '../services/syncService';
+import { getAllLocalAdjustments } from '../services/onhandService';
 
 const { width } = Dimensions.get('window');
 const cardWidth = (width - 60) / 2;
@@ -280,19 +281,28 @@ const HomeScreen = ({ navigation }) => {
         paymentDisplay = paymentMethods.map(m => `${m}: ${paymentBreakdown[m].toFixed(0)}`).join('\n');
       }
 
-      // Get inventory data
+      // Get inventory data with local adjustments
       const onhandData = await getOnhand() || [];
-      const totalItems = onhandData.length;
-      const totalQty = onhandData.reduce((sum, item) => sum + (parseFloat(item.onHandQty) || 0), 0);
+      const localAdjustments = await getAllLocalAdjustments();
+
+      // Calculate adjusted quantities
+      let totalItems = onhandData.length;
+      let totalQty = 0;
+
+      onhandData.forEach(item => {
+        const baseQty = parseFloat(item.onHandQty) || 0;
+        const adjustment = localAdjustments[item.itemNumber] || 0;
+        const adjustedQty = baseQty + adjustment;
+        totalQty += adjustedQty;
+      });
 
       // Update KPI data
       setKpiData([
         {
           title: "Today's Sales",
-          value: `MUR ${todaysSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          value: todaysSales.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
           icon: 'cart',
           color: colors.accent,
-          trend: todaysSales > 0 ? 'up' : undefined,
           trendValue: `${ordersCount} orders`
         },
         {
@@ -310,11 +320,10 @@ const HomeScreen = ({ navigation }) => {
         },
         {
           title: 'Inventory',
-          value: `${totalItems} items`,
+          value: `${totalItems}`,
           icon: 'cube',
           color: colors.accentPurple,
-          trend: totalQty > 0 ? undefined : undefined,
-          trendValue: `Qty: ${totalQty.toLocaleString()}`
+          trendValue: `Qty: ${Math.round(totalQty).toLocaleString()}`
         },
       ]);
     } catch (error) {
@@ -530,25 +539,25 @@ const styles = StyleSheet.create({
   trendBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 2,
   },
   trendText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
   },
   kpiValue: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.textPrimary,
     marginBottom: 4,
   },
   kpiValueMultiline: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    lineHeight: 18,
+    lineHeight: 16,
   },
   kpiTitle: {
     fontSize: 13,

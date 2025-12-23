@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 import { ORDER_STATUS, PAYMENT_METHODS, updateOrder, deleteOrder } from '../services/orderService';
+import { restoreOnhandForOrder } from '../services/onhandService';
 
 const getStatusColor = (status) => {
   switch (status?.toUpperCase()) {
@@ -197,8 +198,12 @@ const OrderDetailScreen = ({ navigation, route }) => {
           style: 'destructive',
           onPress: async () => {
             try {
+              // If order was confirmed, restore inventory
+              if (order.status === ORDER_STATUS.CONFIRMED && order.lines?.length > 0) {
+                await restoreOnhandForOrder(order.orderNumber, order.lines);
+              }
               await updateOrder(order.id, { status: ORDER_STATUS.CANCELLED });
-              Alert.alert('Order Cancelled', 'The order has been cancelled.');
+              Alert.alert('Order Cancelled', 'The order has been cancelled and inventory restored.');
               navigation.goBack();
             } catch (error) {
               Alert.alert('Error', error.message);
