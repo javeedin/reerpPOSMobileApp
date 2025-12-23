@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,8 +21,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { useFocusEffect } from '@react-navigation/native';
 import colors from '../theme/colors';
 import { parseBatchReport, extractTextFromImage } from '../services/ocrService';
+import { getTemplates, getDefaultTemplate, setDefaultTemplate, FIELD_TYPES } from '../services/templateService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -100,16 +102,48 @@ const ScanScreen = ({ navigation }) => {
 
   const [showCamera, setShowCamera] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
+  const [capturedImageUri, setCapturedImageUri] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [rawText, setRawText] = useState('');
   const [showRawText, setShowRawText] = useState(false);
+
+  // Template state
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   // Camera controls
   const [flashMode, setFlashMode] = useState('off');
   const [focusPoint, setFocusPoint] = useState({ x: 0, y: 0 });
   const [showFocusIndicator, setShowFocusIndicator] = useState(false);
   const focusTimeoutRef = useRef(null);
+
+  // Load templates on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      loadTemplates();
+    }, [])
+  );
+
+  const loadTemplates = async () => {
+    const loadedTemplates = await getTemplates();
+    setTemplates(loadedTemplates);
+
+    // Load default template
+    const defaultTemplate = await getDefaultTemplate();
+    if (defaultTemplate) {
+      setSelectedTemplate(defaultTemplate);
+    } else if (loadedTemplates.length > 0) {
+      setSelectedTemplate(loadedTemplates[0]);
+    }
+  };
+
+  const handleSelectTemplate = async (template) => {
+    setSelectedTemplate(template);
+    await setDefaultTemplate(template.id);
+    setShowTemplatePicker(false);
+  };
 
   // Batch report fields for manual entry/editing
   const [batchData, setBatchData] = useState({
@@ -234,68 +268,152 @@ const ScanScreen = ({ navigation }) => {
     }
   };
 
+  // Extract text from a specific region of the image using template
+  const extractRegionText = async (uri, region, imageWidth, imageHeight) => {
+    try {
+      // Convert percentage to pixel coordinates
+      const originX = Math.round((region.x / 100) * imageWidth);
+      const originY = Math.round((region.y / 100) * imageHeight);
+      const width = Math.round((region.width / 100) * imageWidth);
+      const height = Math.round((region.height / 100) * imageHeight);
+
+      // Crop the specific region
+      const cropped = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ crop: { originX, originY, width, height } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+
+      // Extract text from cropped region
+      const text = await extractTextFromImage(cropped.base64);
+      return text?.trim() || '';
+    } catch (error) {
+      console.error(`Error extracting region ${region.fieldType}:`, error);
+      return '';
+    }
+  };
+
+  // Process image using template regions
+  const processWithTemplate = async (uri, template) => {
+    console.log('Processing with template:', template.name);
+
+    // Get image dimensions
+    return new Promise((resolve) => {
+      Image.getSize(uri, async (imageWidth, imageHeight) => {
+        const extractedFields = {};
+        let allText = '';
+
+        for (const region of template.regions) {
+          console.log(`Extracting ${region.fieldLabel}...`);
+          const text = await extractRegionText(uri, region, imageWidth, imageHeight);
+          extractedFields[region.fieldType] = text;
+          allText += `${region.fieldLabel}: ${text}\n`;
+        }
+
+        resolve({ extractedFields, allText });
+      }, () => resolve({ extractedFields: {}, allText: '' }));
+    });
+  };
+
   const processImage = async (uri, base64) => {
     setProcessing(true);
     setExtractedData(null);
     setRawText('');
+    setCapturedImageUri(uri);
 
     try {
-      // Compress image for OCR (limit is 1MB)
-      console.log('Compressing image for OCR...');
-      const compressedBase64 = await compressImage(uri);
+      let extractedFields = {};
+      let allText = '';
 
-      if (!compressedBase64) {
-        throw new Error('Failed to compress image');
-      }
+      // Check if we have a template selected
+      if (selectedTemplate && selectedTemplate.regions?.length > 0) {
+        // Use template-based extraction
+        const result = await processWithTemplate(uri, selectedTemplate);
+        extractedFields = result.extractedFields;
+        allText = result.allText;
+        setRawText(allText);
 
-      // Try OCR extraction with compressed image
-      console.log('Starting OCR extraction...');
-      const text = await extractTextFromImage(compressedBase64);
-      console.log('OCR result:', text ? 'Text extracted' : 'No text');
+        // Populate batch data from template fields
+        setBatchData({
+          storeName: extractedFields.storeName || '',
+          location: '',
+          date: extractedFields.date || '',
+          time: extractedFields.time || '',
+          mid: extractedFields.mid || '',
+          tid: extractedFields.tid || '',
+          batch: extractedFields.batch || '',
+          cardType: extractedFields.cardType || '',
+          totalCount: extractedFields.totalCount || '',
+          totalDebit: extractedFields.totalDebit || '',
+          totalCredit: extractedFields.totalCredit || '',
+          settled: false,
+        });
 
-      if (text) {
-        setRawText(text);
-        const parsed = parseBatchReport(text);
-        setExtractedData(parsed);
-
-        // Show success message with extracted info
-        const foundFields = [];
-        if (parsed.date) foundFields.push('Date');
-        if (parsed.mid) foundFields.push('MID');
-        if (parsed.tid) foundFields.push('TID');
-        if (parsed.batch) foundFields.push('Batch');
-        if (parsed.grandTotal.debit > 0) foundFields.push('Amount');
+        const foundFields = Object.entries(extractedFields)
+          .filter(([_, v]) => v)
+          .map(([k]) => FIELD_TYPES.find(f => f.id === k)?.label || k);
 
         Alert.alert(
-          'OCR Complete',
+          'Template Extraction Complete',
           foundFields.length > 0
             ? `Extracted: ${foundFields.join(', ')}\n\nPlease verify the details below.`
-            : 'Text extracted but could not identify fields. Please enter details manually.',
+            : 'Could not extract fields. Try adjusting template regions.',
           [{ text: 'OK' }]
         );
-
-        // Populate editable fields
-        setBatchData({
-          storeName: parsed.storeName || '',
-          location: parsed.location || '',
-          date: parsed.date || '',
-          time: parsed.time || '',
-          mid: parsed.mid || '',
-          tid: parsed.tid || '',
-          batch: parsed.batch || '',
-          cardType: parsed.cardType || '',
-          totalCount: parsed.grandTotal.count?.toString() || '',
-          totalDebit: parsed.grandTotal.debit?.toString() || '',
-          totalCredit: parsed.grandTotal.credit?.toString() || '',
-          settled: parsed.settled || false,
-        });
       } else {
-        // No OCR available - manual entry mode
-        Alert.alert(
-          'Manual Entry',
-          'OCR is not configured. Please enter the batch report details manually.',
-          [{ text: 'OK' }]
-        );
+        // Fall back to full image OCR
+        console.log('Compressing image for OCR...');
+        const compressedBase64 = await compressImage(uri);
+
+        if (!compressedBase64) {
+          throw new Error('Failed to compress image');
+        }
+
+        console.log('Starting OCR extraction...');
+        const text = await extractTextFromImage(compressedBase64);
+        console.log('OCR result:', text ? 'Text extracted' : 'No text');
+
+        if (text) {
+          setRawText(text);
+          const parsed = parseBatchReport(text);
+          setExtractedData(parsed);
+
+          const foundFields = [];
+          if (parsed.date) foundFields.push('Date');
+          if (parsed.mid) foundFields.push('MID');
+          if (parsed.tid) foundFields.push('TID');
+          if (parsed.batch) foundFields.push('Batch');
+          if (parsed.grandTotal.debit > 0) foundFields.push('Amount');
+
+          Alert.alert(
+            'OCR Complete',
+            foundFields.length > 0
+              ? `Extracted: ${foundFields.join(', ')}\n\nPlease verify the details below.\n\nTip: Create a template for better accuracy!`
+              : 'Text extracted but could not identify fields. Create a template for better results.',
+            [{ text: 'OK' }]
+          );
+
+          setBatchData({
+            storeName: parsed.storeName || '',
+            location: parsed.location || '',
+            date: parsed.date || '',
+            time: parsed.time || '',
+            mid: parsed.mid || '',
+            tid: parsed.tid || '',
+            batch: parsed.batch || '',
+            cardType: parsed.cardType || '',
+            totalCount: parsed.grandTotal.count?.toString() || '',
+            totalDebit: parsed.grandTotal.debit?.toString() || '',
+            totalCredit: parsed.grandTotal.credit?.toString() || '',
+            settled: parsed.settled || false,
+          });
+        } else {
+          Alert.alert(
+            'Manual Entry',
+            'Could not extract text. Create a template for better results or enter details manually.',
+            [{ text: 'OK' }]
+          );
+        }
       }
     } catch (error) {
       console.error('Processing error:', error);
@@ -442,6 +560,58 @@ const ScanScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
+        {/* Template Selection */}
+        {!capturedImage && (
+          <View style={styles.templateSection}>
+            <View style={styles.templateHeader}>
+              <Text style={styles.templateLabel}>OCR Template</Text>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('ScanTemplate', { imageUri: null })}
+                style={styles.manageTemplatesBtn}
+              >
+                <Ionicons name="settings-outline" size={18} color={colors.accent} />
+              </TouchableOpacity>
+            </View>
+
+            {templates.length === 0 ? (
+              <TouchableOpacity
+                style={styles.noTemplateCard}
+                onPress={() => {
+                  Alert.alert(
+                    'Create Template',
+                    'Take a photo first, then you can create a template from it.',
+                    [{ text: 'OK' }]
+                  );
+                }}
+              >
+                <Ionicons name="grid-outline" size={24} color={colors.textMuted} />
+                <Text style={styles.noTemplateText}>No templates yet</Text>
+                <Text style={styles.noTemplateHint}>Scan an image first to create one</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.templateSelector}
+                onPress={() => setShowTemplatePicker(true)}
+              >
+                <View style={styles.templateSelectorLeft}>
+                  <View style={[styles.templateIcon, { backgroundColor: colors.accent + '20' }]}>
+                    <Ionicons name="grid" size={20} color={colors.accent} />
+                  </View>
+                  <View>
+                    <Text style={styles.templateName}>
+                      {selectedTemplate?.name || 'Select Template'}
+                    </Text>
+                    <Text style={styles.templateFields}>
+                      {selectedTemplate?.regions?.length || 0} fields mapped
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* Scan Options */}
         {!capturedImage && (
           <View style={styles.scanOptions}>
@@ -492,6 +662,18 @@ const ScanScreen = ({ navigation }) => {
                 <Text style={styles.retakeBtnText}>Retake</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Create/Edit Template Button */}
+            <TouchableOpacity
+              style={styles.createTemplateBtn}
+              onPress={() => navigation.navigate('ScanTemplate', { imageUri: capturedImageUri || capturedImage })}
+            >
+              <Ionicons name="grid-outline" size={20} color={colors.accent} />
+              <Text style={styles.createTemplateBtnText}>
+                {templates.length === 0 ? 'Create Template from this Image' : 'Edit or Create Template'}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.accent} />
+            </TouchableOpacity>
 
             {/* Raw Text Toggle */}
             {rawText && (
@@ -665,6 +847,80 @@ const ScanScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Template Picker Modal */}
+      <Modal
+        visible={showTemplatePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTemplatePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Template</Text>
+              <TouchableOpacity onPress={() => setShowTemplatePicker(false)}>
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.templateList}>
+              {templates.map((template) => (
+                <TouchableOpacity
+                  key={template.id}
+                  style={[
+                    styles.templateItem,
+                    selectedTemplate?.id === template.id && styles.templateItemSelected,
+                  ]}
+                  onPress={() => handleSelectTemplate(template)}
+                >
+                  <View style={styles.templateItemLeft}>
+                    <View style={[styles.templateIcon, { backgroundColor: colors.accent + '20' }]}>
+                      <Ionicons name="grid" size={20} color={colors.accent} />
+                    </View>
+                    <View>
+                      <Text style={styles.templateItemName}>{template.name}</Text>
+                      <Text style={styles.templateItemFields}>
+                        {template.regions?.length || 0} fields mapped
+                      </Text>
+                    </View>
+                  </View>
+                  {selectedTemplate?.id === template.id && (
+                    <Ionicons name="checkmark-circle" size={24} color={colors.accent} />
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              {/* Option to scan without template */}
+              <TouchableOpacity
+                style={[
+                  styles.templateItem,
+                  !selectedTemplate && styles.templateItemSelected,
+                ]}
+                onPress={() => {
+                  setSelectedTemplate(null);
+                  setShowTemplatePicker(false);
+                }}
+              >
+                <View style={styles.templateItemLeft}>
+                  <View style={[styles.templateIcon, { backgroundColor: colors.textMuted + '20' }]}>
+                    <Ionicons name="scan-outline" size={20} color={colors.textMuted} />
+                  </View>
+                  <View>
+                    <Text style={styles.templateItemName}>No Template (Auto OCR)</Text>
+                    <Text style={styles.templateItemFields}>
+                      Uses automatic text parsing
+                    </Text>
+                  </View>
+                </View>
+                {!selectedTemplate && (
+                  <Ionicons name="checkmark-circle" size={24} color={colors.accent} />
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1083,6 +1339,151 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 29,
     backgroundColor: '#FFFFFF',
+  },
+  // Template Styles
+  templateSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  templateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  templateLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  manageTemplatesBtn: {
+    padding: 4,
+  },
+  noTemplateCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  noTemplateText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textMuted,
+    marginTop: 8,
+  },
+  noTemplateHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  templateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 12,
+  },
+  templateSelectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  templateIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  templateName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  templateFields: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  createTemplateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent + '15',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    gap: 8,
+  },
+  createTemplateBtnText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.accent,
+  },
+  // Template Picker Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '60%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  templateList: {
+    padding: 16,
+  },
+  templateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  templateItemSelected: {
+    backgroundColor: colors.accent + '15',
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  templateItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  templateItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  templateItemFields: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 });
 

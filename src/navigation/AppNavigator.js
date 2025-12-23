@@ -16,6 +16,7 @@ import {
   OrderDetailScreen,
   LodgementReportScreen,
   ScanScreen,
+  ScanTemplateScreen,
   BatchReconciliationScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
@@ -51,6 +52,7 @@ const MainStack = () => {
       <Stack.Screen name="LodgementReport" component={LodgementReportScreen} />
       {/* Scan & Reconciliation screens */}
       <Stack.Screen name="Scan" component={ScanScreen} />
+      <Stack.Screen name="ScanTemplate" component={ScanTemplateScreen} />
       <Stack.Screen name="BatchReconciliation" component={BatchReconciliationScreen} />
     </Stack.Navigator>
   );

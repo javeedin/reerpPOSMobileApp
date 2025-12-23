@@ -18,4 +18,5 @@ export { default as OrderDetailScreen } from './OrderDetailScreen';
 export { default as LodgementReportScreen } from './LodgementReportScreen';
 // Scan & Reconciliation screens
 export { default as ScanScreen } from './ScanScreen';
+export { default as ScanTemplateScreen } from './ScanTemplateScreen';
 export { default as BatchReconciliationScreen } from './BatchReconciliationScreen';
