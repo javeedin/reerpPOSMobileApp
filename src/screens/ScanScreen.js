@@ -12,6 +12,8 @@ import {
   Modal,
   ActivityIndicator,
   Dimensions,
+  Animated,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +24,58 @@ import colors from '../theme/colors';
 import { parseBatchReport, extractTextFromImage } from '../services/ocrService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Focus Indicator Component
+const FocusIndicator = ({ x, y, visible }) => {
+  const scaleAnim = useRef(new Animated.Value(1.5)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (visible) {
+      // Reset animations
+      scaleAnim.setValue(1.5);
+      opacityAnim.setValue(1);
+
+      // Animate focus indicator
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 5,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.delay(500),
+          Animated.timing(opacityAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    }
+  }, [visible, x, y]);
+
+  if (!visible) return null;
+
+  return (
+    <Animated.View
+      style={[
+        styles.focusIndicator,
+        {
+          left: x - 35,
+          top: y - 35,
+          transform: [{ scale: scaleAnim }],
+          opacity: opacityAnim,
+        },
+      ]}
+    >
+      <View style={styles.focusCorner1} />
+      <View style={styles.focusCorner2} />
+      <View style={styles.focusCorner3} />
+      <View style={styles.focusCorner4} />
+    </Animated.View>
+  );
+};
 
 // Editable Field Component
 const EditableField = ({ label, value, onChangeText, keyboardType = 'default', placeholder }) => (
@@ -50,6 +104,12 @@ const ScanScreen = ({ navigation }) => {
   const [rawText, setRawText] = useState('');
   const [showRawText, setShowRawText] = useState(false);
 
+  // Camera controls
+  const [flashMode, setFlashMode] = useState('off');
+  const [focusPoint, setFocusPoint] = useState({ x: 0, y: 0 });
+  const [showFocusIndicator, setShowFocusIndicator] = useState(false);
+  const focusTimeoutRef = useRef(null);
+
   // Batch report fields for manual entry/editing
   const [batchData, setBatchData] = useState({
     storeName: '',
@@ -65,6 +125,30 @@ const ScanScreen = ({ navigation }) => {
     totalCredit: '',
     settled: false,
   });
+
+  // Handle tap to focus
+  const handleTapToFocus = (event) => {
+    const { locationX, locationY } = event.nativeEvent;
+
+    // Set focus point
+    setFocusPoint({ x: locationX, y: locationY });
+    setShowFocusIndicator(true);
+
+    // Clear previous timeout
+    if (focusTimeoutRef.current) {
+      clearTimeout(focusTimeoutRef.current);
+    }
+
+    // Hide focus indicator after animation
+    focusTimeoutRef.current = setTimeout(() => {
+      setShowFocusIndicator(false);
+    }, 1000);
+  };
+
+  // Toggle flash
+  const toggleFlash = () => {
+    setFlashMode(current => current === 'off' ? 'on' : 'off');
+  };
 
   const handleOpenCamera = async () => {
     if (!permission?.granted) {
@@ -227,37 +311,62 @@ const ScanScreen = ({ navigation }) => {
           ref={cameraRef}
           style={styles.camera}
           facing="back"
+          flash={flashMode}
+          autofocus="on"
         >
-          <View style={styles.cameraOverlay}>
-            <View style={styles.cameraHeader}>
+          <TouchableWithoutFeedback onPress={handleTapToFocus}>
+            <View style={styles.cameraOverlay}>
+              {/* Focus Indicator */}
+              <FocusIndicator
+                x={focusPoint.x}
+                y={focusPoint.y}
+                visible={showFocusIndicator}
+              />
+
+              <View style={styles.cameraHeader}>
+                <TouchableOpacity
+                  onPress={() => setShowCamera(false)}
+                  style={styles.cameraCloseBtn}
+                >
+                  <Ionicons name="close" size={28} color="#FFFFFF" />
+                </TouchableOpacity>
+                <Text style={styles.cameraTitle}>Scan Batch Report</Text>
+                <TouchableOpacity
+                  onPress={toggleFlash}
+                  style={styles.flashBtn}
+                >
+                  <Ionicons
+                    name={flashMode === 'on' ? 'flash' : 'flash-off'}
+                    size={24}
+                    color={flashMode === 'on' ? '#FFD700' : '#FFFFFF'}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.scanFrame}>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+              </View>
+
+              <View style={styles.cameraHintContainer}>
+                <Text style={styles.cameraHint}>
+                  Position the batch report within the frame
+                </Text>
+                <Text style={styles.cameraHintSecondary}>
+                  Tap anywhere to focus • Flash: {flashMode === 'on' ? 'ON' : 'OFF'}
+                </Text>
+              </View>
+
               <TouchableOpacity
-                onPress={() => setShowCamera(false)}
-                style={styles.cameraCloseBtn}
+                style={styles.captureBtn}
+                onPress={handleTakePhoto}
               >
-                <Ionicons name="close" size={28} color="#FFFFFF" />
+                <View style={styles.captureBtnInner} />
               </TouchableOpacity>
-              <Text style={styles.cameraTitle}>Scan Batch Report</Text>
-              <View style={{ width: 40 }} />
             </View>
-
-            <View style={styles.scanFrame}>
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
-            </View>
-
-            <Text style={styles.cameraHint}>
-              Position the batch report within the frame
-            </Text>
-
-            <TouchableOpacity
-              style={styles.captureBtn}
-              onPress={handleTakePhoto}
-            >
-              <View style={styles.captureBtnInner} />
-            </TouchableOpacity>
-          </View>
+          </TouchableWithoutFeedback>
         </CameraView>
       </View>
     );
@@ -842,11 +951,73 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
     borderRightWidth: 3,
   },
+  cameraHintContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
   cameraHint: {
     color: '#FFFFFF',
     textAlign: 'center',
     fontSize: 14,
     opacity: 0.8,
+  },
+  cameraHintSecondary: {
+    color: '#FFFFFF',
+    textAlign: 'center',
+    fontSize: 12,
+    opacity: 0.6,
+    marginTop: 4,
+  },
+  flashBtn: {
+    padding: 8,
+  },
+  // Focus Indicator
+  focusIndicator: {
+    position: 'absolute',
+    width: 70,
+    height: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  focusCorner1: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 20,
+    height: 20,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    borderColor: '#FFD700',
+  },
+  focusCorner2: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 20,
+    height: 20,
+    borderTopWidth: 2,
+    borderRightWidth: 2,
+    borderColor: '#FFD700',
+  },
+  focusCorner3: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: 20,
+    height: 20,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderColor: '#FFD700',
+  },
+  focusCorner4: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 20,
+    height: 20,
+    borderBottomWidth: 2,
+    borderRightWidth: 2,
+    borderColor: '#FFD700',
   },
   captureBtn: {
     width: 72,
