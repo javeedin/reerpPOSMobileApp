@@ -458,6 +458,16 @@ const ScanScreen = ({ navigation }) => {
       .filter(line => line.length > 0);
   };
 
+  // Get list of mapped fields with their values
+  const getMappedFields = () => {
+    return MAPPABLE_FIELDS
+      .filter(field => batchData[field.id] && batchData[field.id].toString().trim() !== '')
+      .map(field => ({
+        ...field,
+        value: batchData[field.id],
+      }));
+  };
+
   // Handle tapping on a text line to map it
   const handleTextLineTap = (line) => {
     setSelectedTextLine(line);
@@ -750,6 +760,37 @@ const ScanScreen = ({ navigation }) => {
             {/* Text Mapping Section */}
             {rawText && (
               <View style={styles.textMappingSection}>
+                {/* Mapped Fields Summary */}
+                {getMappedFields().length > 0 && (
+                  <View style={styles.mappedFieldsCard}>
+                    <View style={styles.mappedFieldsHeader}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.accentGreen} />
+                      <Text style={styles.mappedFieldsTitle}>
+                        Mapped Fields ({getMappedFields().length})
+                      </Text>
+                    </View>
+                    <View style={styles.mappedFieldsList}>
+                      {getMappedFields().map((field) => (
+                        <View key={field.id} style={styles.mappedFieldItem}>
+                          <View style={styles.mappedFieldLeft}>
+                            <Ionicons name={field.icon} size={16} color={colors.accent} />
+                            <Text style={styles.mappedFieldLabel}>{field.label}:</Text>
+                          </View>
+                          <Text style={styles.mappedFieldValue} numberOfLines={1}>
+                            {field.value}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => handleFieldChange(field.id, '')}
+                            style={styles.mappedFieldClear}
+                          >
+                            <Ionicons name="close-circle" size={18} color={colors.error} />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
                 <View style={styles.textMappingHeader}>
                   <TouchableOpacity
                     style={styles.rawTextToggle}
@@ -761,7 +802,7 @@ const ScanScreen = ({ navigation }) => {
                       color={colors.accent}
                     />
                     <Text style={styles.rawTextToggleText}>
-                      {showRawText ? 'Hide' : 'Show'} Extracted Text
+                      {showRawText ? 'Hide' : 'Show'} Extracted Text ({getTextLines().length} lines)
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1641,6 +1682,59 @@ const styles = StyleSheet.create({
   // Text Mapping Styles
   textMappingSection: {
     marginBottom: 16,
+  },
+  // Mapped Fields Card
+  mappedFieldsCard: {
+    backgroundColor: colors.accentGreen + '10',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.accentGreen + '30',
+  },
+  mappedFieldsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  mappedFieldsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accentGreen,
+  },
+  mappedFieldsList: {
+    gap: 6,
+  },
+  mappedFieldItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  mappedFieldLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 120,
+  },
+  mappedFieldLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  mappedFieldValue: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textPrimary,
+    fontWeight: '600',
+    fontFamily: 'monospace',
+    marginRight: 8,
+  },
+  mappedFieldClear: {
+    padding: 2,
   },
   textMappingHeader: {
     flexDirection: 'row',
