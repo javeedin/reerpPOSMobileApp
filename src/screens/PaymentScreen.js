@@ -903,7 +903,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: SCREEN_HEIGHT * 0.85,
+    height: SCREEN_HEIGHT * 0.85,
     paddingTop: 8,
   },
   modalHeader: {
@@ -999,6 +999,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
+    paddingBottom: 10,
+    minHeight: 200,
   },
   loadingContainer: {
     flexDirection: 'row',
