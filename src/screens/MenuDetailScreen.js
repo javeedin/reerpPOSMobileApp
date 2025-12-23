@@ -31,6 +31,22 @@ const ConfigItem = ({ label, value }) => (
 const MenuDetailScreen = ({ navigation, route }) => {
   const { item } = route.params || {};
 
+  // Check if this is a report menu item
+  const isReport = () => {
+    const name = (item?.name || '').toLowerCase();
+    return name.includes('report') || name.includes('lodgement') || name.includes('lodgment');
+  };
+
+  // Get the report type for navigation
+  const getReportScreen = () => {
+    const name = (item?.name || '').toLowerCase();
+    if (name.includes('lodgement') || name.includes('lodgment')) {
+      return 'LodgementReport';
+    }
+    // Add more report types here as needed
+    return null;
+  };
+
   const handleOpenNewOrder = () => {
     // Prepare menu config for order
     const menuConfig = {
@@ -51,6 +67,15 @@ const MenuDetailScreen = ({ navigation, route }) => {
     };
 
     navigation.navigate('CustomerSelection', { menuConfig });
+  };
+
+  const handleOpenReport = () => {
+    const reportScreen = getReportScreen();
+    if (reportScreen) {
+      navigation.navigate(reportScreen);
+    } else {
+      Alert.alert('Coming Soon', 'This report is not yet available.');
+    }
   };
 
   if (!item) {
@@ -157,14 +182,17 @@ const MenuDetailScreen = ({ navigation, route }) => {
           <View style={styles.bottomSpacer} />
         </ScrollView>
 
-        {/* Floating New Order Button */}
-        <TouchableOpacity style={styles.floatingButton} onPress={handleOpenNewOrder}>
+        {/* Floating Action Button */}
+        <TouchableOpacity
+          style={styles.floatingButton}
+          onPress={isReport() ? handleOpenReport : handleOpenNewOrder}
+        >
           <LinearGradient
-            colors={[colors.secondary, colors.secondaryDark]}
+            colors={isReport() ? [colors.accent, colors.primary] : [colors.secondary, colors.secondaryDark]}
             style={styles.floatingButtonGradient}
           >
-            <Ionicons name="add" size={28} color="#FFFFFF" />
-            <Text style={styles.floatingButtonText}>New Order</Text>
+            <Ionicons name={isReport() ? 'document-text' : 'add'} size={28} color="#FFFFFF" />
+            <Text style={styles.floatingButtonText}>{isReport() ? 'View Report' : 'New Order'}</Text>
           </LinearGradient>
         </TouchableOpacity>
       </LinearGradient>

@@ -14,3 +14,5 @@ export { default as ItemSelectionScreen } from './ItemSelectionScreen';
 export { default as CheckoutScreen } from './CheckoutScreen';
 export { default as PaymentScreen } from './PaymentScreen';
 export { default as OrderDetailScreen } from './OrderDetailScreen';
+// Report screens
+export { default as LodgementReportScreen } from './LodgementReportScreen';

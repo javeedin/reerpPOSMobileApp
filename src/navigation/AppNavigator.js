@@ -14,6 +14,7 @@ import {
   CheckoutScreen,
   PaymentScreen,
   OrderDetailScreen,
+  LodgementReportScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -44,6 +45,8 @@ const MainStack = () => {
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="Payment" component={PaymentScreen} />
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
+      {/* Report screens */}
+      <Stack.Screen name="LodgementReport" component={LodgementReportScreen} />
     </Stack.Navigator>
   );
 };
