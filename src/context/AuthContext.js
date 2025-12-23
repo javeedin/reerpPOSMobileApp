@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { loginUser, getMenuOptions, saveUserData, getUserData, saveMenuData, getMenuData, clearAllData } from '../services/api';
-import { clearAllSyncData, getSyncMetadata, syncCustomers, syncOnhand, syncBogo } from '../services/syncService';
+import { clearAllSyncData, getSyncMetadata, syncCustomers, syncOnhand, syncBogo, syncPaymentMethods } from '../services/syncService';
 import { clearAllOrders } from '../services/orderService';
 import { clearAdjustments } from '../services/onhandService';
 
@@ -162,9 +162,10 @@ export const AuthProvider = ({ children }) => {
         customers: !meta.customers?.lastSync || meta.customers.count === 0,
         onhand: !meta.onhand?.lastSync || meta.onhand.count === 0,
         bogo: !meta.bogo?.lastSync,
+        paymentMethods: !meta.paymentMethods?.lastSync || meta.paymentMethods.count === 0,
       };
 
-      const syncNeeded = needsSync.customers || needsSync.onhand || needsSync.bogo;
+      const syncNeeded = needsSync.customers || needsSync.onhand || needsSync.bogo || needsSync.paymentMethods;
 
       if (syncNeeded) {
         setIsSyncing(true);
@@ -195,6 +196,14 @@ export const AuthProvider = ({ children }) => {
         if (needsSync.bogo) {
           setSyncProgress('Syncing promotions...');
           await syncBogo((progress) => {
+            if (progress?.status) setSyncProgress(progress.status);
+          });
+        }
+
+        // Sync payment methods
+        if (needsSync.paymentMethods) {
+          setSyncProgress('Syncing payment methods...');
+          await syncPaymentMethods((progress) => {
             if (progress?.status) setSyncProgress(progress.status);
           });
         }

@@ -67,6 +67,7 @@ const STORAGE_KEYS = {
   PRICE_LIST_ITEMS: 'sync_price_list_items', // Legacy - kept for backward compatibility
   PRICE_LIST_SYNC_STATUS: 'sync_price_list_status', // Per-pricelist sync status
   ONHAND: 'sync_onhand',
+  PAYMENT_METHODS: 'sync_payment_methods',
   SYNC_META: 'sync_metadata',
 };
 
@@ -1080,6 +1081,7 @@ export const clearAllSyncData = async () => {
     await clearFromStorage(STORAGE_KEYS.PRICE_LIST_ITEMS); // Legacy key
     await clearAllPriceListStorage(); // Clear all individual pricelist keys (legacy AsyncStorage)
     await clearFromStorage(STORAGE_KEYS.ONHAND);
+    await clearFromStorage(STORAGE_KEYS.PAYMENT_METHODS);
     await AsyncStorage.removeItem(STORAGE_KEYS.SYNC_META);
 
     // Clear SQLite pricelist data
@@ -1382,4 +1384,54 @@ export const buildBogoItemsForCart = async (cart, customerNumber = 'ALL') => {
     console.error('Error building BOGO items for cart:', error);
     return [];
   }
+};
+
+// ==================== PAYMENT METHODS ====================
+
+// Sync payment methods from API
+export const syncPaymentMethods = async (onProgress) => {
+  try {
+    if (onProgress) {
+      onProgress({ status: 'Fetching payment methods...', fetched: 0 });
+    }
+
+    const response = await axios.get(`${BASE_URL}/ARMODULE/PAYMENTMETHODS`, {
+      timeout: 30000,
+    });
+
+    let items = [];
+    if (response.data?.items && Array.isArray(response.data.items)) {
+      items = response.data.items;
+    } else if (Array.isArray(response.data)) {
+      items = response.data;
+    }
+
+    // Process and sort by seq_no
+    const paymentMethods = items.map(item => ({
+      paymentMode: item.payment_mode,
+      receiptMethodId: item.receipt_method_id,
+      seqNo: item.seq_no || 999,
+      referenceRequired: item.reference_required === 'Y',
+    })).sort((a, b) => a.seqNo - b.seqNo);
+
+    // Save to storage
+    await saveToStorage(STORAGE_KEYS.PAYMENT_METHODS, paymentMethods);
+    await updateSyncMetadata('paymentMethods', paymentMethods.length);
+
+    if (onProgress) {
+      onProgress({ status: `Done: ${paymentMethods.length} payment methods`, fetched: paymentMethods.length, complete: true });
+    }
+
+    console.log(`Synced ${paymentMethods.length} payment methods`);
+    return { success: true, count: paymentMethods.length };
+  } catch (error) {
+    console.error('Sync payment methods error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Get synced payment methods
+export const getPaymentMethods = async () => {
+  const methods = await loadFromStorage(STORAGE_KEYS.PAYMENT_METHODS);
+  return methods || [];
 };

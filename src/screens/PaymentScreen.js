@@ -11,6 +11,7 @@ import {
   Modal,
   Animated,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 import { createOrder, confirmOrder, ORDER_STATUS, PAYMENT_METHODS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
+import { getPaymentMethods } from '../services/syncService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -160,6 +162,18 @@ const PaymentEntry = ({ payment, index, onRemove, onAmountChange, currency }) =>
   </View>
 );
 
+// Map payment mode to icon
+const getPaymentIcon = (paymentMode) => {
+  const modeUpper = (paymentMode || '').toUpperCase();
+  if (modeUpper.includes('CASH')) return 'cash-outline';
+  if (modeUpper.includes('CARD') || modeUpper.includes('CREDIT')) return 'card-outline';
+  if (modeUpper.includes('VOUCHER') || modeUpper.includes('GIFT')) return 'ticket-outline';
+  if (modeUpper.includes('BANK') || modeUpper.includes('TRANSFER')) return 'swap-horizontal-outline';
+  if (modeUpper.includes('CHEQUE') || modeUpper.includes('CHECK')) return 'document-text-outline';
+  if (modeUpper.includes('MOBILE') || modeUpper.includes('WALLET')) return 'phone-portrait-outline';
+  return 'wallet-outline';
+};
+
 const PaymentScreen = ({ navigation, route }) => {
   const { menuConfig, customer, cart, totals, notes, currency } = route.params || {};
   const { user } = useAuth();
@@ -173,25 +187,71 @@ const PaymentScreen = ({ navigation, route }) => {
   const [processing, setProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState(null);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [loadingMethods, setLoadingMethods] = useState(true);
 
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
   const remaining = totals.totalNet - totalPaid;
   const change = totalPaid > totals.totalNet ? totalPaid - totals.totalNet : 0;
 
-  const paymentMethods = [
-    { method: PAYMENT_METHODS.CASH, icon: 'cash-outline', label: 'Cash' },
-    { method: PAYMENT_METHODS.CARD, icon: 'card-outline', label: 'Card' },
-    { method: PAYMENT_METHODS.VOUCHER, icon: 'ticket-outline', label: 'Voucher' },
-    { method: PAYMENT_METHODS.BANK_TRANSFER, icon: 'swap-horizontal-outline', label: 'Bank Transfer' },
-  ];
+  // Load payment methods on mount
+  useEffect(() => {
+    loadPaymentMethods();
+  }, []);
 
-  if (menuConfig?.creditSales) {
-    paymentMethods.push({ method: PAYMENT_METHODS.CREDIT, icon: 'time-outline', label: 'Credit' });
-  }
+  const loadPaymentMethods = async () => {
+    setLoadingMethods(true);
+    try {
+      const methods = await getPaymentMethods();
+      if (methods && methods.length > 0) {
+        // Map synced methods to UI format
+        const mappedMethods = methods.map(m => ({
+          method: m.paymentMode,
+          icon: getPaymentIcon(m.paymentMode),
+          label: m.paymentMode,
+          referenceRequired: m.referenceRequired,
+          receiptMethodId: m.receiptMethodId,
+        }));
+        setPaymentMethods(mappedMethods);
+      } else {
+        // Fallback to default methods if no synced data
+        setPaymentMethods([
+          { method: 'Cash', icon: 'cash-outline', label: 'Cash', referenceRequired: false },
+          { method: 'Card', icon: 'card-outline', label: 'Card', referenceRequired: true },
+        ]);
+      }
+    } catch (error) {
+      console.error('Error loading payment methods:', error);
+      // Fallback
+      setPaymentMethods([
+        { method: 'Cash', icon: 'cash-outline', label: 'Cash', referenceRequired: false },
+        { method: 'Card', icon: 'card-outline', label: 'Card', referenceRequired: true },
+      ]);
+    } finally {
+      setLoadingMethods(false);
+    }
+  };
+
+  // Get selected method details
+  const getSelectedMethodDetails = () => {
+    return paymentMethods.find(m => m.method === selectedMethod);
+  };
 
   const handleAddPayment = () => {
     if (!selectedMethod) {
       Alert.alert('Select Method', 'Please select a payment method');
+      return;
+    }
+
+    // Get selected method details for validation
+    const methodDetails = getSelectedMethodDetails();
+
+    // Validate reference if required
+    if (methodDetails?.referenceRequired && !paymentReference.trim()) {
+      Alert.alert(
+        'Reference Required',
+        `Please enter a reference for ${methodDetails.label} payment`
+      );
       return;
     }
 
@@ -206,6 +266,7 @@ const PaymentScreen = ({ navigation, route }) => {
       method: selectedMethod,
       amount,
       reference: paymentReference,
+      receiptMethodId: methodDetails?.receiptMethodId || null,
       timestamp: new Date().toISOString(),
     };
 
@@ -228,11 +289,17 @@ const PaymentScreen = ({ navigation, route }) => {
   };
 
   const handleQuickCash = () => {
+    // Find cash method from synced payment methods
+    const cashMethod = paymentMethods.find(m =>
+      m.method.toUpperCase().includes('CASH')
+    );
+
     // Quick add exact cash payment
     setPayments([{
-      method: PAYMENT_METHODS.CASH,
+      method: cashMethod?.method || 'Cash',
       amount: totals.totalNet,
       reference: '',
+      receiptMethodId: cashMethod?.receiptMethodId || null,
       timestamp: new Date().toISOString(),
     }]);
   };
@@ -397,18 +464,25 @@ const PaymentScreen = ({ navigation, route }) => {
             </View>
 
             <Text style={styles.modalSectionLabel}>Payment Method</Text>
-            <View style={styles.methodsGrid}>
-              {paymentMethods.map((pm) => (
-                <PaymentMethodButton
-                  key={pm.method}
-                  method={pm.method}
-                  icon={pm.icon}
-                  label={pm.label}
-                  isSelected={selectedMethod === pm.method}
-                  onSelect={setSelectedMethod}
-                />
-              ))}
-            </View>
+            {loadingMethods ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.accent} />
+                <Text style={styles.loadingText}>Loading payment methods...</Text>
+              </View>
+            ) : (
+              <View style={styles.methodsGrid}>
+                {paymentMethods.map((pm) => (
+                  <PaymentMethodButton
+                    key={pm.method}
+                    method={pm.method}
+                    icon={pm.icon}
+                    label={pm.label}
+                    isSelected={selectedMethod === pm.method}
+                    onSelect={setSelectedMethod}
+                  />
+                ))}
+              </View>
+            )}
 
             <Text style={styles.modalSectionLabel}>Amount</Text>
             <View style={styles.amountInputContainer}>
@@ -423,14 +497,22 @@ const PaymentScreen = ({ navigation, route }) => {
               />
             </View>
 
-            {(selectedMethod === PAYMENT_METHODS.CARD || selectedMethod === PAYMENT_METHODS.VOUCHER || selectedMethod === PAYMENT_METHODS.BANK_TRANSFER) && (
+            {selectedMethod && (
               <>
-                <Text style={styles.modalSectionLabel}>Reference (Optional)</Text>
+                <Text style={styles.modalSectionLabel}>
+                  Reference {getSelectedMethodDetails()?.referenceRequired ? '(Required)' : '(Optional)'}
+                </Text>
                 <TextInput
-                  style={styles.referenceInput}
+                  style={[
+                    styles.referenceInput,
+                    getSelectedMethodDetails()?.referenceRequired && styles.referenceInputRequired
+                  ]}
                   value={paymentReference}
                   onChangeText={setPaymentReference}
-                  placeholder="Transaction reference..."
+                  placeholder={getSelectedMethodDetails()?.referenceRequired
+                    ? "Enter reference number..."
+                    : "Transaction reference (optional)..."
+                  }
                   placeholderTextColor={colors.textMuted}
                 />
               </>
@@ -761,6 +843,21 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 14,
     color: colors.textPrimary,
+  },
+  referenceInputRequired: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: colors.textMuted,
   },
   modalAddBtn: {
     backgroundColor: colors.accent,
