@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -30,13 +30,12 @@ const ScanTemplateScreen = ({ navigation, route }) => {
   const [templateName, setTemplateName] = useState(existingTemplate?.name || '');
   const [regions, setRegions] = useState(existingTemplate?.regions || []);
   const [currentRegion, setCurrentRegion] = useState(null);
-  const [selectedFieldType, setSelectedFieldType] = useState(null);
   const [showFieldPicker, setShowFieldPicker] = useState(false);
-  const [imageLayout, setImageLayout] = useState({ width: 0, height: 0, x: 0, y: 0 });
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawStart, setDrawStart] = useState(null);
 
-  const imageRef = useRef(null);
+  // Use refs for values accessed in PanResponder to avoid stale closures
+  const drawStartRef = useRef(null);
+  const currentRegionRef = useRef(null);
+  const imageDimensionsRef = useRef({ width: IMAGE_WIDTH, height: 300 });
 
   // Calculate image dimensions maintaining aspect ratio
   const [imageDimensions, setImageDimensions] = useState({ width: IMAGE_WIDTH, height: 300 });
@@ -47,75 +46,87 @@ const ScanTemplateScreen = ({ navigation, route }) => {
         const aspectRatio = width / height;
         const displayWidth = IMAGE_WIDTH;
         const displayHeight = displayWidth / aspectRatio;
-        setImageDimensions({ width: displayWidth, height: displayHeight });
+        const dims = { width: displayWidth, height: displayHeight };
+        setImageDimensions(dims);
+        imageDimensionsRef.current = dims;
       }, (error) => {
         console.error('Error getting image size:', error);
       });
     }
   }, [imageUri]);
 
-  // Pan responder for drawing regions
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
+  // Pan responder for drawing regions - using refs to avoid stale closures
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (evt) => {
+      const { locationX, locationY } = evt.nativeEvent;
+      drawStartRef.current = { x: locationX, y: locationY };
+      const region = {
+        x: locationX,
+        y: locationY,
+        width: 0,
+        height: 0,
+      };
+      currentRegionRef.current = region;
+      setCurrentRegion(region);
+    },
+    onPanResponderMove: (evt) => {
+      const start = drawStartRef.current;
+      if (start) {
         const { locationX, locationY } = evt.nativeEvent;
-        setIsDrawing(true);
-        setDrawStart({ x: locationX, y: locationY });
-        setCurrentRegion({
-          x: locationX,
-          y: locationY,
-          width: 0,
-          height: 0,
-        });
-      },
-      onPanResponderMove: (evt) => {
-        if (drawStart) {
-          const { locationX, locationY } = evt.nativeEvent;
-          const x = Math.min(drawStart.x, locationX);
-          const y = Math.min(drawStart.y, locationY);
-          const width = Math.abs(locationX - drawStart.x);
-          const height = Math.abs(locationY - drawStart.y);
-          setCurrentRegion({ x, y, width, height });
-        }
-      },
-      onPanResponderRelease: () => {
-        setIsDrawing(false);
-        if (currentRegion && currentRegion.width > 20 && currentRegion.height > 10) {
-          // Show field type picker
-          setShowFieldPicker(true);
-        } else {
-          setCurrentRegion(null);
-        }
-        setDrawStart(null);
-      },
-    })
-  ).current;
+        const x = Math.min(start.x, locationX);
+        const y = Math.min(start.y, locationY);
+        const width = Math.abs(locationX - start.x);
+        const height = Math.abs(locationY - start.y);
+        const region = { x, y, width, height };
+        currentRegionRef.current = region;
+        setCurrentRegion(region);
+      }
+    },
+    onPanResponderRelease: () => {
+      const region = currentRegionRef.current;
+      drawStartRef.current = null;
+
+      if (region && region.width > 20 && region.height > 10) {
+        // Show field type picker
+        setShowFieldPicker(true);
+      } else {
+        currentRegionRef.current = null;
+        setCurrentRegion(null);
+      }
+    },
+  }), []);
 
   const handleSelectFieldType = (fieldType) => {
-    if (currentRegion) {
+    const region = currentRegionRef.current;
+    const dims = imageDimensionsRef.current;
+
+    if (region && dims) {
       // Convert pixel coordinates to percentages for template portability
       const regionPercent = {
-        x: (currentRegion.x / imageDimensions.width) * 100,
-        y: (currentRegion.y / imageDimensions.height) * 100,
-        width: (currentRegion.width / imageDimensions.width) * 100,
-        height: (currentRegion.height / imageDimensions.height) * 100,
+        x: (region.x / dims.width) * 100,
+        y: (region.y / dims.height) * 100,
+        width: (region.width / dims.width) * 100,
+        height: (region.height / dims.height) * 100,
         fieldType: fieldType.id,
         fieldLabel: fieldType.label,
         fieldColor: fieldType.color,
       };
 
       // Remove existing region with same field type
-      const filteredRegions = regions.filter(r => r.fieldType !== fieldType.id);
-      setRegions([...filteredRegions, regionPercent]);
+      setRegions(prev => {
+        const filtered = prev.filter(r => r.fieldType !== fieldType.id);
+        return [...filtered, regionPercent];
+      });
     }
+    currentRegionRef.current = null;
     setCurrentRegion(null);
     setShowFieldPicker(false);
   };
 
   const handleDeleteRegion = (fieldType) => {
-    setRegions(regions.filter(r => r.fieldType !== fieldType));
+    setRegions(prev => prev.filter(r => r.fieldType !== fieldType));
   };
 
   const handleSaveTemplate = async () => {
@@ -163,6 +174,37 @@ const ScanTemplateScreen = ({ navigation, route }) => {
 
   const getUsedFieldTypes = () => regions.map(r => r.fieldType);
 
+  // Check if we have a valid image
+  if (!imageUri) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+        <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="close" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Create Template</Text>
+          <View style={styles.backButton} />
+        </LinearGradient>
+
+        <View style={styles.noImageContainer}>
+          <Ionicons name="image-outline" size={64} color={colors.textMuted} />
+          <Text style={styles.noImageTitle}>No Image Selected</Text>
+          <Text style={styles.noImageText}>
+            To create a template, first scan or select an image from the Scan screen,
+            then tap "Create Template from this Image"
+          </Text>
+          <TouchableOpacity
+            style={styles.goBackBtn}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.goBackBtnText}>Go Back to Scan</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
@@ -203,19 +245,19 @@ const ScanTemplateScreen = ({ navigation, route }) => {
           <View style={styles.instructionText}>
             <Text style={styles.instructionTitle}>Draw Regions</Text>
             <Text style={styles.instructionDesc}>
-              Draw a rectangle around each field you want to extract (date, amount, etc.)
+              Drag your finger to draw a rectangle around each field (date, amount, etc.)
             </Text>
           </View>
         </View>
 
         {/* Image with Regions */}
         <View style={styles.imageContainer}>
+          <Text style={styles.imageLabel}>Drag to select regions:</Text>
           <View
             style={[styles.imageWrapper, { height: imageDimensions.height }]}
             {...panResponder.panHandlers}
           >
             <Image
-              ref={imageRef}
               source={{ uri: imageUri }}
               style={[styles.templateImage, { height: imageDimensions.height }]}
               resizeMode="contain"
@@ -240,9 +282,9 @@ const ScanTemplateScreen = ({ navigation, route }) => {
                   ]}
                   onLongPress={() => handleDeleteRegion(region.fieldType)}
                 >
-                  <Text style={[styles.regionLabel, { backgroundColor: region.fieldColor }]}>
-                    {region.fieldLabel}
-                  </Text>
+                  <View style={[styles.regionLabelContainer, { backgroundColor: region.fieldColor }]}>
+                    <Text style={styles.regionLabel}>{region.fieldLabel}</Text>
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -267,10 +309,10 @@ const ScanTemplateScreen = ({ navigation, route }) => {
 
         {/* Mapped Fields Summary */}
         <View style={styles.mappedFieldsCard}>
-          <Text style={styles.mappedFieldsTitle}>Mapped Fields</Text>
+          <Text style={styles.mappedFieldsTitle}>Mapped Fields ({regions.length})</Text>
           {regions.length === 0 ? (
             <Text style={styles.noFieldsText}>
-              No fields mapped yet. Draw on the image above.
+              No fields mapped yet. Draw rectangles on the image above.
             </Text>
           ) : (
             <View style={styles.fieldsList}>
@@ -328,6 +370,7 @@ const ScanTemplateScreen = ({ navigation, route }) => {
         animationType="slide"
         onRequestClose={() => {
           setShowFieldPicker(false);
+          currentRegionRef.current = null;
           setCurrentRegion(null);
         }}
       >
@@ -338,6 +381,7 @@ const ScanTemplateScreen = ({ navigation, route }) => {
               <TouchableOpacity
                 onPress={() => {
                   setShowFieldPicker(false);
+                  currentRegionRef.current = null;
                   setCurrentRegion(null);
                 }}
               >
@@ -388,6 +432,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
+    width: 50,
   },
   headerTitle: {
     fontSize: 18,
@@ -407,6 +452,37 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: IMAGE_PADDING,
+  },
+  // No Image State
+  noImageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  noImageTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  noImageText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  goBackBtn: {
+    marginTop: 24,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  goBackBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   nameSection: {
     marginBottom: 16,
@@ -450,8 +526,13 @@ const styles = StyleSheet.create({
   imageContainer: {
     marginBottom: 16,
   },
+  imageLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
   imageWrapper: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#000',
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
@@ -469,13 +550,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 215, 0, 0.3)',
     borderStyle: 'dashed',
   },
-  regionLabel: {
+  regionLabelContainer: {
     position: 'absolute',
-    top: -20,
+    top: -22,
     left: 0,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+  },
+  regionLabel: {
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '600',
