@@ -449,6 +449,22 @@ const PaymentScreen = ({ navigation, route }) => {
     navigation.navigate('MainTabs');
   };
 
+  // Handle home navigation with warning
+  const handleGoHome = () => {
+    Alert.alert(
+      'Leave Order?',
+      'Order is not confirmed and will be cleared. Do you want to continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Go Home',
+          style: 'destructive',
+          onPress: () => navigation.navigate('MainTabs'),
+        },
+      ]
+    );
+  };
+
   // Calculate suggested amount for each method in modal
   const getSuggestedAmount = (method) => {
     const otherPayments = Object.entries(modalPayments)
@@ -468,7 +484,9 @@ const PaymentScreen = ({ navigation, route }) => {
           <Text style={styles.headerTitle}>Payment</Text>
           <Text style={styles.headerSubtitle}>{customer?.name || 'Walk-in Customer'}</Text>
         </View>
-        <View style={styles.placeholder} />
+        <TouchableOpacity onPress={handleGoHome} style={styles.homeButton}>
+          <Ionicons name="home-outline" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
       </LinearGradient>
 
       <ScrollView
@@ -751,8 +769,8 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
-  placeholder: {
-    width: 40,
+  homeButton: {
+    padding: 8,
   },
   content: {
     flex: 1,

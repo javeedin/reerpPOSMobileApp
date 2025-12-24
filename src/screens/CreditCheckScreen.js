@@ -96,6 +96,22 @@ const CreditCheckScreen = ({ navigation, route }) => {
     navigation.goBack();
   };
 
+  // Handle home navigation with warning
+  const handleGoHome = () => {
+    Alert.alert(
+      'Leave Order?',
+      'Order is not confirmed and will be cleared. Do you want to continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Go Home',
+          style: 'destructive',
+          onPress: () => navigation.navigate('MainTabs'),
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
@@ -109,9 +125,9 @@ const CreditCheckScreen = ({ navigation, route }) => {
           <Text style={styles.headerTitle}>Credit Check</Text>
           <Text style={styles.headerSubtitle}>{customer?.name || 'Customer'}</Text>
         </View>
-        <View style={styles.headerRight}>
-          <Ionicons name="card" size={24} color="#FFFFFF" />
-        </View>
+        <TouchableOpacity onPress={handleGoHome} style={styles.homeButton}>
+          <Ionicons name="home-outline" size={22} color="#FFFFFF" />
+        </TouchableOpacity>
       </LinearGradient>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -316,7 +332,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
-  headerRight: {
+  homeButton: {
     padding: 8,
   },
   content: {

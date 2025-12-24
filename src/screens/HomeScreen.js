@@ -398,6 +398,17 @@ const HomeScreen = ({ navigation }) => {
         </View>
         <View style={styles.headerRightButtons}>
           <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={onRefresh}
+            disabled={refreshing || isSyncing}
+          >
+            <Ionicons
+              name={refreshing || isSyncing ? "sync" : "refresh-outline"}
+              size={22}
+              color={refreshing || isSyncing ? 'rgba(255,255,255,0.5)' : '#FFFFFF'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.storyButton}
             onPress={() => navigation.navigate('Story')}
           >
@@ -511,8 +522,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
+  refreshButton: {
+    padding: 6,
+  },
   storyButton: {
-    padding: 8,
+    padding: 6,
   },
   notificationButton: {
     padding: 8,

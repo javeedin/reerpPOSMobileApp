@@ -682,6 +682,26 @@ const ItemSelectionScreen = ({ navigation, route }) => {
     });
   };
 
+  // Handle home navigation with warning
+  const handleGoHome = () => {
+    if (cart.length > 0) {
+      Alert.alert(
+        'Leave Order?',
+        'Order is not confirmed and will be cleared. Do you want to continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Yes, Go Home',
+            style: 'destructive',
+            onPress: () => navigation.navigate('MainTabs'),
+          },
+        ]
+      );
+    } else {
+      navigation.navigate('MainTabs');
+    }
+  };
+
   const totals = calculateOrderTotals(cart, menuConfig);
   const currency = cart[0]?.currency || 'MUR';
 
@@ -698,14 +718,19 @@ const ItemSelectionScreen = ({ navigation, route }) => {
             {customer?.name || 'Walk-in Customer'}
           </Text>
         </View>
-        <TouchableOpacity onPress={() => setShowCart(true)} style={styles.cartButton}>
-          <Ionicons name="cart" size={24} color="#FFFFFF" />
-          {cart.length > 0 && (
-            <View style={styles.cartCount}>
-              <Text style={styles.cartCountText}>{cart.length}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        <View style={styles.headerRightButtons}>
+          <TouchableOpacity onPress={handleGoHome} style={styles.homeButton}>
+            <Ionicons name="home-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowCart(true)} style={styles.cartButton}>
+            <Ionicons name="cart" size={22} color="#FFFFFF" />
+            {cart.length > 0 && (
+              <View style={styles.cartCount}>
+                <Text style={styles.cartCountText}>{cart.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       <View style={styles.content}>
@@ -967,8 +992,16 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
+  headerRightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  homeButton: {
+    padding: 6,
+  },
   cartButton: {
-    padding: 8,
+    padding: 6,
     position: 'relative',
   },
   cartCount: {

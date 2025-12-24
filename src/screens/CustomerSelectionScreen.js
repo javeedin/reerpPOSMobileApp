@@ -101,6 +101,22 @@ const CustomerSelectionScreen = ({ navigation, route }) => {
     });
   };
 
+  // Handle home navigation with warning
+  const handleGoHome = () => {
+    Alert.alert(
+      'Leave Order?',
+      'Order is not confirmed and will be cleared. Do you want to continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Go Home',
+          style: 'destructive',
+          onPress: () => navigation.navigate('MainTabs'),
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
@@ -112,9 +128,14 @@ const CustomerSelectionScreen = ({ navigation, route }) => {
           <Text style={styles.headerTitle}>Select Customer</Text>
           <Text style={styles.headerSubtitle}>{menuConfig?.name || 'New Order'}</Text>
         </View>
-        <TouchableOpacity onPress={handleSkipCustomer} style={styles.skipButton}>
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRightButtons}>
+          <TouchableOpacity onPress={handleGoHome} style={styles.homeButton}>
+            <Ionicons name="home-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSkipCustomer} style={styles.skipButton}>
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       <View style={styles.content}>
@@ -218,6 +239,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
+  },
+  headerRightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  homeButton: {
+    padding: 6,
   },
   skipButton: {
     padding: 8,

@@ -715,6 +715,22 @@ const CheckoutScreen = ({ navigation, route }) => {
     });
   };
 
+  // Handle home navigation with warning
+  const handleGoHome = () => {
+    Alert.alert(
+      'Leave Order?',
+      'Order is not confirmed and will be cleared. Do you want to continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Go Home',
+          style: 'destructive',
+          onPress: () => navigation.navigate('MainTabs'),
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
@@ -726,9 +742,14 @@ const CheckoutScreen = ({ navigation, route }) => {
           <Text style={styles.headerTitle}>Order Preview</Text>
           <Text style={styles.headerSubtitle}>{customer?.name || 'Walk-in Customer'}</Text>
         </View>
-        <TouchableOpacity onPress={handleAddMoreItems} style={styles.addItemsButton}>
-          <Ionicons name="add-circle-outline" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View style={styles.headerRightButtons}>
+          <TouchableOpacity onPress={handleGoHome} style={styles.headerIconBtn}>
+            <Ionicons name="home-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleAddMoreItems} style={styles.headerIconBtn}>
+            <Ionicons name="add-circle-outline" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -872,8 +893,13 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
-  addItemsButton: {
-    padding: 8,
+  headerRightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerIconBtn: {
+    padding: 6,
   },
   content: {
     flex: 1,
