@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,12 @@ import { useAuth } from '../context/AuthContext';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SIGNATURE_HEIGHT = 250;
 
+// Format number safely (handles strings and undefined)
+const formatNumber = (num) => {
+  const value = parseFloat(num) || 0;
+  return value.toFixed(2);
+};
+
 const SignatureScreen = ({ navigation, route }) => {
   const { menuConfig, customer, cart, totals, notes, currency, payments, onConfirm, paymentForm } = route.params || {};
   const { user } = useAuth();
@@ -33,9 +39,13 @@ const SignatureScreen = ({ navigation, route }) => {
 
   // Use ref to track current path for panResponder (avoids stale closure)
   const currentPathRef = useRef('');
+  const pathsRef = useRef([]);
 
-  // Pan responder for drawing
-  const panResponder = useRef(
+  // Keep pathsRef in sync with paths state
+  pathsRef.current = paths;
+
+  // Pan responder for drawing - use useMemo to prevent recreation
+  const panResponder = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
@@ -54,14 +64,15 @@ const SignatureScreen = ({ navigation, route }) => {
       },
       onPanResponderRelease: () => {
         if (currentPathRef.current) {
-          setPaths(prev => [...prev, currentPathRef.current]);
+          const pathToSave = currentPathRef.current;
+          setPaths(prevPaths => [...prevPaths, pathToSave]);
           currentPathRef.current = '';
           setCurrentPath('');
         }
         setIsSigning(false);
       },
-    })
-  ).current;
+    }),
+  []);
 
   const handleClear = () => {
     setPaths([]);
@@ -118,7 +129,7 @@ const SignatureScreen = ({ navigation, route }) => {
         // Direct confirm with user confirmation prompt
         Alert.alert(
           'Confirm Order',
-          `Are you sure you want to confirm this order?\n\nTotal: ${currency} ${totals?.totalNet?.toFixed(2)}\nItems: ${cart?.length || 0}`,
+          `Are you sure you want to confirm this order?\n\nTotal: ${currency} ${formatNumber(totals?.totalNet)}\nItems: ${cart?.length || 0}`,
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -229,7 +240,7 @@ const SignatureScreen = ({ navigation, route }) => {
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Order Total</Text>
-            <Text style={styles.summaryValue}>{currency} {totals?.totalNet?.toFixed(2)}</Text>
+            <Text style={styles.summaryValue}>{currency} {formatNumber(totals?.totalNet)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Items</Text>
