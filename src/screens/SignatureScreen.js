@@ -90,55 +90,74 @@ const SignatureScreen = ({ navigation, route }) => {
       signature: signatureData,
     };
 
-    // Determine next screen based on paymentForm type
-    const formType = paymentForm || 'YES';
+    // Payment form types (for SALES/RETURNS transaction types):
+    // CASH = show payment form with payment methods
+    // CREDIT = show credit check form
+    // blank/other = direct order confirm (with user confirmation)
+    const formType = (paymentForm || '').toUpperCase();
+    const transactionType = (menuConfig?.transactionType || '').toUpperCase();
+    const isSalesOrReturns = transactionType === 'SALES' || transactionType === 'RETURNS';
 
-    if (formType === 'NO') {
-      // Direct confirm order without payment screen
-      setProcessing(true);
-      try {
-        const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
+    if (isSalesOrReturns) {
+      if (formType === 'CASH') {
+        // Show payment form with payment methods
+        navigation.navigate('Payment', navParams);
+      } else if (formType === 'CREDIT') {
+        // Go to credit check with signature
+        navigation.navigate('CreditCheck', navParams);
+      } else {
+        // Direct confirm with user confirmation prompt
+        Alert.alert(
+          'Confirm Order',
+          `Are you sure you want to confirm this order?\n\nTotal: ${currency} ${totals?.totalNet?.toFixed(2)}\nItems: ${cart?.length || 0}`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Confirm',
+              style: 'default',
+              onPress: async () => {
+                setProcessing(true);
+                try {
+                  const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
 
-        const result = await createOrder({
-          customer,
-          menuConfig,
-          lines: cart,
-          status: ORDER_STATUS.CONFIRMED,
-          payments: [], // No payments for direct confirm
-          notes,
-          signature: signatureData,
-        }, userPrefix);
+                  const result = await createOrder({
+                    customer,
+                    menuConfig,
+                    lines: cart,
+                    status: ORDER_STATUS.CONFIRMED,
+                    payments: [], // No payments for direct confirm
+                    notes,
+                    signature: signatureData,
+                  }, userPrefix);
 
-        if (result.success) {
-          Alert.alert(
-            'Order Confirmed',
-            `Order ${result.order.orderNumber} has been confirmed with signature.`,
-            [
-              {
-                text: 'OK',
-                onPress: () => navigation.navigate('MainTabs'),
+                  if (result.success) {
+                    Alert.alert(
+                      'Order Confirmed',
+                      `Order ${result.order.orderNumber} has been confirmed with signature.`,
+                      [
+                        {
+                          text: 'OK',
+                          onPress: () => navigation.navigate('MainTabs'),
+                        },
+                      ]
+                    );
+                  } else {
+                    Alert.alert('Error', result.error || 'Failed to confirm order');
+                  }
+                } catch (error) {
+                  Alert.alert('Error', error.message);
+                } finally {
+                  setProcessing(false);
+                }
               },
-            ]
-          );
-        } else {
-          Alert.alert('Error', result.error || 'Failed to confirm order');
-        }
-      } catch (error) {
-        Alert.alert('Error', error.message);
-      } finally {
-        setProcessing(false);
+            },
+          ]
+        );
       }
-      return;
+    } else {
+      // For other transaction types, go to payment by default
+      navigation.navigate('Payment', navParams);
     }
-
-    if (formType === 'CREDIT') {
-      // Go to credit check with signature
-      navigation.navigate('CreditCheck', navParams);
-      return;
-    }
-
-    // Normal flow (YES or blank) - go to payment with signature
-    navigation.navigate('Payment', navParams);
   };
 
   const handleSkip = () => {
@@ -274,9 +293,15 @@ const SignatureScreen = ({ navigation, route }) => {
           ) : (
             <>
               <Text style={styles.confirmBtnText}>
-                {paymentForm === 'NO' ? 'Confirm Order' : paymentForm === 'CREDIT' ? 'Proceed to Credit Check' : 'Proceed to Payment'}
+                {(paymentForm || '').toUpperCase() === 'CASH' ? 'Proceed to Payment' :
+                 (paymentForm || '').toUpperCase() === 'CREDIT' ? 'Proceed to Credit Check' : 'Confirm Order'}
               </Text>
-              <Ionicons name={paymentForm === 'NO' ? "checkmark-circle" : paymentForm === 'CREDIT' ? "card" : "arrow-forward-circle"} size={22} color="#FFFFFF" />
+              <Ionicons
+                name={(paymentForm || '').toUpperCase() === 'CASH' ? "card-outline" :
+                      (paymentForm || '').toUpperCase() === 'CREDIT' ? "wallet-outline" : "checkmark-circle"}
+                size={22}
+                color="#FFFFFF"
+              />
             </>
           )}
         </TouchableOpacity>

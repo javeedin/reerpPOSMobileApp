@@ -614,8 +614,13 @@ const CheckoutScreen = ({ navigation, route }) => {
       currency,
     };
 
-    // Payment form types: YES (show payment), NO (skip to confirm), CREDIT (credit check)
-    const paymentForm = menuConfig?.paymentForm || 'YES';
+    // Payment form types (for SALES/RETURNS transaction types):
+    // CASH = show payment form with payment methods
+    // CREDIT = show credit check form
+    // blank/other = direct order confirm (with user confirmation)
+    const paymentForm = (menuConfig?.paymentForm || '').toUpperCase();
+    const transactionType = (menuConfig?.transactionType || '').toUpperCase();
+    const isSalesOrReturns = transactionType === 'SALES' || transactionType === 'RETURNS';
 
     // Check if signature is required first
     if (menuConfig?.signatureRequired) {
@@ -624,16 +629,38 @@ const CheckoutScreen = ({ navigation, route }) => {
         ...navParams,
         paymentForm, // Pass the payment form type
       });
-    } else if (paymentForm === 'NO') {
-      // No signature, no payment form - direct confirm
-      handleDirectConfirm(allOrderLines);
-    } else if (paymentForm === 'CREDIT') {
-      // No signature, credit check required
-      navigation.navigate('CreditCheck', navParams);
+    } else if (isSalesOrReturns) {
+      // Apply payment form logic for SALES/RETURNS
+      if (paymentForm === 'CASH') {
+        // Show payment form with payment methods
+        navigation.navigate('Payment', navParams);
+      } else if (paymentForm === 'CREDIT') {
+        // Show credit check form
+        navigation.navigate('CreditCheck', navParams);
+      } else {
+        // Direct confirm with user confirmation prompt
+        handleDirectConfirmWithPrompt(allOrderLines);
+      }
     } else {
-      // Normal flow (YES or blank) - go to payment
+      // For other transaction types, go to payment by default
       navigation.navigate('Payment', navParams);
     }
+  };
+
+  // Direct confirm with user confirmation prompt
+  const handleDirectConfirmWithPrompt = (orderLines) => {
+    Alert.alert(
+      'Confirm Order',
+      `Are you sure you want to confirm this order?\n\nTotal: ${currency} ${totals.totalNet.toFixed(2)}\nItems: ${orderLines.length}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          style: 'default',
+          onPress: () => handleDirectConfirm(orderLines),
+        },
+      ]
+    );
   };
 
   // Direct confirm order without payment screen (for cash/credit sales)

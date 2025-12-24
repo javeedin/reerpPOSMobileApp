@@ -26,6 +26,8 @@ const ConfigItem = ({ label, value, valueColor }) => {
     if (value === 'YES' || value === 'Y') return colors.accentGreen;
     if (value === 'NO' || value === 'N') return colors.accentRed || '#E53935';
     if (value === 'CREDIT') return colors.accentOrange || '#FF9800';
+    if (value === 'CASH') return colors.accentGreen || '#4CAF50';
+    if (value === 'Direct') return colors.accent; // Direct confirm
     return colors.textSecondary;
   };
 
@@ -66,19 +68,17 @@ const MenuDetailScreen = ({ navigation, route }) => {
 
   const handleOpenNewOrder = () => {
     // Prepare menu config for order
-    // Determine payment form type: blank/YES = payment form, NO = skip, CREDIT = credit check
+    // Payment form types:
+    // CASH = show payment form with payment methods
+    // CREDIT = show credit check form
+    // blank/other = direct order confirm (with user confirmation)
     const paymentFormValue = (item?.payment_form || '').toUpperCase().trim();
-    const paymentFormType = paymentFormValue === 'NO' || paymentFormValue === 'N'
-      ? 'NO'
-      : paymentFormValue === 'CREDIT'
-        ? 'CREDIT'
-        : 'YES'; // blank or YES defaults to showing payment form
 
     const menuConfig = {
       name: item?.name || '',
       orderType: item?.ordertype || '',
       transactionType: item?.transaction_type || '',
-      paymentForm: paymentFormType, // 'YES' | 'NO' | 'CREDIT'
+      paymentForm: paymentFormValue, // 'CASH' | 'CREDIT' | '' (blank = direct confirm)
       priceList: item?.pricelist || '',
       allowDiscount: item?.allow_discount === 'YES' || item?.allow_discount === 'Y',
       allowTax: item?.allow_tax === 'YES' || item?.allow_tax === 'Y',
@@ -178,7 +178,7 @@ const MenuDetailScreen = ({ navigation, route }) => {
           {/* Configuration Card */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Configuration</Text>
-            <ConfigItem label="Payment Form" value={item.payment_form || 'YES'} />
+            <ConfigItem label="Payment Form" value={item.payment_form || 'Direct'} />
             <ConfigItem label="Allow Discount" value={item.allow_discount} />
             <ConfigItem label="Allow Tax" value={item.allow_tax} />
             <ConfigItem label="Signature Required" value={item.signature_required} />
