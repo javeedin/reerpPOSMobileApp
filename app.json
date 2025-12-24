@@ -1,11 +1,14 @@
 {
   "expo": {
-    "name": "ReERP POS",
-    "slug": "reerp-pos-mobile-app",
+    "name": "FCPos",
+    "slug": "fcpos-mobile-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
       "backgroundColor": "#0A1628"
     },
     "assetBundlePatterns": [
@@ -13,13 +16,19 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.reerp.pos"
+      "bundleIdentifier": "com.fcpos.app"
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A1628"
       },
-      "package": "com.reerp.pos"
+      "package": "com.fcpos.app"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "fcpos-mobile-app"
+      }
     }
   }
 }
