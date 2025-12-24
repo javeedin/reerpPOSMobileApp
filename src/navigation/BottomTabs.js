@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-nati
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 import {
   HomeScreen,
@@ -15,11 +16,14 @@ const Tab = createBottomTabNavigator();
 const { width } = Dimensions.get('window');
 
 const CustomTabBar = ({ state, descriptors, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 10);
+
   return (
     <View style={styles.tabBarContainer}>
       <LinearGradient
         colors={[colors.backgroundCard, colors.primaryDark]}
-        style={styles.tabBar}
+        style={[styles.tabBar, { paddingBottom: bottomPadding + 10 }]}
       >
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -128,7 +132,6 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    paddingBottom: 25,
     paddingTop: 10,
     paddingHorizontal: 10,
     borderTopLeftRadius: 24,

@@ -10,6 +10,8 @@ import {
   StatusBar,
   Modal,
   ActivityIndicator,
+  BackHandler,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -351,6 +353,27 @@ const HomeScreen = ({ navigation }) => {
     useCallback(() => {
       loadKpiData();
     }, [loadKpiData])
+  );
+
+  // Handle back button - prevent going back from home screen
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        Alert.alert(
+          'Exit App',
+          'Are you sure you want to exit?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Exit', style: 'destructive', onPress: () => BackHandler.exitApp() },
+          ]
+        );
+        return true; // Prevent default back behavior
+      };
+
+      BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+      return () => BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+    }, [])
   );
 
   const onRefresh = async () => {
