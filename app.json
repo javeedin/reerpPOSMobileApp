@@ -23,12 +23,35 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A1628"
       },
-      "package": "com.fcpos.app"
+      "package": "com.fcpos.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "plugins": [
-      "expo-camera",
-      "expo-image-picker",
-      "expo-media-library"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow FCPos to access your camera for scanning."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FCPos to access your photos."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow FCPos to access your photos.",
+          "savePhotosPermission": "Allow FCPos to save photos.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
     ]
   }
 }
