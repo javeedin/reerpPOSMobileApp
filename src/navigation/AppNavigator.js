@@ -21,6 +21,7 @@ import {
   StoryScreen,
   SignatureScreen,
   CreditCheckScreen,
+  HistoryOrdersScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -63,6 +64,8 @@ const MainStack = () => {
       <Stack.Screen name="Signature" component={SignatureScreen} />
       {/* Credit check screen */}
       <Stack.Screen name="CreditCheck" component={CreditCheckScreen} />
+      {/* History orders screen */}
+      <Stack.Screen name="HistoryOrders" component={HistoryOrdersScreen} />
     </Stack.Navigator>
   );
 };

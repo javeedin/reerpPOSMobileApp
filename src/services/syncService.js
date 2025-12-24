@@ -1435,3 +1435,76 @@ export const getPaymentMethods = async () => {
   const methods = await loadFromStorage(STORAGE_KEYS.PAYMENT_METHODS);
   return methods || [];
 };
+
+// Query historical orders from server
+export const queryHistoricalOrders = async ({
+  sourceOrderNumber = '',
+  fromDate,
+  toDate,
+  salesrepNumber,
+  locationName = '',
+} = {}) => {
+  try {
+    // Format dates as DD-MMM-YYYY (e.g., 10-DEC-2025)
+    const formatDate = (date) => {
+      const d = new Date(date);
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = months[d.getMonth()];
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`;
+    };
+
+    // Default to current date if not provided
+    const today = new Date();
+    const from = fromDate ? formatDate(fromDate) : formatDate(today);
+    const to = toDate ? formatDate(toDate) : formatDate(today);
+
+    const params = new URLSearchParams({
+      source_order_number: sourceOrderNumber,
+      from_date: from,
+      to_date: to,
+      salesrep_number: salesrepNumber || '',
+      location_name: locationName,
+    });
+
+    const url = `${BASE_URL}/ORDERCRATION/QueryOrders?${params.toString()}`;
+    console.log('Querying historical orders:', url);
+
+    const response = await axios.get(url, { timeout: 30000 });
+
+    if (response.data && response.data.orders) {
+      // Process orders to calculate totals
+      const processedOrders = response.data.orders.map(order => {
+        // Calculate total net from lines
+        const totalNet = (order.lines || []).reduce((sum, line) => {
+          return sum + (parseFloat(line.totalNet) || parseFloat(line.net) || 0);
+        }, 0);
+
+        // Calculate total payment
+        const totalPaid = (order.payments || []).reduce((sum, payment) => {
+          return sum + (parseFloat(payment.amountPay) || 0);
+        }, 0);
+
+        return {
+          ...order,
+          calculatedTotalNet: totalNet,
+          calculatedTotalPaid: totalPaid,
+          lineCount: (order.lines || []).length,
+          paymentCount: (order.payments || []).length,
+        };
+      });
+
+      return { success: true, orders: processedOrders };
+    }
+
+    return { success: true, orders: [] };
+  } catch (error) {
+    console.error('Query historical orders error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to fetch historical orders',
+      orders: []
+    };
+  }
+};

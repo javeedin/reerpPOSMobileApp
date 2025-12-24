@@ -26,3 +26,5 @@ export { default as StoryScreen } from './StoryScreen';
 export { default as SignatureScreen } from './SignatureScreen';
 // Credit check screen
 export { default as CreditCheckScreen } from './CreditCheckScreen';
+// History orders screen
+export { default as HistoryOrdersScreen } from './HistoryOrdersScreen';
