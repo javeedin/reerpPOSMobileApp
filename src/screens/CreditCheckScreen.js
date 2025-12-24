@@ -16,9 +16,10 @@ import colors from '../theme/colors';
 import { createOrder, ORDER_STATUS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 
-// Format number with commas
+// Format number with commas - safely handles strings and undefined
 const formatNumber = (num) => {
-  return (num || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const value = parseFloat(num) || 0;
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 };
 
 const CreditCheckScreen = ({ navigation, route }) => {
