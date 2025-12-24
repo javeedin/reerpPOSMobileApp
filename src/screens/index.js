@@ -24,3 +24,5 @@ export { default as BatchReconciliationScreen } from './BatchReconciliationScree
 export { default as StoryScreen } from './StoryScreen';
 // Signature screen
 export { default as SignatureScreen } from './SignatureScreen';
+// Credit check screen
+export { default as CreditCheckScreen } from './CreditCheckScreen';

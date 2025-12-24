@@ -22,7 +22,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SIGNATURE_HEIGHT = 250;
 
 const SignatureScreen = ({ navigation, route }) => {
-  const { menuConfig, customer, cart, totals, notes, currency, payments, onConfirm, skipPayment } = route.params || {};
+  const { menuConfig, customer, cart, totals, notes, currency, payments, onConfirm, paymentForm } = route.params || {};
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
 
@@ -79,8 +79,22 @@ const SignatureScreen = ({ navigation, route }) => {
       return;
     }
 
-    // If skipPayment is true, confirm order directly without payment screen
-    if (skipPayment) {
+    // Common nav params with signature
+    const navParams = {
+      menuConfig,
+      customer,
+      cart,
+      totals,
+      notes,
+      currency,
+      signature: signatureData,
+    };
+
+    // Determine next screen based on paymentForm type
+    const formType = paymentForm || 'YES';
+
+    if (formType === 'NO') {
+      // Direct confirm order without payment screen
       setProcessing(true);
       try {
         const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
@@ -117,16 +131,14 @@ const SignatureScreen = ({ navigation, route }) => {
       return;
     }
 
-    // Normal flow - go to payment with signature
-    navigation.navigate('Payment', {
-      menuConfig,
-      customer,
-      cart,
-      totals,
-      notes,
-      currency,
-      signature: signatureData,
-    });
+    if (formType === 'CREDIT') {
+      // Go to credit check with signature
+      navigation.navigate('CreditCheck', navParams);
+      return;
+    }
+
+    // Normal flow (YES or blank) - go to payment with signature
+    navigation.navigate('Payment', navParams);
   };
 
   const handleSkip = () => {
@@ -262,9 +274,9 @@ const SignatureScreen = ({ navigation, route }) => {
           ) : (
             <>
               <Text style={styles.confirmBtnText}>
-                {skipPayment ? 'Confirm Order' : 'Proceed to Payment'}
+                {paymentForm === 'NO' ? 'Confirm Order' : paymentForm === 'CREDIT' ? 'Proceed to Credit Check' : 'Proceed to Payment'}
               </Text>
-              <Ionicons name={skipPayment ? "checkmark-circle" : "arrow-forward-circle"} size={22} color="#FFFFFF" />
+              <Ionicons name={paymentForm === 'NO' ? "checkmark-circle" : paymentForm === 'CREDIT' ? "card" : "arrow-forward-circle"} size={22} color="#FFFFFF" />
             </>
           )}
         </TouchableOpacity>

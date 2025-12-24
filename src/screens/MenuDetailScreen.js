@@ -19,14 +19,25 @@ const InfoBadge = ({ label, value, color }) => (
   </View>
 );
 
-const ConfigItem = ({ label, value }) => (
-  <View style={styles.configItem}>
-    <Text style={styles.configLabel}>{label}</Text>
-    <Text style={[styles.configValue, { color: value === 'YES' || value === 'Y' ? colors.accentGreen : colors.textSecondary }]}>
-      {value || 'N/A'}
-    </Text>
-  </View>
-);
+const ConfigItem = ({ label, value, valueColor }) => {
+  // Determine color based on value
+  const getValueColor = () => {
+    if (valueColor) return valueColor;
+    if (value === 'YES' || value === 'Y') return colors.accentGreen;
+    if (value === 'NO' || value === 'N') return colors.accentRed || '#E53935';
+    if (value === 'CREDIT') return colors.accentOrange || '#FF9800';
+    return colors.textSecondary;
+  };
+
+  return (
+    <View style={styles.configItem}>
+      <Text style={styles.configLabel}>{label}</Text>
+      <Text style={[styles.configValue, { color: getValueColor() }]}>
+        {value || 'N/A'}
+      </Text>
+    </View>
+  );
+};
 
 const MenuDetailScreen = ({ navigation, route }) => {
   const { item } = route.params || {};
@@ -55,11 +66,19 @@ const MenuDetailScreen = ({ navigation, route }) => {
 
   const handleOpenNewOrder = () => {
     // Prepare menu config for order
+    // Determine payment form type: blank/YES = payment form, NO = skip, CREDIT = credit check
+    const paymentFormValue = (item?.payment_form || '').toUpperCase().trim();
+    const paymentFormType = paymentFormValue === 'NO' || paymentFormValue === 'N'
+      ? 'NO'
+      : paymentFormValue === 'CREDIT'
+        ? 'CREDIT'
+        : 'YES'; // blank or YES defaults to showing payment form
+
     const menuConfig = {
       name: item?.name || '',
       orderType: item?.ordertype || '',
       transactionType: item?.transaction_type || '',
-      paymentFormRequired: item?.payment_form === 'YES' || item?.payment_form === 'Y',
+      paymentForm: paymentFormType, // 'YES' | 'NO' | 'CREDIT'
       priceList: item?.pricelist || '',
       allowDiscount: item?.allow_discount === 'YES' || item?.allow_discount === 'Y',
       allowTax: item?.allow_tax === 'YES' || item?.allow_tax === 'Y',
@@ -159,6 +178,7 @@ const MenuDetailScreen = ({ navigation, route }) => {
           {/* Configuration Card */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Configuration</Text>
+            <ConfigItem label="Payment Form" value={item.payment_form || 'YES'} />
             <ConfigItem label="Allow Discount" value={item.allow_discount} />
             <ConfigItem label="Allow Tax" value={item.allow_tax} />
             <ConfigItem label="Signature Required" value={item.signature_required} />

@@ -614,18 +614,24 @@ const CheckoutScreen = ({ navigation, route }) => {
       currency,
     };
 
+    // Payment form types: YES (show payment), NO (skip to confirm), CREDIT (credit check)
+    const paymentForm = menuConfig?.paymentForm || 'YES';
+
     // Check if signature is required first
     if (menuConfig?.signatureRequired) {
-      // Go to signature first, then to payment (or direct confirm if no payment form)
+      // Go to signature first, then to appropriate next screen based on paymentForm
       navigation.navigate('Signature', {
         ...navParams,
-        skipPayment: !menuConfig?.paymentFormRequired,
+        paymentForm, // Pass the payment form type
       });
-    } else if (menuConfig?.paymentFormRequired === false) {
-      // No signature required and no payment form - direct confirm
+    } else if (paymentForm === 'NO') {
+      // No signature, no payment form - direct confirm
       handleDirectConfirm(allOrderLines);
+    } else if (paymentForm === 'CREDIT') {
+      // No signature, credit check required
+      navigation.navigate('CreditCheck', navParams);
     } else {
-      // Normal flow - go to payment
+      // Normal flow (YES or blank) - go to payment
       navigation.navigate('Payment', navParams);
     }
   };
