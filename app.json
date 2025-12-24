@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "FCPos",
-    "slug": "fcpos-mobile-app",
+    "slug": "reerp-pos-mobile-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -25,10 +25,10 @@
       },
       "package": "com.fcpos.app"
     },
-    "extra": {
-      "eas": {
-        "projectId": "fcpos-mobile-app"
-      }
-    }
+    "plugins": [
+      "expo-camera",
+      "expo-image-picker",
+      "expo-media-library"
+    ]
   }
 }
