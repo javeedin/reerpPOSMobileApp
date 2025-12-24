@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Modal,
   Dimensions,
   Platform,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +42,9 @@ const OrderCard = ({ order, onPress, currency = 'MUR' }) => {
   const statusColor = order.orderStatus === 'CONFIRM'
     ? (colors.accentGreen || '#4CAF50')
     : (colors.accentOrange || '#FF9800');
+
+  // Check if interfaced successfully (hide error messages)
+  const isInterfaced = order.fusionInterfaceStatus === 'INTERFACED';
 
   return (
     <TouchableOpacity style={styles.orderCard} onPress={() => onPress(order)} activeOpacity={0.7}>
@@ -97,20 +101,11 @@ const OrderCard = ({ order, onPress, currency = 'MUR' }) => {
         </View>
       </View>
 
-      {/* Interface Status */}
-      {order.fusionInterfaceStatus && (
+      {/* Interface Status - Only show if interfaced successfully */}
+      {isInterfaced && (
         <View style={styles.interfaceRow}>
-          <Ionicons
-            name={order.fusionInterfaceStatus === 'INTERFACED' ? 'cloud-done-outline' : 'cloud-offline-outline'}
-            size={12}
-            color={order.fusionInterfaceStatus === 'INTERFACED' ? colors.accentGreen : colors.textMuted}
-          />
-          <Text style={[
-            styles.interfaceText,
-            { color: order.fusionInterfaceStatus === 'INTERFACED' ? colors.accentGreen : colors.textMuted }
-          ]}>
-            {order.fusionInterfaceStatus}
-          </Text>
+          <Ionicons name="cloud-done-outline" size={12} color={colors.accentGreen} />
+          <Text style={[styles.interfaceText, { color: colors.accentGreen }]}>INTERFACED</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -359,6 +354,13 @@ const AnalyticsView = ({ orders, currency = 'MUR' }) => {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
 
+  // Top Grays Staff (customers with "Grays" in name)
+  const graysStaff = Object.entries(customerStats)
+    .map(([id, data]) => ({ id, ...data }))
+    .filter(c => (c.name || '').toLowerCase().includes('grays'))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10);
+
   // Group by order type
   const typeStats = {};
   orders.forEach(order => {
@@ -369,6 +371,27 @@ const AnalyticsView = ({ orders, currency = 'MUR' }) => {
     typeStats[type].count++;
     typeStats[type].revenue += order.calculatedTotalNet || 0;
   });
+
+  // Top 20 Products
+  const productStats = {};
+  orders.forEach(order => {
+    (order.lines || []).forEach(line => {
+      const key = line.itemCode || 'Unknown';
+      if (!productStats[key]) {
+        productStats[key] = {
+          itemCode: key,
+          itemDesc: line.itemDesc,
+          qty: 0,
+          revenue: 0,
+        };
+      }
+      productStats[key].qty += parseFloat(line.qty) || 0;
+      productStats[key].revenue += parseFloat(line.totalNet || line.net) || 0;
+    });
+  });
+  const topProducts = Object.values(productStats)
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 20);
 
   return (
     <ScrollView style={styles.analyticsContainer} showsVerticalScrollIndicator={false}>
@@ -418,6 +441,53 @@ const AnalyticsView = ({ orders, currency = 'MUR' }) => {
         ))}
       </View>
 
+      {/* Top Grays Staff */}
+      {graysStaff.length > 0 && (
+        <View style={styles.analyticsSection}>
+          <View style={styles.analyticsSectionHeader}>
+            <Ionicons name="business" size={18} color={colors.secondary || '#FF6B6B'} />
+            <Text style={styles.analyticsSectionTitle}>Top Grays Staff</Text>
+          </View>
+          {graysStaff.map((staff, index) => (
+            <View key={staff.id} style={styles.topCustomerRow}>
+              <View style={[styles.topCustomerRank, { backgroundColor: (colors.secondary || '#FF6B6B') + '20' }]}>
+                <Text style={[styles.topCustomerRankText, { color: colors.secondary || '#FF6B6B' }]}>{index + 1}</Text>
+              </View>
+              <View style={styles.topCustomerInfo}>
+                <Text style={styles.topCustomerName} numberOfLines={1}>{staff.name}</Text>
+                <Text style={styles.topCustomerOrders}>{staff.count} orders</Text>
+              </View>
+              <Text style={[styles.topCustomerRevenue, { color: colors.secondary || '#FF6B6B' }]}>
+                {currency} {formatNumber(staff.revenue)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Top 20 Products */}
+      <View style={styles.analyticsSection}>
+        <View style={styles.analyticsSectionHeader}>
+          <Ionicons name="cube" size={18} color={colors.accentOrange || '#FF9800'} />
+          <Text style={styles.analyticsSectionTitle}>Top 20 Products</Text>
+        </View>
+        {topProducts.map((product, index) => (
+          <View key={product.itemCode} style={styles.productRow}>
+            <View style={[styles.topCustomerRank, { backgroundColor: (colors.accentOrange || '#FF9800') + '20' }]}>
+              <Text style={[styles.topCustomerRankText, { color: colors.accentOrange || '#FF9800' }]}>{index + 1}</Text>
+            </View>
+            <View style={styles.productInfo}>
+              <Text style={styles.productName} numberOfLines={1}>{product.itemDesc}</Text>
+              <Text style={styles.productCode}>{product.itemCode}</Text>
+            </View>
+            <View style={styles.productStats}>
+              <Text style={styles.productQty}>{product.qty} sold</Text>
+              <Text style={styles.productRevenue}>{currency} {formatNumber(product.revenue)}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
       {/* Order Types */}
       <View style={styles.analyticsSection}>
         <View style={styles.analyticsSectionHeader}>
@@ -458,7 +528,7 @@ const HistoryOrdersScreen = ({ navigation }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filterQuery, setFilterQuery] = useState('');
   const [fromDate, setFromDate] = useState(new Date());
   const [toDate, setToDate] = useState(new Date());
   const [showFromPicker, setShowFromPicker] = useState(false);
@@ -466,19 +536,37 @@ const HistoryOrdersScreen = ({ navigation }) => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState('orders');
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Animated values for loading
+  const spinValue = useRef(new Animated.Value(0)).current;
 
   const salesrepNumber = user?.username || user?.salesrepNumber || '';
 
-  // Fetch orders on mount and when dates change
+  // Spinning animation for loading
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    if (loading) {
+      Animated.loop(
+        Animated.timing(spinValue, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      spinValue.setValue(0);
+    }
+  }, [loading]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
       const result = await queryHistoricalOrders({
-        sourceOrderNumber: searchQuery,
         fromDate,
         toDate,
         salesrepNumber,
@@ -486,6 +574,7 @@ const HistoryOrdersScreen = ({ navigation }) => {
 
       if (result.success) {
         setOrders(result.orders);
+        setHasSearched(true);
       } else {
         Alert.alert('Error', result.error || 'Failed to fetch orders');
       }
@@ -525,10 +614,49 @@ const HistoryOrdersScreen = ({ navigation }) => {
     }
   };
 
-  // Filter orders based on search
+  // Navigate to Story screen with order data
+  const handleStory = () => {
+    if (orders.length === 0) {
+      Alert.alert('No Data', 'Please search for orders first to view the story.');
+      return;
+    }
+
+    // Group orders by date and sort by time
+    const ordersByDate = {};
+    orders.forEach(order => {
+      const date = order.orderDate || 'Unknown';
+      if (!ordersByDate[date]) {
+        ordersByDate[date] = [];
+      }
+      ordersByDate[date].push(order);
+    });
+
+    // Sort each date's orders by time
+    Object.keys(ordersByDate).forEach(date => {
+      ordersByDate[date].sort((a, b) => {
+        const timeA = a.orderTime || '00:00:00';
+        const timeB = b.orderTime || '00:00:00';
+        return timeA.localeCompare(timeB);
+      });
+    });
+
+    // Prepare story data
+    const storyData = {
+      title: 'Order History Story',
+      subtitle: `${formatDisplayDate(fromDate)} - ${formatDisplayDate(toDate)}`,
+      ordersByDate,
+      totalOrders: orders.length,
+      totalRevenue: orders.reduce((sum, o) => sum + (o.calculatedTotalNet || 0), 0),
+      salesrepNumber,
+    };
+
+    navigation.navigate('Story', { storyData, storyType: 'orders' });
+  };
+
+  // Filter orders locally based on filter query
   const filteredOrders = orders.filter(order => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
+    if (!filterQuery) return true;
+    const query = filterQuery.toLowerCase();
     return (
       (order.sourceOrderNumber || '').toLowerCase().includes(query) ||
       (order.accountName || '').toLowerCase().includes(query) ||
@@ -549,7 +677,9 @@ const HistoryOrdersScreen = ({ navigation }) => {
           <Text style={styles.headerTitle}>Order History</Text>
           <Text style={styles.headerSubtitle}>{salesrepNumber}</Text>
         </View>
-        <View style={styles.headerRight} />
+        <TouchableOpacity onPress={handleStory} style={styles.storyButton}>
+          <Ionicons name="play-circle-outline" size={26} color="#FFFFFF" />
+        </TouchableOpacity>
       </LinearGradient>
 
       {/* Main Tabs */}
@@ -584,63 +714,80 @@ const HistoryOrdersScreen = ({ navigation }) => {
 
       {activeMainTab === 'orders' ? (
         <>
+          {/* Search Section - Date and Search Button */}
+          <View style={styles.searchSection}>
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowFromPicker(true)}
+            >
+              <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+              <Text style={styles.dateButtonText}>{formatDisplayDate(fromDate)}</Text>
+            </TouchableOpacity>
+            <Text style={styles.dateSeparator}>to</Text>
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowToPicker(true)}
+            >
+              <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+              <Text style={styles.dateButtonText}>{formatDisplayDate(toDate)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.searchButton}
+              onPress={handleSearch}
+              disabled={loading}
+            >
+              {loading ? (
+                <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                  <Ionicons name="sync" size={20} color="#FFFFFF" />
+                </Animated.View>
+              ) : (
+                <Ionicons name="search" size={20} color="#FFFFFF" />
+              )}
+            </TouchableOpacity>
+          </View>
+
           {/* Filter Section */}
           <View style={styles.filterSection}>
-            {/* Date Row */}
-            <View style={styles.dateRow}>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowFromPicker(true)}
-              >
-                <Ionicons name="calendar-outline" size={16} color={colors.accent} />
-                <Text style={styles.dateButtonText}>{formatDisplayDate(fromDate)}</Text>
-              </TouchableOpacity>
-              <Text style={styles.dateSeparator}>to</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowToPicker(true)}
-              >
-                <Ionicons name="calendar-outline" size={16} color={colors.accent} />
-                <Text style={styles.dateButtonText}>{formatDisplayDate(toDate)}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Search Row */}
-            <View style={styles.searchRow}>
-              <View style={styles.searchInputContainer}>
-                <Ionicons name="search-outline" size={18} color={colors.textMuted} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search order #, customer..."
-                  placeholderTextColor={colors.textMuted}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  onSubmitEditing={handleSearch}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearchQuery('')}>
-                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </View>
-              <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-                <Ionicons name="search" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
+            <View style={styles.filterInputContainer}>
+              <Ionicons name="filter-outline" size={16} color={colors.textMuted} />
+              <TextInput
+                style={styles.filterInput}
+                placeholder="Filter by order #, customer..."
+                placeholderTextColor={colors.textMuted}
+                value={filterQuery}
+                onChangeText={setFilterQuery}
+              />
+              {filterQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setFilterQuery('')}>
+                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
           {/* Results Info */}
           <View style={styles.resultsInfo}>
             <Text style={styles.resultsText}>
-              {loading ? 'Loading...' : `${filteredOrders.length} orders found`}
+              {loading ? 'Searching...' : `${filteredOrders.length} orders found`}
             </Text>
           </View>
 
-          {/* Orders List */}
+          {/* Orders List or Loading */}
           {loading && orders.length === 0 ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.accent} />
+              <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                <Ionicons name="sync" size={48} color={colors.accent} />
+              </Animated.View>
               <Text style={styles.loadingText}>Fetching orders...</Text>
+              <Text style={styles.loadingSubtext}>Please wait</Text>
+            </View>
+          ) : !hasSearched ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="search-outline" size={64} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>Search Orders</Text>
+              <Text style={styles.emptyText}>
+                Select date range and tap search to fetch orders
+              </Text>
             </View>
           ) : (
             <FlatList
@@ -658,7 +805,7 @@ const HistoryOrdersScreen = ({ navigation }) => {
                   <Ionicons name="receipt-outline" size={64} color={colors.textMuted} />
                   <Text style={styles.emptyTitle}>No Orders Found</Text>
                   <Text style={styles.emptyText}>
-                    Try adjusting your date range or search criteria
+                    Try adjusting your date range or filter
                   </Text>
                 </View>
               }
@@ -730,8 +877,8 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
-  headerRight: {
-    width: 40,
+  storyButton: {
+    padding: 8,
   },
   // Main Tabs
   mainTabsContainer: {
@@ -763,18 +910,16 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: '600',
   },
-  // Filter Section
-  filterSection: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  dateRow: {
+  // Search Section
+  searchSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: 8,
   },
   dateButton: {
     flex: 1,
@@ -782,26 +927,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.surface,
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 8,
-    gap: 8,
+    gap: 6,
   },
   dateButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textPrimary,
     fontWeight: '500',
   },
   dateSeparator: {
-    marginHorizontal: 10,
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: 12,
   },
-  searchRow: {
-    flexDirection: 'row',
-    gap: 10,
+  searchButton: {
+    backgroundColor: colors.accent,
+    padding: 12,
+    borderRadius: 8,
   },
-  searchInputContainer: {
-    flex: 1,
+  // Filter Section
+  filterSection: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  filterInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -809,16 +961,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
-  searchInput: {
+  filterInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textPrimary,
     paddingVertical: 10,
-  },
-  searchButton: {
-    backgroundColor: colors.accent,
-    padding: 12,
-    borderRadius: 8,
   },
   resultsInfo: {
     paddingHorizontal: 16,
@@ -977,8 +1124,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 14,
+    marginTop: 16,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  loadingSubtext: {
+    marginTop: 4,
+    fontSize: 13,
     color: colors.textMuted,
   },
   emptyContainer: {
@@ -1442,6 +1595,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.accent,
+  },
+  // Product rows
+  productRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surface,
+  },
+  productInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  productName: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  productCode: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontFamily: 'monospace',
+    marginTop: 1,
+  },
+  productStats: {
+    alignItems: 'flex-end',
+  },
+  productQty: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  productRevenue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accentOrange || '#FF9800',
   },
   typeStatRow: {
     flexDirection: 'row',
