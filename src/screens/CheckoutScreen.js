@@ -20,9 +20,10 @@ import { useAuth } from '../context/AuthContext';
 import { getOnhand, getBogoForItem, calculateBogoQty } from '../services/syncService';
 import { getAllLocalAdjustments } from '../services/onhandService';
 
-// Format number with commas (e.g., 1,250.00)
+// Format number with commas (e.g., 1,250.00) - safely handles strings and undefined
 const formatNumber = (num) => {
-  return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const value = parseFloat(num) || 0;
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 };
 
 // Totals Flow Component - Shows Gross → Discount → Tax as visual pipeline
@@ -651,7 +652,7 @@ const CheckoutScreen = ({ navigation, route }) => {
   const handleDirectConfirmWithPrompt = (orderLines) => {
     Alert.alert(
       'Confirm Order',
-      `Are you sure you want to confirm this order?\n\nTotal: ${currency} ${totals.totalNet.toFixed(2)}\nItems: ${orderLines.length}`,
+      `Are you sure you want to confirm this order?\n\nTotal: ${currency} ${formatNumber(totals.totalNet)}\nItems: ${orderLines.length}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
