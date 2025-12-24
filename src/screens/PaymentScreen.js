@@ -258,6 +258,7 @@ const PaymentScreen = ({ navigation, route }) => {
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
   const remaining = Math.max(0, totals.totalNet - totalPaid);
   const change = totalPaid > totals.totalNet ? totalPaid - totals.totalNet : 0;
+  const isFullyPaid = totalPaid >= totals.totalNet;
 
   // Calculate modal totals
   const modalTotalPaid = Object.values(modalPayments).reduce(
@@ -495,11 +496,18 @@ const PaymentScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         )}
 
-        {/* Add Payment Button - Moved Up */}
-        <TouchableOpacity style={styles.addPaymentBtn} onPress={handleOpenModal}>
-          <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
-          <Text style={styles.addPaymentText}>Add Payment Method</Text>
-        </TouchableOpacity>
+        {/* Add Payment Button - Disabled when fully paid */}
+        {!isFullyPaid ? (
+          <TouchableOpacity style={styles.addPaymentBtn} onPress={handleOpenModal}>
+            <Ionicons name="add-circle-outline" size={22} color={colors.accent} />
+            <Text style={styles.addPaymentText}>Add Payment Method</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.fullyPaidBadge}>
+            <Ionicons name="checkmark-circle" size={20} color={colors.accentGreen} />
+            <Text style={styles.fullyPaidText}>Payment Complete</Text>
+          </View>
+        )}
 
         {/* Added Payments */}
         {payments.length > 0 && (
@@ -806,6 +814,21 @@ const styles = StyleSheet.create({
   },
   addPaymentText: {
     color: colors.accent,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fullyPaidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentGreen + '15',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
+    marginBottom: 16,
+  },
+  fullyPaidText: {
+    color: colors.accentGreen,
     fontSize: 14,
     fontWeight: '600',
   },

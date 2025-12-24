@@ -605,14 +605,66 @@ const CheckoutScreen = ({ navigation, route }) => {
 
     // Include BOGO items with cart
     const allOrderLines = [...cart, ...bogoItems];
-    navigation.navigate('Payment', {
+    const navParams = {
       menuConfig,
       customer,
       cart: allOrderLines,
       totals,
       notes,
       currency,
-    });
+    };
+
+    // Check if signature is required first
+    if (menuConfig?.signatureRequired) {
+      // Go to signature first, then to payment (or direct confirm if no payment form)
+      navigation.navigate('Signature', {
+        ...navParams,
+        skipPayment: !menuConfig?.paymentFormRequired,
+      });
+    } else if (menuConfig?.paymentFormRequired === false) {
+      // No signature required and no payment form - direct confirm
+      handleDirectConfirm(allOrderLines);
+    } else {
+      // Normal flow - go to payment
+      navigation.navigate('Payment', navParams);
+    }
+  };
+
+  // Direct confirm order without payment screen (for cash/credit sales)
+  const handleDirectConfirm = async (orderLines) => {
+    setSaving(true);
+    try {
+      const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
+
+      // Create order with no payment (or default payment if needed)
+      const result = await createOrder({
+        customer,
+        menuConfig,
+        lines: orderLines,
+        status: ORDER_STATUS.CONFIRMED,
+        payments: [], // No payments for direct confirm
+        notes,
+      }, userPrefix);
+
+      if (result.success) {
+        Alert.alert(
+          'Order Confirmed',
+          `Order ${result.order.orderNumber} has been confirmed.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('MainTabs'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to confirm order');
+      }
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   useEffect(() => {

@@ -59,7 +59,7 @@ const MenuDetailScreen = ({ navigation, route }) => {
       name: item?.name || '',
       orderType: item?.ordertype || '',
       transactionType: item?.transaction_type || '',
-      paymentForm: item?.payment_form || '',
+      paymentFormRequired: item?.payment_form === 'YES' || item?.payment_form === 'Y',
       priceList: item?.pricelist || '',
       allowDiscount: item?.allow_discount === 'YES' || item?.allow_discount === 'Y',
       allowTax: item?.allow_tax === 'YES' || item?.allow_tax === 'Y',

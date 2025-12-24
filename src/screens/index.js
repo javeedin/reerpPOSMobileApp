@@ -22,3 +22,5 @@ export { default as ScanTemplateScreen } from './ScanTemplateScreen';
 export { default as BatchReconciliationScreen } from './BatchReconciliationScreen';
 // Story screen
 export { default as StoryScreen } from './StoryScreen';
+// Signature screen
+export { default as SignatureScreen } from './SignatureScreen';
