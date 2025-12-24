@@ -393,6 +393,21 @@ const AnalyticsView = ({ orders, currency = 'MUR' }) => {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 20);
 
+  // Total by Date
+  const dateStats = {};
+  orders.forEach(order => {
+    const date = order.orderDate || 'Unknown';
+    if (!dateStats[date]) {
+      dateStats[date] = { count: 0, revenue: 0, items: 0 };
+    }
+    dateStats[date].count++;
+    dateStats[date].revenue += order.calculatedTotalNet || 0;
+    dateStats[date].items += order.lineCount || 0;
+  });
+  const dateStatsArray = Object.entries(dateStats)
+    .map(([date, data]) => ({ date, ...data }))
+    .sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
+
   return (
     <ScrollView style={styles.analyticsContainer} showsVerticalScrollIndicator={false}>
       {/* Summary Cards */}
@@ -420,6 +435,40 @@ const AnalyticsView = ({ orders, currency = 'MUR' }) => {
           <Text style={styles.summaryCardLabel}>Items Sold</Text>
         </View>
       </View>
+
+      {/* Total by Date */}
+      {dateStatsArray.length > 0 && (
+        <View style={styles.analyticsSection}>
+          <View style={styles.analyticsSectionHeader}>
+            <Ionicons name="calendar" size={18} color={colors.accent} />
+            <Text style={styles.analyticsSectionTitle}>Total by Date</Text>
+          </View>
+          {dateStatsArray.map((dateItem) => (
+            <View key={dateItem.date} style={styles.dateStatRow}>
+              <View style={styles.dateStatDate}>
+                <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                <Text style={styles.dateStatDateText}>{formatDisplayDate(dateItem.date)}</Text>
+              </View>
+              <View style={styles.dateStatDetails}>
+                <View style={styles.dateStatItem}>
+                  <Text style={styles.dateStatLabel}>Orders</Text>
+                  <Text style={styles.dateStatValue}>{dateItem.count}</Text>
+                </View>
+                <View style={styles.dateStatItem}>
+                  <Text style={styles.dateStatLabel}>Items</Text>
+                  <Text style={styles.dateStatValue}>{dateItem.items}</Text>
+                </View>
+                <View style={styles.dateStatItem}>
+                  <Text style={styles.dateStatLabel}>Revenue</Text>
+                  <Text style={[styles.dateStatValue, styles.dateStatRevenue]}>
+                    {currency} {formatNumber(dateItem.revenue)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* Top Customers */}
       <View style={styles.analyticsSection}>
@@ -1670,6 +1719,46 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.accent,
     marginTop: 2,
+  },
+  // Date Stats styles
+  dateStatRow: {
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+  },
+  dateStatDate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 6,
+  },
+  dateStatDateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  dateStatDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  dateStatItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  dateStatLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  dateStatValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  dateStatRevenue: {
+    color: colors.accent,
   },
 });
 
