@@ -28,3 +28,5 @@ export { default as SignatureScreen } from './SignatureScreen';
 export { default as CreditCheckScreen } from './CreditCheckScreen';
 // History orders screen
 export { default as HistoryOrdersScreen } from './HistoryOrdersScreen';
+// Store requests screen
+export { default as StoreRequestsScreen } from './StoreRequestsScreen';

@@ -200,11 +200,19 @@ const OrdersScreen = ({ navigation }) => {
           ))}
         </View>
 
-        {/* Order Count */}
+        {/* Order Count & Store Requests Link */}
         <View style={styles.countBar}>
           <Text style={styles.countText}>
             {filteredOrders.length.toLocaleString()} order{filteredOrders.length !== 1 ? 's' : ''}
           </Text>
+          <TouchableOpacity
+            style={styles.storeRequestsLink}
+            onPress={() => navigation.navigate('StoreRequests')}
+          >
+            <Ionicons name="swap-horizontal" size={16} color={colors.accent} />
+            <Text style={styles.storeRequestsText}>Store Requests</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+          </TouchableOpacity>
         </View>
 
         {/* Orders List */}
@@ -319,12 +327,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   countBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     marginBottom: 8,
   },
   countText: {
     fontSize: 13,
     color: colors.textMuted,
+  },
+  storeRequestsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accent + '10',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+  },
+  storeRequestsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
   },
   loadingContainer: {
     flex: 1,

@@ -20,6 +20,15 @@ import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { getOnhand, syncOnhand, fetchLotDetails, getSyncMetadata, getPriceListItems } from '../services/syncService';
 import { getAllLocalAdjustments, getItemAdjustmentSummary } from '../services/onhandService';
+import {
+  getCart,
+  addToCart,
+  updateCartItem,
+  removeFromCart,
+  clearCart,
+  getCartItemCount,
+  createRequisition,
+} from '../services/stockRequisitionService';
 
 const PAGE_SIZE = 50;
 
@@ -55,6 +64,33 @@ const getStockStatus = (quantity) => {
   if (quantity === 0) return { label: 'Out of Stock', color: colors.accentRed || '#E53935' };
   if (quantity < 10) return { label: 'Low Stock', color: colors.accentOrange };
   return { label: 'In Stock', color: colors.accentGreen };
+};
+
+// Summarize onhand data by itemNumber (group records with same item)
+const summarizeOnhandData = (data) => {
+  const grouped = {};
+
+  data.forEach(item => {
+    const key = item.itemNumber;
+    if (!grouped[key]) {
+      grouped[key] = {
+        ...item,
+        primaryQuantity: item.primaryQuantity || 0,
+        recordCount: 1,
+        lotsHrefs: item.lotsHref ? [item.lotsHref] : [],
+        records: [item],
+      };
+    } else {
+      grouped[key].primaryQuantity += (item.primaryQuantity || 0);
+      grouped[key].recordCount += 1;
+      if (item.lotsHref) {
+        grouped[key].lotsHrefs.push(item.lotsHref);
+      }
+      grouped[key].records.push(item);
+    }
+  });
+
+  return Object.values(grouped);
 };
 
 // Highlight matching text component
@@ -144,8 +180,38 @@ const StoreSelectionModal = ({ visible, selectedStore, onSelect, onClose }) => {
   );
 };
 
-// Lot Detail Modal
-const LotDetailModal = ({ visible, lots, itemDescription, loading, onClose }) => {
+// Lot Detail Modal with Request functionality
+const LotDetailModal = ({ visible, lots, item, loading, onClose, onAddToCart, showRequestOption }) => {
+  const [requestQty, setRequestQty] = useState({});
+
+  const handleRequestQtyChange = (lotNumber, value) => {
+    const qty = parseInt(value) || 0;
+    setRequestQty(prev => ({ ...prev, [lotNumber]: qty }));
+  };
+
+  const handleAddToCart = (lot) => {
+    const qty = requestQty[lot.lotNumber] || 0;
+    if (qty <= 0) {
+      Alert.alert('Invalid Quantity', 'Please enter a quantity greater than 0');
+      return;
+    }
+    if (qty > (lot.quantity || 0)) {
+      Alert.alert('Invalid Quantity', `Quantity cannot exceed available stock (${lot.quantity})`);
+      return;
+    }
+    onAddToCart({
+      itemNumber: item?.itemNumber,
+      itemDescription: item?.itemDescription,
+      lotNumber: lot.lotNumber,
+      availableQty: lot.quantity,
+      requestedQty: qty,
+      uom: item?.primaryUOMCode || 'EA',
+      expirationDate: lot.expirationDate,
+    });
+    // Clear the qty input after adding
+    setRequestQty(prev => ({ ...prev, [lot.lotNumber]: 0 }));
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={modalStyles.overlay}>
@@ -157,7 +223,8 @@ const LotDetailModal = ({ visible, lots, itemDescription, loading, onClose }) =>
             </TouchableOpacity>
           </View>
 
-          <Text style={modalStyles.itemName} numberOfLines={2}>{itemDescription}</Text>
+          <Text style={modalStyles.itemName} numberOfLines={2}>{item?.itemDescription}</Text>
+          <Text style={modalStyles.itemCode}>{item?.itemNumber}</Text>
 
           {loading ? (
             <View style={modalStyles.loadingContainer}>
@@ -174,7 +241,7 @@ const LotDetailModal = ({ visible, lots, itemDescription, loading, onClose }) =>
                   </View>
                   <View style={modalStyles.lotDetails}>
                     <View style={modalStyles.lotRow}>
-                      <Text style={modalStyles.lotLabel}>Quantity</Text>
+                      <Text style={modalStyles.lotLabel}>Available Qty</Text>
                       <Text style={modalStyles.lotValue}>{lot.quantity || 0}</Text>
                     </View>
                     {lot.expirationDate && (
@@ -191,15 +258,30 @@ const LotDetailModal = ({ visible, lots, itemDescription, loading, onClose }) =>
                         <Text style={modalStyles.lotValue}>{lot.gradeCode}</Text>
                       </View>
                     )}
-                    {lot.originationDate && (
-                      <View style={modalStyles.lotRow}>
-                        <Text style={modalStyles.lotLabel}>Origination</Text>
-                        <Text style={modalStyles.lotValue}>
-                          {new Date(lot.originationDate).toLocaleDateString()}
-                        </Text>
-                      </View>
-                    )}
                   </View>
+                  {/* Request Section */}
+                  {showRequestOption && (
+                    <View style={modalStyles.requestSection}>
+                      <View style={modalStyles.requestInputRow}>
+                        <Text style={modalStyles.requestLabel}>Request Qty:</Text>
+                        <TextInput
+                          style={modalStyles.requestInput}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor={colors.textMuted}
+                          value={requestQty[lot.lotNumber]?.toString() || ''}
+                          onChangeText={(val) => handleRequestQtyChange(lot.lotNumber, val)}
+                        />
+                        <TouchableOpacity
+                          style={modalStyles.addToCartBtn}
+                          onPress={() => handleAddToCart(lot)}
+                        >
+                          <Ionicons name="cart-outline" size={18} color="#FFFFFF" />
+                          <Text style={modalStyles.addToCartText}>Add</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
                 </View>
               ))}
               <View style={{ height: 30 }} />
@@ -224,6 +306,8 @@ const OnhandCard = ({ item, adjustment, onViewLots, searchQuery, wholesalerPrice
   const stockStatus = getStockStatus(availableQty);
   const hasAdjustment = adjustmentQty !== 0;
   const hasPrice = wholesalerPrice || staffPrice;
+  const hasMultipleLots = (item.recordCount || 1) > 1 || (item.lotsHrefs && item.lotsHrefs.length > 0);
+  const lotCount = item.recordCount || (item.lotsHrefs ? item.lotsHrefs.length : (item.lotsHref ? 1 : 0));
 
   return (
     <TouchableOpacity style={styles.inventoryCard} activeOpacity={0.7} onPress={() => onViewLots(item)}>
@@ -276,10 +360,12 @@ const OnhandCard = ({ item, adjustment, onViewLots, searchQuery, wholesalerPrice
               </Text>
             </View>
           )}
-          {item.lotsHref && (
+          {(hasMultipleLots || item.lotsHref) && (
             <View style={[styles.statusBadge, { backgroundColor: colors.accentPurple + '20' }]}>
               <Ionicons name="layers" size={8} color={colors.accentPurple} />
-              <Text style={[styles.statusText, { color: colors.accentPurple, marginLeft: 3 }]}>Lots</Text>
+              <Text style={[styles.statusText, { color: colors.accentPurple, marginLeft: 3 }]}>
+                {lotCount > 1 ? `${lotCount} Lots` : 'Lots'}
+              </Text>
             </View>
           )}
         </View>
@@ -376,12 +462,34 @@ const InventoryScreen = ({ navigation }) => {
   const [lots, setLots] = useState([]);
   const [loadingLots, setLoadingLots] = useState(false);
 
+  // Cart states
+  const [cartItems, setCartItems] = useState([]);
+  const [cartCount, setCartCount] = useState(0);
+  const [showCartModal, setShowCartModal] = useState(false);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+
   // FlatList ref for scroll tracking
   const flatListRef = useRef(null);
 
   useEffect(() => {
     loadOnhandData();
   }, []);
+
+  // Load cart when store changes
+  useEffect(() => {
+    loadCart();
+  }, [selectedStore]);
+
+  const loadCart = async () => {
+    if (selectedStore.id !== 'mystore') {
+      const cart = await getCart(selectedStore.id);
+      setCartItems(cart.items || []);
+      setCartCount(cart.items?.length || 0);
+    } else {
+      setCartItems([]);
+      setCartCount(0);
+    }
+  };
 
   useEffect(() => {
     filterAndSortData();
@@ -425,7 +533,9 @@ const InventoryScreen = ({ navigation }) => {
   const loadOnhandData = async () => {
     setLoading(true);
     try {
-      const data = await getOnhand();
+      const rawData = await getOnhand();
+      // Summarize data by itemNumber to group items with multiple lots
+      const data = summarizeOnhandData(rawData || []);
       setOnhandData(data || []);
       setFilteredData(data || []);
 
@@ -643,16 +753,92 @@ const InventoryScreen = ({ navigation }) => {
     setLotModalVisible(true);
     setLots([]);
 
-    if (item.lotsHref) {
-      setLoadingLots(true);
-      const result = await fetchLotDetails(item.lotsHref);
-      setLoadingLots(false);
+    // Collect all lotsHrefs (from summarized data or single href)
+    const hrefs = item.lotsHrefs && item.lotsHrefs.length > 0
+      ? item.lotsHrefs
+      : (item.lotsHref ? [item.lotsHref] : []);
 
-      if (result.success) {
-        setLots(result.lots);
-      } else {
-        Alert.alert('Error', result.error || 'Failed to fetch lot details');
+    if (hrefs.length > 0) {
+      setLoadingLots(true);
+      const allLots = [];
+
+      // Fetch from all hrefs
+      for (const href of hrefs) {
+        const result = await fetchLotDetails(href);
+        if (result.success && result.lots) {
+          allLots.push(...result.lots);
+        }
       }
+
+      setLoadingLots(false);
+      setLots(allLots);
+    }
+  };
+
+  // Handle adding item to cart
+  const handleAddToCart = async (item) => {
+    if (selectedStore.id === 'mystore') {
+      Alert.alert('Cannot Request', 'Stock requests can only be made from DP Store or GPH Store');
+      return;
+    }
+
+    const result = await addToCart(selectedStore.id, item);
+    if (result.success) {
+      setCartItems(result.cart.items);
+      setCartCount(result.cart.items.length);
+      Alert.alert('Added to Cart', `${item.itemDescription} (Lot: ${item.lotNumber}) x ${item.requestedQty} added`);
+    } else {
+      Alert.alert('Error', result.error || 'Failed to add to cart');
+    }
+  };
+
+  // Handle cart item update
+  const handleUpdateCartItem = async (itemId, newQty) => {
+    const result = await updateCartItem(selectedStore.id, itemId, newQty);
+    if (result.success) {
+      setCartItems(result.cart.items);
+      setCartCount(result.cart.items.length);
+    }
+  };
+
+  // Handle remove from cart
+  const handleRemoveFromCart = async (itemId) => {
+    const result = await removeFromCart(selectedStore.id, itemId);
+    if (result.success) {
+      setCartItems(result.cart.items);
+      setCartCount(result.cart.items.length);
+    }
+  };
+
+  // Handle checkout
+  const handleCheckout = async () => {
+    if (cartItems.length === 0) {
+      Alert.alert('Empty Cart', 'Add items to cart before checkout');
+      return;
+    }
+
+    const destOrg = user?.WAREHOUSE || user?.warehouse || '';
+    const destSubinv = user?.SUBINVENTORY || user?.subinventory || '';
+
+    const result = await createRequisition({
+      storeId: selectedStore.id,
+      sourceOrg: selectedStore.organizationCode,
+      sourceSubinventory: selectedStore.subinventory,
+      destOrg,
+      destSubinventory: destSubinv,
+    });
+
+    if (result.success) {
+      setCartItems([]);
+      setCartCount(0);
+      setShowCheckoutModal(false);
+      setShowCartModal(false);
+      Alert.alert(
+        'Requisition Created',
+        `Requisition ${result.requisition.seqNo} created successfully.\n\nView it in Orders > Local Store Requests.`
+      );
+    } else {
+      Alert.alert('Error', result.error || 'Failed to create requisition');
     }
   };
 
@@ -767,10 +953,184 @@ const InventoryScreen = ({ navigation }) => {
       <LotDetailModal
         visible={lotModalVisible}
         lots={lots}
-        itemDescription={selectedItem?.itemDescription}
+        item={selectedItem}
         loading={loadingLots}
         onClose={() => setLotModalVisible(false)}
+        onAddToCart={handleAddToCart}
+        showRequestOption={selectedStore.id !== 'mystore'}
       />
+
+      {/* Cart Preview Modal */}
+      <Modal visible={showCartModal} animationType="slide" transparent>
+        <View style={cartStyles.overlay}>
+          <View style={cartStyles.container}>
+            <View style={cartStyles.header}>
+              <Text style={cartStyles.headerTitle}>Cart ({cartItems.length} items)</Text>
+              <TouchableOpacity onPress={() => setShowCartModal(false)} style={cartStyles.closeButton}>
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={cartStyles.sourceInfo}>
+              <Text style={cartStyles.sourceLabel}>Source:</Text>
+              <Text style={cartStyles.sourceValue}>
+                {selectedStore.organizationCode} / {selectedStore.subinventory}
+              </Text>
+            </View>
+
+            {cartItems.length > 0 ? (
+              <ScrollView style={cartStyles.content} showsVerticalScrollIndicator={false}>
+                {cartItems.map((item, index) => (
+                  <View key={item.id} style={cartStyles.cartItem}>
+                    <View style={cartStyles.cartItemInfo}>
+                      <Text style={cartStyles.cartItemName} numberOfLines={2}>{item.itemDescription}</Text>
+                      <Text style={cartStyles.cartItemCode}>{item.itemNumber}</Text>
+                      <Text style={cartStyles.cartItemLot}>Lot: {item.lotNumber}</Text>
+                    </View>
+                    <View style={cartStyles.cartItemQty}>
+                      <TouchableOpacity
+                        style={cartStyles.qtyBtn}
+                        onPress={() => handleUpdateCartItem(item.id, item.requestedQty - 1)}
+                      >
+                        <Ionicons name="remove" size={18} color={colors.accent} />
+                      </TouchableOpacity>
+                      <Text style={cartStyles.qtyText}>{item.requestedQty}</Text>
+                      <TouchableOpacity
+                        style={cartStyles.qtyBtn}
+                        onPress={() => handleUpdateCartItem(item.id, item.requestedQty + 1)}
+                      >
+                        <Ionicons name="add" size={18} color={colors.accent} />
+                      </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity
+                      style={cartStyles.removeBtn}
+                      onPress={() => handleRemoveFromCart(item.id)}
+                    >
+                      <Ionicons name="trash-outline" size={20} color={colors.accentRed || '#E53935'} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <View style={{ height: 20 }} />
+              </ScrollView>
+            ) : (
+              <View style={cartStyles.emptyCart}>
+                <Ionicons name="cart-outline" size={64} color={colors.textMuted} />
+                <Text style={cartStyles.emptyCartText}>Your cart is empty</Text>
+                <Text style={cartStyles.emptyCartSubtext}>Add items from lot details</Text>
+              </View>
+            )}
+
+            <View style={cartStyles.footer}>
+              <TouchableOpacity
+                style={cartStyles.addMoreBtn}
+                onPress={() => setShowCartModal(false)}
+              >
+                <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
+                <Text style={cartStyles.addMoreText}>Add More Items</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[cartStyles.checkoutBtn, cartItems.length === 0 && cartStyles.checkoutBtnDisabled]}
+                onPress={() => {
+                  setShowCartModal(false);
+                  setShowCheckoutModal(true);
+                }}
+                disabled={cartItems.length === 0}
+              >
+                <Text style={cartStyles.checkoutText}>Checkout</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Checkout Modal */}
+      <Modal visible={showCheckoutModal} animationType="slide" transparent>
+        <View style={cartStyles.overlay}>
+          <View style={cartStyles.container}>
+            <View style={cartStyles.header}>
+              <Text style={cartStyles.headerTitle}>Confirm Requisition</Text>
+              <TouchableOpacity onPress={() => setShowCheckoutModal(false)} style={cartStyles.closeButton}>
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={cartStyles.content} showsVerticalScrollIndicator={false}>
+              {/* Header Info */}
+              <View style={cartStyles.checkoutSection}>
+                <Text style={cartStyles.sectionTitle}>Request Details</Text>
+                <View style={cartStyles.infoRow}>
+                  <Text style={cartStyles.infoLabel}>Request Date:</Text>
+                  <Text style={cartStyles.infoValue}>{new Date().toLocaleDateString()}</Text>
+                </View>
+                <View style={cartStyles.infoRow}>
+                  <Text style={cartStyles.infoLabel}>Source Org:</Text>
+                  <Text style={cartStyles.infoValue}>{selectedStore.organizationCode}</Text>
+                </View>
+                <View style={cartStyles.infoRow}>
+                  <Text style={cartStyles.infoLabel}>Source Subinventory:</Text>
+                  <Text style={cartStyles.infoValue}>{selectedStore.subinventory}</Text>
+                </View>
+                <View style={cartStyles.infoRow}>
+                  <Text style={cartStyles.infoLabel}>Dest Org:</Text>
+                  <Text style={cartStyles.infoValue}>{user?.WAREHOUSE || user?.warehouse || '-'}</Text>
+                </View>
+                <View style={cartStyles.infoRow}>
+                  <Text style={cartStyles.infoLabel}>Dest Subinventory:</Text>
+                  <Text style={cartStyles.infoValue}>{user?.SUBINVENTORY || user?.subinventory || '-'}</Text>
+                </View>
+              </View>
+
+              {/* Lines */}
+              <View style={cartStyles.checkoutSection}>
+                <View style={cartStyles.sectionHeader}>
+                  <Text style={cartStyles.sectionTitle}>Items ({cartItems.length})</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowCheckoutModal(false);
+                      setShowCartModal(false);
+                    }}
+                  >
+                    <Text style={cartStyles.addMoreLink}>+ Add More</Text>
+                  </TouchableOpacity>
+                </View>
+                {cartItems.map((item, index) => (
+                  <View key={item.id} style={cartStyles.checkoutItem}>
+                    <Text style={cartStyles.checkoutItemNo}>{index + 1}</Text>
+                    <View style={cartStyles.checkoutItemInfo}>
+                      <Text style={cartStyles.checkoutItemName} numberOfLines={1}>{item.itemDescription}</Text>
+                      <Text style={cartStyles.checkoutItemCode}>{item.itemNumber}</Text>
+                      <Text style={cartStyles.checkoutItemLot}>Lot: {item.lotNumber}</Text>
+                    </View>
+                    <Text style={cartStyles.checkoutItemQty}>{item.requestedQty} {item.uom}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={{ height: 20 }} />
+            </ScrollView>
+
+            <View style={cartStyles.footer}>
+              <TouchableOpacity
+                style={cartStyles.backBtn}
+                onPress={() => {
+                  setShowCheckoutModal(false);
+                  setShowCartModal(true);
+                }}
+              >
+                <Ionicons name="arrow-back" size={20} color={colors.accent} />
+                <Text style={cartStyles.backBtnText}>Back to Cart</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={cartStyles.confirmBtn}
+                onPress={handleCheckout}
+              >
+                <Text style={cartStyles.confirmText}>Confirm</Text>
+                <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Store Selection Modal */}
       <StoreSelectionModal
@@ -1122,6 +1482,19 @@ const InventoryScreen = ({ navigation }) => {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Floating Cart Button - only show for DP/GPH stores with items in cart */}
+      {selectedStore.id !== 'mystore' && cartCount > 0 && (
+        <TouchableOpacity
+          style={styles.floatingCartBtn}
+          onPress={() => setShowCartModal(true)}
+        >
+          <Ionicons name="cart" size={24} color="#FFFFFF" />
+          <View style={styles.cartBadge}>
+            <Text style={styles.cartBadgeText}>{cartCount}</Text>
+          </View>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -1743,6 +2116,39 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: '500',
   },
+  floatingCartBtn: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: colors.accentRed || '#E53935',
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  cartBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });
 
 const modalStyles = StyleSheet.create({
@@ -1836,6 +2242,53 @@ const modalStyles = StyleSheet.create({
     fontWeight: '500',
     color: colors.textPrimary,
   },
+  itemCode: {
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  requestSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  requestInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  requestLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  requestInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  addToCartBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  addToCartText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
 });
 
 const storeModalStyles = StyleSheet.create({
@@ -1915,6 +2368,269 @@ const storeModalStyles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
     marginTop: 2,
+  },
+});
+
+const cartStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  sourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: colors.accent + '10',
+    gap: 8,
+  },
+  sourceLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  sourceValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  cartItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface || '#F5F5F5',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  cartItemInfo: {
+    flex: 1,
+  },
+  cartItemName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  cartItemCode: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  cartItemLot: {
+    fontSize: 11,
+    color: colors.accentPurple,
+    marginTop: 2,
+  },
+  cartItemQty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 10,
+  },
+  qtyBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  qtyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  removeBtn: {
+    padding: 8,
+  },
+  emptyCart: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyCartText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.textPrimary,
+    marginTop: 16,
+  },
+  emptyCartSubtext: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  footer: {
+    flexDirection: 'row',
+    padding: 20,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  addMoreBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    gap: 6,
+  },
+  addMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  checkoutBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 6,
+  },
+  checkoutBtnDisabled: {
+    backgroundColor: colors.textMuted,
+  },
+  checkoutText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  backBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    gap: 6,
+  },
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  confirmBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentGreen || '#4CAF50',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 6,
+  },
+  confirmText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  checkoutSection: {
+    backgroundColor: colors.surface || '#F5F5F5',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 12,
+  },
+  addMoreLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  infoValue: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  checkoutItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '40',
+  },
+  checkoutItemNo: {
+    width: 24,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  checkoutItemInfo: {
+    flex: 1,
+  },
+  checkoutItemName: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  checkoutItemCode: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  checkoutItemLot: {
+    fontSize: 11,
+    color: colors.accentPurple,
+  },
+  checkoutItemQty: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    textAlign: 'right',
   },
 });
 
