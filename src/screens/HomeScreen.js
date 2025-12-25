@@ -30,7 +30,27 @@ const TOTAL_DAYS = 12;
 
 // Storage key for cached sales data
 const SALES_CACHE_KEY = 'home_sales_cache';
-const CACHE_EXPIRY_HOURS = 1; // Cache expires after 1 hour
+// Cache never expires for historical days - only today is refreshed
+
+// Store options for requisition
+const STORE_OPTIONS = [
+  {
+    id: 'dpstore',
+    name: 'DP Store',
+    subtitle: 'Main Store',
+    organizationCode: 'GIC',
+    subinventory: 'DUTY PAID',
+    icon: 'business',
+  },
+  {
+    id: 'gphstore',
+    name: 'GPH Store',
+    subtitle: 'Pharmacy',
+    organizationCode: 'GPH',
+    subinventory: 'STORES',
+    icon: 'medkit',
+  },
+];
 
 // 10 Unique Card Designs
 const CARD_DESIGNS = [
@@ -314,6 +334,51 @@ const RequestCard = ({ request }) => {
   );
 };
 
+// Source Store Selection Modal
+const SourceStoreModal = ({ visible, onSelect, onClose }) => {
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <TouchableOpacity
+        style={styles.storeModalOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={styles.storeModalContainer}>
+          <View style={styles.storeModalHeader}>
+            <Text style={styles.storeModalTitle}>Select Source Store</Text>
+            <TouchableOpacity onPress={onClose} style={styles.storeModalClose}>
+              <Ionicons name="close" size={24} color="#666666" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.storeModalSubtitle}>Choose which store to request items from</Text>
+
+          <View style={styles.storeOptions}>
+            {STORE_OPTIONS.map((store) => (
+              <TouchableOpacity
+                key={store.id}
+                style={styles.storeOption}
+                onPress={() => onSelect(store)}
+              >
+                <View style={styles.storeIconBox}>
+                  <Ionicons name={store.icon} size={28} color="#2196F3" />
+                </View>
+                <View style={styles.storeInfo}>
+                  <Text style={styles.storeName}>{store.name}</Text>
+                  <Text style={styles.storeSubtitle}>{store.subtitle}</Text>
+                  <Text style={styles.storeParams}>
+                    {store.organizationCode} / {store.subinventory}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={24} color="#CCCCCC" />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 const HomeScreen = ({ navigation }) => {
   const { user, isSyncing, syncProgress } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
@@ -325,20 +390,18 @@ const HomeScreen = ({ navigation }) => {
   const [allCustomers, setAllCustomers] = useState([]);
   const [allItems, setAllItems] = useState([]);
   const [paymentBreakdown, setPaymentBreakdown] = useState({});
+  const [showStoreModal, setShowStoreModal] = useState(false);
   const dataLoadedRef = useRef(false);
 
-  // Load cached data
+  // Load cached data - cache never expires for historical data
   const loadCachedSalesData = async () => {
     try {
       const cached = await AsyncStorage.getItem(SALES_CACHE_KEY);
       if (cached) {
-        const { data, timestamp } = JSON.parse(cached);
-        const hoursSinceCache = (Date.now() - timestamp) / (1000 * 60 * 60);
-        if (hoursSinceCache < CACHE_EXPIRY_HOURS) {
-          // Restore dates from ISO strings
-          const restoredData = data.map(d => ({ ...d, date: new Date(d.date) }));
-          return restoredData;
-        }
+        const { data, aggregates } = JSON.parse(cached);
+        // Restore dates from ISO strings
+        const restoredData = data.map(d => ({ ...d, date: new Date(d.date) }));
+        return { tiles: restoredData, aggregates };
       }
     } catch (error) {
       console.error('Error loading cached sales:', error);
@@ -346,15 +409,67 @@ const HomeScreen = ({ navigation }) => {
     return null;
   };
 
-  // Save data to cache
-  const saveSalesDataToCache = async (data) => {
+  // Save data to cache with aggregates
+  const saveSalesDataToCache = async (data, aggregates) => {
     try {
-      const cacheData = { data, timestamp: Date.now() };
+      const cacheData = { data, aggregates };
       await AsyncStorage.setItem(SALES_CACHE_KEY, JSON.stringify(cacheData));
     } catch (error) {
       console.error('Error caching sales:', error);
     }
   };
+
+  // Fetch only today's data for refresh
+  const fetchTodayOnly = useCallback(async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    try {
+      const result = await queryHistoricalOrders({
+        fromDate: today,
+        toDate: today,
+        salesrepNumber: user?.username || '',
+      });
+
+      const orders = result.success ? (result.orders || []) : [];
+      const totalSales = orders.reduce((sum, o) => sum + (o.calculatedTotalNet || 0), 0);
+
+      // Get day-specific top customers
+      const dayCustomers = {};
+      orders.forEach(order => {
+        const name = order.accountName || order.customerName || order.accountNumber || 'Unknown';
+        dayCustomers[name] = (dayCustomers[name] || 0) + (order.calculatedTotalNet || 0);
+      });
+
+      // Get day-specific top items
+      const dayItems = {};
+      orders.forEach(order => {
+        (order.lines || []).forEach(line => {
+          const name = line.itemDescription || line.description || line.itemNumber || 'Unknown';
+          dayItems[name] = (dayItems[name] || 0) + (parseFloat(line.orderedQuantity) || parseFloat(line.quantity) || 1);
+        });
+      });
+
+      return {
+        date: today,
+        isToday: true,
+        totalSales,
+        orderCount: orders.length,
+        customerCount: Object.keys(dayCustomers).length,
+        topCustomers: Object.entries(dayCustomers)
+          .map(([name, amount]) => ({ name, amount }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 3),
+        topItems: Object.entries(dayItems)
+          .map(([name, qty]) => ({ name, qty }))
+          .sort((a, b) => b.qty - a.qty)
+          .slice(0, 3),
+      };
+    } catch (error) {
+      console.error('Error fetching today data:', error);
+      return null;
+    }
+  }, [user]);
 
   // Fetch all 12 days of sales data at once
   const fetchAllSalesData = useCallback(async () => {
@@ -459,14 +574,17 @@ const HomeScreen = ({ navigation }) => {
         .map(([name, qty]) => ({ name, qty }))
         .sort((a, b) => b.qty - a.qty);
 
-      setAllCustomers(sortedCustomers);
-      setAllItems(sortedItems);
-      setPaymentBreakdown(payments);
-
-      return tiles;
+      return {
+        tiles,
+        aggregates: {
+          customers: sortedCustomers,
+          items: sortedItems,
+          payments,
+        },
+      };
     } catch (error) {
       console.error('Error fetching sales data:', error);
-      return [];
+      return { tiles: [], aggregates: { customers: [], items: [], payments: {} } };
     }
   }, [user]);
 
@@ -506,9 +624,14 @@ const HomeScreen = ({ navigation }) => {
 
     // Try to load from cache first
     if (!forceRefresh) {
-      const cachedTiles = await loadCachedSalesData();
-      if (cachedTiles && cachedTiles.length > 0) {
-        setSalesTiles(cachedTiles);
+      const cached = await loadCachedSalesData();
+      if (cached && cached.tiles && cached.tiles.length > 0) {
+        setSalesTiles(cached.tiles);
+        if (cached.aggregates) {
+          setAllCustomers(cached.aggregates.customers || []);
+          setAllItems(cached.aggregates.items || []);
+          setPaymentBreakdown(cached.aggregates.payments || {});
+        }
         setIsLoadingTiles(false);
         dataLoadedRef.current = true;
 
@@ -520,14 +643,17 @@ const HomeScreen = ({ navigation }) => {
     }
 
     // Fetch fresh data
-    const [tiles] = await Promise.all([
+    const [salesResult] = await Promise.all([
       fetchAllSalesData(),
       loadInventoryData(),
       loadStoreRequests(),
     ]);
 
-    setSalesTiles(tiles);
-    saveSalesDataToCache(tiles);
+    setSalesTiles(salesResult.tiles);
+    setAllCustomers(salesResult.aggregates.customers);
+    setAllItems(salesResult.aggregates.items);
+    setPaymentBreakdown(salesResult.aggregates.payments);
+    saveSalesDataToCache(salesResult.tiles, salesResult.aggregates);
     setIsLoadingTiles(false);
     dataLoadedRef.current = true;
   }, [fetchAllSalesData, loadInventoryData, loadStoreRequests]);
@@ -562,9 +688,44 @@ const HomeScreen = ({ navigation }) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    dataLoadedRef.current = false;
-    await initialLoad(true); // Force refresh
+
+    // Only fetch today's data, keep cached data for previous days
+    const todayData = await fetchTodayOnly();
+
+    if (todayData && salesTiles.length > 0) {
+      // Update only today's tile (last one in array)
+      const updatedTiles = [...salesTiles];
+      const todayIndex = updatedTiles.findIndex(t => t.isToday);
+      if (todayIndex >= 0) {
+        updatedTiles[todayIndex] = todayData;
+      } else {
+        // Today tile should be the last one
+        updatedTiles[updatedTiles.length - 1] = todayData;
+      }
+      setSalesTiles(updatedTiles);
+
+      // Get current aggregates and update with new today data
+      const cached = await loadCachedSalesData();
+      const aggregates = cached?.aggregates || { customers: allCustomers, items: allItems, payments: paymentBreakdown };
+      saveSalesDataToCache(updatedTiles, aggregates);
+    }
+
+    // Also refresh inventory and requests
+    await Promise.all([loadInventoryData(), loadStoreRequests()]);
+
     setRefreshing(false);
+  };
+
+  // Handle source store selection for new request
+  const handleSourceStoreSelect = (store) => {
+    setShowStoreModal(false);
+    navigation.navigate('MainTabs', {
+      screen: 'Inventory',
+      params: {
+        sourceStore: store,
+        requestMode: true,
+      },
+    });
   };
 
   const renderTile = ({ item, index }) => (
@@ -584,6 +745,12 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+
+      <SourceStoreModal
+        visible={showStoreModal}
+        onSelect={handleSourceStoreSelect}
+        onClose={() => setShowStoreModal(false)}
+      />
 
       <LinearGradient colors={['#1A1A2E', '#16213E']} style={styles.header}>
         <View style={styles.headerContent}>
@@ -683,23 +850,33 @@ const HomeScreen = ({ navigation }) => {
         )}
 
         {/* Store Requests */}
-        {storeRequests.length > 0 && (
-          <View style={styles.requestsSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>🔄 Recent Store Requests</Text>
-              <TouchableOpacity onPress={() => navigation.navigate('StoreRequests')}>
-                <Text style={styles.seeAllLink}>See All →</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.requestsList}>
-                {storeRequests.slice(0, 10).map((request, index) => (
-                  <RequestCard key={index} request={request} />
-                ))}
-              </View>
-            </ScrollView>
+        <View style={styles.requestsSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>🔄 Store Requests</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('StoreRequests')}>
+              <Text style={styles.seeAllLink}>See All →</Text>
+            </TouchableOpacity>
           </View>
-        )}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.requestsList}>
+              {/* New Request Button */}
+              <TouchableOpacity
+                style={styles.newRequestCard}
+                onPress={() => setShowStoreModal(true)}
+              >
+                <View style={styles.newRequestIcon}>
+                  <Ionicons name="add-circle" size={40} color="#2196F3" />
+                </View>
+                <Text style={styles.newRequestText}>New Request</Text>
+                <Text style={styles.newRequestSubtext}>Select source store</Text>
+              </TouchableOpacity>
+
+              {storeRequests.slice(0, 10).map((request, index) => (
+                <RequestCard key={index} request={request} />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
       </ScrollView>
     </View>
   );
@@ -801,6 +978,25 @@ const styles = StyleSheet.create({
   syncModal: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 32, alignItems: 'center', width: '80%', maxWidth: 300 },
   syncTitle: { fontSize: 16, fontWeight: 'bold', color: '#1A1A1A', marginTop: 16 },
   syncProgress: { fontSize: 12, color: '#2196F3', marginTop: 8 },
+  // New Request Card
+  newRequestCard: { width: 160, backgroundColor: '#E3F2FD', borderRadius: 12, padding: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#2196F3', borderStyle: 'dashed' },
+  newRequestIcon: { marginBottom: 8 },
+  newRequestText: { fontSize: 14, fontWeight: '700', color: '#2196F3', marginBottom: 2 },
+  newRequestSubtext: { fontSize: 10, color: '#666666' },
+  // Source Store Modal
+  storeModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
+  storeModalContainer: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
+  storeModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  storeModalTitle: { fontSize: 18, fontWeight: '700', color: '#1A1A1A' },
+  storeModalClose: { padding: 4 },
+  storeModalSubtitle: { fontSize: 13, color: '#666666', paddingHorizontal: 20, marginTop: 8 },
+  storeOptions: { padding: 20 },
+  storeOption: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#F8F8F8', borderRadius: 12, marginBottom: 12 },
+  storeIconBox: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#E3F2FD', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
+  storeInfo: { flex: 1 },
+  storeName: { fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 2 },
+  storeSubtitle: { fontSize: 12, color: '#666666', marginBottom: 2 },
+  storeParams: { fontSize: 10, color: '#999999' },
 });
 
 export default HomeScreen;
