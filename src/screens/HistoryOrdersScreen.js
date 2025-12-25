@@ -22,6 +22,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import colors from '../theme/colors';
 import { queryHistoricalOrders } from '../services/syncService';
 import { useAuth } from '../context/AuthContext';
+import BottomToolbar from '../components/BottomToolbar';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -893,6 +894,9 @@ const HistoryOrdersScreen = ({ navigation }) => {
           setSelectedOrder(null);
         }}
       />
+
+      {/* Bottom Toolbar */}
+      <BottomToolbar activeTab="Orders" />
     </View>
   );
 };

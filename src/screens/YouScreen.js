@@ -41,7 +41,8 @@ const YouScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Your Account</Text>
+        <Text style={styles.headerTitle}>{user?.userName || user?.username || 'You'}</Text>
+        <Text style={styles.headerSubtitle}>Account</Text>
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
@@ -100,9 +101,15 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E0E0E0',
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '700',
     color: '#1A1A1A',
+    textTransform: 'capitalize',
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#666666',
+    marginTop: 2,
   },
   content: {
     flex: 1,

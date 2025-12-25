@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
+import BottomToolbar from '../components/BottomToolbar';
 import {
   syncCustomers,
   syncItems,
@@ -601,6 +602,9 @@ const SyncDataScreen = ({ navigation }) => {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Bottom Toolbar */}
+      <BottomToolbar activeTab="Menu" />
     </View>
   );
 };
@@ -772,7 +776,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   bottomSpacer: {
-    height: 40,
+    height: 100,
   },
   // Price List Section Styles
   priceListSection: {
