@@ -10,7 +10,7 @@ import {
   HomeScreen,
   OrdersScreen,
   InventoryScreen,
-  ReportsScreen,
+  StoreRequestsScreen,
 } from '../screens';
 
 const Tab = createBottomTabNavigator();
@@ -136,8 +136,8 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
             case 'Inventory':
               iconName = isFocused ? 'cube' : 'cube-outline';
               break;
-            case 'Reports':
-              iconName = isFocused ? 'stats-chart' : 'stats-chart-outline';
+            case 'Requests':
+              iconName = isFocused ? 'swap-horizontal' : 'swap-horizontal-outline';
               break;
             default:
               iconName = 'ellipse';
@@ -201,9 +201,9 @@ const BottomTabs = () => {
         options={{ tabBarLabel: 'Inventory' }}
       />
       <Tab.Screen
-        name="Reports"
-        component={ReportsScreen}
-        options={{ tabBarLabel: 'Reports' }}
+        name="Requests"
+        component={StoreRequestsScreen}
+        options={{ tabBarLabel: 'Requests' }}
       />
     </Tab.Navigator>
   );

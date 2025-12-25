@@ -1209,10 +1209,31 @@ const InventoryScreen = ({ navigation }) => {
                   <Text style={styles.summaryValue}>{lowStockItems.toLocaleString()}</Text>
                   <Text style={styles.summaryLabel}>Low Stock</Text>
                 </View>
-                <View style={[styles.summaryCard, { borderLeftColor: colors.accentRed || '#E53935' }]}>
-                  <Text style={styles.summaryValue}>{outOfStockItems.toLocaleString()}</Text>
-                  <Text style={styles.summaryLabel}>Out</Text>
-                </View>
+                {/* Cart Card - only for DP/GPH stores */}
+                <TouchableOpacity
+                  style={[
+                    styles.summaryCard,
+                    styles.cartCard,
+                    { borderLeftColor: cartCount > 0 ? colors.accentGreen || '#4CAF50' : colors.textMuted },
+                  ]}
+                  onPress={() => selectedStore.id !== 'mystore' && setShowCartModal(true)}
+                  disabled={selectedStore.id === 'mystore'}
+                >
+                  <View style={styles.cartCardContent}>
+                    <Ionicons
+                      name={cartCount > 0 ? 'cart' : 'cart-outline'}
+                      size={18}
+                      color={cartCount > 0 ? colors.accentGreen || '#4CAF50' : colors.textMuted}
+                    />
+                    <Text style={[
+                      styles.summaryValue,
+                      { color: cartCount > 0 ? colors.accentGreen || '#4CAF50' : colors.textMuted }
+                    ]}>
+                      {cartCount}
+                    </Text>
+                  </View>
+                  <Text style={styles.summaryLabel}>Cart</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Search Bar */}
@@ -1483,18 +1504,6 @@ const InventoryScreen = ({ navigation }) => {
         </TouchableOpacity>
       </Modal>
 
-      {/* Floating Cart Button - only show for DP/GPH stores with items in cart */}
-      {selectedStore.id !== 'mystore' && cartCount > 0 && (
-        <TouchableOpacity
-          style={styles.floatingCartBtn}
-          onPress={() => setShowCartModal(true)}
-        >
-          <Ionicons name="cart" size={24} color="#FFFFFF" />
-          <View style={styles.cartBadge}>
-            <Text style={styles.cartBadgeText}>{cartCount}</Text>
-          </View>
-        </TouchableOpacity>
-      )}
     </View>
   );
 };
@@ -1902,6 +1911,14 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 1,
   },
+  cartCard: {
+    alignItems: 'center',
+  },
+  cartCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   progressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2115,39 +2132,6 @@ const styles = StyleSheet.create({
   sortModalOptionTextActive: {
     color: colors.accent,
     fontWeight: '500',
-  },
-  floatingCartBtn: {
-    position: 'absolute',
-    bottom: 30,
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  cartBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: colors.accentRed || '#E53935',
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  cartBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
   },
 });
 
