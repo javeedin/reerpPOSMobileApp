@@ -313,7 +313,7 @@ const TopItemsTile = ({ items }) => {
   );
 };
 
-// Payments Summary Tile
+// Payments Summary Tile - Simple table format like TopCustomersTile
 const PaymentsTile = ({ payments }) => {
   const formatCurrency = (amount) => (amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
   const paymentEntries = Object.entries(payments);
@@ -326,28 +326,22 @@ const PaymentsTile = ({ payments }) => {
       end={{ x: 1, y: 1 }}
       style={styles.summaryTile}
     >
-      <Text style={styles.summaryTileTitle}>💳 Payments Summary</Text>
+      <Text style={styles.summaryTileTitle}>💳 Payments</Text>
       <ScrollView style={styles.summaryTileScroll} showsVerticalScrollIndicator={false}>
-        {paymentEntries.map(([method, amount], idx) => {
-          const percentage = total > 0 ? ((amount / total) * 100).toFixed(0) : 0;
-          return (
-            <View key={idx} style={styles.paymentRow}>
-              <View style={styles.paymentInfo}>
-                <Text style={styles.paymentMethod}>{method}</Text>
-                <Text style={styles.paymentPercent}>{percentage}%</Text>
-              </View>
-              <View style={styles.paymentBarBg}>
-                <View style={[styles.paymentBarFill, { width: `${percentage}%` }]} />
-              </View>
-              <Text style={styles.paymentAmount}>{formatCurrency(amount)}</Text>
-            </View>
-          );
-        })}
+        {paymentEntries.map(([method, amount], idx) => (
+          <View key={idx} style={styles.summaryListRow}>
+            <Text style={styles.summaryListRank}>{idx + 1}</Text>
+            <Text style={styles.summaryListName} numberOfLines={1}>{method}</Text>
+            <Text style={styles.summaryListValue}>{formatCurrency(amount)}</Text>
+          </View>
+        ))}
+        {/* Total row */}
+        <View style={[styles.summaryListRow, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.3)', marginTop: 4, paddingTop: 6 }]}>
+          <Text style={styles.summaryListRank}></Text>
+          <Text style={[styles.summaryListName, { fontWeight: '700' }]}>Total</Text>
+          <Text style={[styles.summaryListValue, { fontWeight: '700' }]}>{formatCurrency(total)}</Text>
+        </View>
       </ScrollView>
-      <View style={styles.paymentTotal}>
-        <Text style={styles.paymentTotalLabel}>Total</Text>
-        <Text style={styles.paymentTotalValue}>{formatCurrency(total)}</Text>
-      </View>
     </LinearGradient>
   );
 };
@@ -632,6 +626,15 @@ const HomeScreen = ({ navigation }) => {
       const itemTotals = {};
       const payments = {};
 
+      // Debug: Log first order structure to see available fields
+      if (orders.length > 0) {
+        console.log('[HomeScreen] Sample order structure:', JSON.stringify(orders[0], null, 2).substring(0, 1500));
+        console.log('[HomeScreen] Order has lines?', !!orders[0].lines, 'Lines count:', orders[0].lines?.length || 0);
+        if (orders[0].lines && orders[0].lines.length > 0) {
+          console.log('[HomeScreen] Sample line:', JSON.stringify(orders[0].lines[0], null, 2));
+        }
+      }
+
       orders.forEach(order => {
         const orderDate = new Date(order.orderDate);
         orderDate.setHours(0, 0, 0, 0);
@@ -711,6 +714,12 @@ const HomeScreen = ({ navigation }) => {
         .map(([name, qty]) => ({ name, qty }))
         .sort((a, b) => b.qty - a.qty);
 
+      // Debug: Log aggregation results
+      console.log('[HomeScreen] Aggregation results:');
+      console.log('  - Customers:', sortedCustomers.length);
+      console.log('  - Items:', sortedItems.length, 'Sample:', sortedItems.slice(0, 3));
+      console.log('  - Payment methods:', Object.keys(payments).length);
+
       return {
         tiles,
         aggregates: {
@@ -781,8 +790,10 @@ const HomeScreen = ({ navigation }) => {
         loadStoreRequests();
         return;
       }
-      // If cache exists but no aggregates, clear it and fetch fresh
-      if (cached && cached.tiles && !hasValidAggregates) {
+      // If cache exists but no aggregates OR no items, clear it and fetch fresh
+      const hasItems = cached?.aggregates?.items?.length > 0;
+      if (cached && cached.tiles && (!hasValidAggregates || !hasItems)) {
+        console.log('[HomeScreen] Cache invalid - clearing. hasValidAggregates:', hasValidAggregates, 'hasItems:', hasItems);
         await AsyncStorage.removeItem(SALES_CACHE_KEY);
       }
     }
@@ -1081,7 +1092,7 @@ const styles = StyleSheet.create({
   // Sales Section
   salesSection: { marginBottom: 16 },
   tilesContainer: { paddingHorizontal: 8 },
-  salesTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 14, minHeight: 180, position: 'relative', overflow: 'hidden' },
+  salesTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 12, minHeight: 160, position: 'relative', overflow: 'hidden' },
   todayTile: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' },
   specialBadge: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.3)', paddingVertical: 4, alignItems: 'center' },
   specialBadgeText: { fontSize: 10, fontWeight: '700', color: '#FFFFFF' },
@@ -1107,7 +1118,7 @@ const styles = StyleSheet.create({
   loadingContainer: { height: 200, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 8, fontSize: 12, color: '#666666' },
   // Summary Tiles
-  summaryTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 14, minHeight: 180 },
+  summaryTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 12, minHeight: 160 },
   summaryTileTitle: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 },
   summaryTileScroll: { flex: 1, marginBottom: 8 },
   summaryGraphContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 60, marginBottom: 12, paddingHorizontal: 2 },
