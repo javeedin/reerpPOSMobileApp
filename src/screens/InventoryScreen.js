@@ -23,6 +23,34 @@ import { getAllLocalAdjustments, getItemAdjustmentSummary } from '../services/on
 
 const PAGE_SIZE = 50;
 
+// Store configuration
+const STORE_OPTIONS = [
+  {
+    id: 'mystore',
+    name: 'My Store',
+    subtitle: 'Default Store',
+    organizationCode: null, // Uses user's default
+    subinventory: null, // Uses user's default
+    icon: 'home',
+  },
+  {
+    id: 'dpstore',
+    name: 'DP Store',
+    subtitle: 'Main Store',
+    organizationCode: 'GIC',
+    subinventory: 'DUTY PAID',
+    icon: 'business',
+  },
+  {
+    id: 'gphstore',
+    name: 'GPH Store',
+    subtitle: 'Pharmacy',
+    organizationCode: 'GPH',
+    subinventory: 'Stores',
+    icon: 'medkit',
+  },
+];
+
 const getStockStatus = (quantity) => {
   if (quantity === 0) return { label: 'Out of Stock', color: colors.accentRed || '#E53935' };
   if (quantity < 10) return { label: 'Low Stock', color: colors.accentOrange };
@@ -50,6 +78,69 @@ const HighlightText = ({ text, highlight, style }) => {
         )
       )}
     </Text>
+  );
+};
+
+// Store Selection Modal
+const StoreSelectionModal = ({ visible, selectedStore, onSelect, onClose }) => {
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <TouchableOpacity
+        style={storeModalStyles.overlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={storeModalStyles.container}>
+          <View style={storeModalStyles.header}>
+            <Text style={storeModalStyles.headerTitle}>Select Store</Text>
+            <TouchableOpacity onPress={onClose} style={storeModalStyles.closeButton}>
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={storeModalStyles.optionsContainer}>
+            {STORE_OPTIONS.map((store) => (
+              <TouchableOpacity
+                key={store.id}
+                style={[
+                  storeModalStyles.storeOption,
+                  selectedStore.id === store.id && storeModalStyles.storeOptionActive,
+                ]}
+                onPress={() => onSelect(store)}
+              >
+                <View style={[
+                  storeModalStyles.iconBox,
+                  selectedStore.id === store.id && storeModalStyles.iconBoxActive,
+                ]}>
+                  <Ionicons
+                    name={store.icon}
+                    size={24}
+                    color={selectedStore.id === store.id ? '#FFFFFF' : colors.accent}
+                  />
+                </View>
+                <View style={storeModalStyles.storeInfo}>
+                  <Text style={[
+                    storeModalStyles.storeName,
+                    selectedStore.id === store.id && storeModalStyles.storeNameActive,
+                  ]}>
+                    {store.name}
+                  </Text>
+                  <Text style={storeModalStyles.storeSubtitle}>{store.subtitle}</Text>
+                  {store.organizationCode && (
+                    <Text style={storeModalStyles.storeParams}>
+                      {store.organizationCode} / {store.subinventory}
+                    </Text>
+                  )}
+                </View>
+                {selectedStore.id === store.id && (
+                  <Ionicons name="checkmark-circle" size={24} color={colors.accent} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
   );
 };
 
@@ -255,6 +346,10 @@ const InventoryScreen = ({ navigation }) => {
   // Organization info
   const [orgCode, setOrgCode] = useState('');
   const [subinvCode, setSubinvCode] = useState('');
+
+  // Store selection
+  const [selectedStore, setSelectedStore] = useState(STORE_OPTIONS[0]);
+  const [showStoreModal, setShowStoreModal] = useState(false);
 
   // Sorting and filtering - now with column selection and direction
   const [sortColumn, setSortColumn] = useState('none'); // 'none', 'itemNumber', 'itemDescription', 'primaryQuantity'
@@ -496,7 +591,7 @@ const InventoryScreen = ({ navigation }) => {
     if (onhandData.length > 0 && !skipConfirm) {
       Alert.alert(
         'Re-sync Onhand',
-        'Onhand data already exists. Do you want to re-sync again?',
+        `Onhand data already exists. Do you want to re-sync ${selectedStore.name}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Re-sync', onPress: () => handleFetchOnhand(true) },
@@ -508,8 +603,9 @@ const InventoryScreen = ({ navigation }) => {
     setIsFetching(true);
     setFetchProgress(null);
 
-    const warehouse = user?.WAREHOUSE || user?.warehouse;
-    const subinventory = user?.SUBINVENTORY || user?.subinventory;
+    // Use selected store parameters or fall back to user defaults
+    const warehouse = selectedStore.organizationCode || user?.WAREHOUSE || user?.warehouse;
+    const subinventory = selectedStore.subinventory || user?.SUBINVENTORY || user?.subinventory;
 
     const result = await syncOnhand(
       (progress) => setFetchProgress(progress),
@@ -562,6 +658,18 @@ const InventoryScreen = ({ navigation }) => {
     setQuickFilter('none');
     setQuickFilterLimit(20);
     setShowOnlyWithPrice(false);
+  };
+
+  // Handle store selection from modal
+  const handleStoreSelect = (store) => {
+    setSelectedStore(store);
+    setShowStoreModal(false);
+    // Clear current data and reload for the new store
+    setOnhandData([]);
+    setFilteredData([]);
+    setDisplayData([]);
+    setOrgCode(store.organizationCode || '');
+    setSubinvCode(store.subinventory || '');
   };
 
   // Load more for quick filter
@@ -624,24 +732,35 @@ const InventoryScreen = ({ navigation }) => {
         onClose={() => setLotModalVisible(false)}
       />
 
+      {/* Store Selection Modal */}
+      <StoreSelectionModal
+        visible={showStoreModal}
+        selectedStore={selectedStore}
+        onSelect={handleStoreSelect}
+        onClose={() => setShowStoreModal(false)}
+      />
+
       {/* Blue Header */}
       <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
         <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
           <Ionicons name="person-circle" size={28} color="#FFFFFF" />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Inventory</Text>
-          {(orgCode || subinvCode) && (
-            <Text style={styles.headerSubtitle}>
-              {orgCode}{orgCode && subinvCode ? ' / ' : ''}{subinvCode}
-            </Text>
-          )}
+        <TouchableOpacity style={styles.headerCenter} onPress={() => setShowStoreModal(true)}>
+          <View style={styles.headerTitleRow}>
+            <Text style={styles.headerTitle}>{selectedStore.name}</Text>
+            <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.8)" style={{ marginLeft: 4 }} />
+          </View>
+          <Text style={styles.headerSubtitle}>
+            {selectedStore.organizationCode
+              ? `${selectedStore.organizationCode} / ${selectedStore.subinventory}`
+              : selectedStore.subtitle}
+          </Text>
           {lastSync && (
             <Text style={styles.headerSyncTime}>
               Synced: {lastSync.toLocaleDateString()} {lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           )}
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.syncButton}
           onPress={() => handleFetchOnhand(false)}
@@ -984,6 +1103,10 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   headerCenter: {
+    alignItems: 'center',
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
   headerTitle: {
@@ -1672,6 +1795,86 @@ const modalStyles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: colors.textPrimary,
+  },
+});
+
+const storeModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  container: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    width: '85%',
+    maxWidth: 340,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  optionsContainer: {
+    paddingVertical: 8,
+  },
+  storeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '40',
+  },
+  storeOptionActive: {
+    backgroundColor: colors.accent + '10',
+  },
+  iconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.accent + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  iconBoxActive: {
+    backgroundColor: colors.accent,
+  },
+  storeInfo: {
+    flex: 1,
+  },
+  storeName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  storeNameActive: {
+    color: colors.accent,
+  },
+  storeSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  storeParams: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 });
 
