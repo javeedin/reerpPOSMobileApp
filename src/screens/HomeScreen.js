@@ -121,7 +121,7 @@ const QuickActions = ({ navigation }) => {
 };
 
 // Compact Sales Tile
-const SalesTile = ({ data, index, lastWeekSales }) => {
+const SalesTile = ({ data, index, lastWeekSales, onRefreshToday }) => {
   const specialTheme = getSpecialTheme(data.date);
   const design = specialTheme
     ? { gradient: SPECIAL_THEMES[specialTheme].gradient, ...CARD_DESIGNS[index % CARD_DESIGNS.length] }
@@ -151,6 +151,13 @@ const SalesTile = ({ data, index, lastWeekSales }) => {
         <View style={styles.todayBadge}>
           <Text style={styles.todayBadgeText}>TODAY</Text>
         </View>
+      )}
+
+      {/* Refresh button for today */}
+      {isToday && onRefreshToday && (
+        <TouchableOpacity style={styles.tileRefreshButton} onPress={onRefreshToday}>
+          <Ionicons name="refresh" size={16} color="rgba(255,255,255,0.9)" />
+        </TouchableOpacity>
       )}
 
       <Text style={styles.designEmoji}>{design.emoji}</Text>
@@ -211,6 +218,136 @@ const SalesTile = ({ data, index, lastWeekSales }) => {
           ))}
         </View>
       )}
+    </LinearGradient>
+  );
+};
+
+// Summary Graph Tile
+const GraphSummaryTile = ({ salesData }) => {
+  const formatCurrency = (amount) => (amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const maxSales = Math.max(...salesData.map(d => d.totalSales || 0), 1);
+  const totalSales = salesData.reduce((sum, d) => sum + (d.totalSales || 0), 0);
+  const totalOrders = salesData.reduce((sum, d) => sum + (d.orderCount || 0), 0);
+
+  return (
+    <LinearGradient
+      colors={['#1A1A2E', '#16213E']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.summaryTile}
+    >
+      <Text style={styles.summaryTileTitle}>📊 12-Day Summary</Text>
+
+      {/* Mini Graph */}
+      <View style={styles.summaryGraphContainer}>
+        {salesData.map((day, idx) => {
+          const height = maxSales > 0 ? (day.totalSales / maxSales) * 50 : 0;
+          return (
+            <View key={idx} style={styles.summaryGraphBar}>
+              <View style={[styles.summaryGraphBarFill, { height: Math.max(height, 3) }]} />
+              <Text style={styles.summaryGraphLabel}>{['S', 'M', 'T', 'W', 'T', 'F', 'S'][day.date.getDay()]}</Text>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={styles.summaryTileStats}>
+        <View style={styles.summaryTileStatItem}>
+          <Text style={styles.summaryTileStatValue}>{formatCurrency(totalSales)}</Text>
+          <Text style={styles.summaryTileStatLabel}>Total Sales</Text>
+        </View>
+        <View style={styles.summaryTileStatItem}>
+          <Text style={styles.summaryTileStatValue}>{totalOrders}</Text>
+          <Text style={styles.summaryTileStatLabel}>Orders</Text>
+        </View>
+      </View>
+    </LinearGradient>
+  );
+};
+
+// Top Customers Tile
+const TopCustomersTile = ({ customers }) => {
+  const formatCurrency = (amount) => (amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+  return (
+    <LinearGradient
+      colors={['#667eea', '#764ba2']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.summaryTile}
+    >
+      <Text style={styles.summaryTileTitle}>🏆 Top 10 Customers</Text>
+      <ScrollView style={styles.summaryTileScroll} showsVerticalScrollIndicator={false}>
+        {customers.slice(0, 10).map((c, idx) => (
+          <View key={idx} style={styles.summaryListRow}>
+            <Text style={styles.summaryListRank}>{idx + 1}</Text>
+            <Text style={styles.summaryListName} numberOfLines={1}>{c.name}</Text>
+            <Text style={styles.summaryListValue}>{formatCurrency(c.amount)}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </LinearGradient>
+  );
+};
+
+// Top Items Tile
+const TopItemsTile = ({ items }) => {
+  return (
+    <LinearGradient
+      colors={['#FF512F', '#F09819']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.summaryTile}
+    >
+      <Text style={styles.summaryTileTitle}>🔥 Top 10 Items</Text>
+      <ScrollView style={styles.summaryTileScroll} showsVerticalScrollIndicator={false}>
+        {items.slice(0, 10).map((item, idx) => (
+          <View key={idx} style={styles.summaryListRow}>
+            <Text style={styles.summaryListRank}>{idx + 1}</Text>
+            <Text style={styles.summaryListName} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.summaryListValue}>x{Math.round(item.qty)}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </LinearGradient>
+  );
+};
+
+// Payments Summary Tile
+const PaymentsTile = ({ payments }) => {
+  const formatCurrency = (amount) => (amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const paymentEntries = Object.entries(payments);
+  const total = paymentEntries.reduce((sum, [, amount]) => sum + amount, 0);
+
+  return (
+    <LinearGradient
+      colors={['#11998e', '#38ef7d']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.summaryTile}
+    >
+      <Text style={styles.summaryTileTitle}>💳 Payments Summary</Text>
+      <ScrollView style={styles.summaryTileScroll} showsVerticalScrollIndicator={false}>
+        {paymentEntries.map(([method, amount], idx) => {
+          const percentage = total > 0 ? ((amount / total) * 100).toFixed(0) : 0;
+          return (
+            <View key={idx} style={styles.paymentRow}>
+              <View style={styles.paymentInfo}>
+                <Text style={styles.paymentMethod}>{method}</Text>
+                <Text style={styles.paymentPercent}>{percentage}%</Text>
+              </View>
+              <View style={styles.paymentBarBg}>
+                <View style={[styles.paymentBarFill, { width: `${percentage}%` }]} />
+              </View>
+              <Text style={styles.paymentAmount}>{formatCurrency(amount)}</Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+      <View style={styles.paymentTotal}>
+        <Text style={styles.paymentTotalLabel}>Total</Text>
+        <Text style={styles.paymentTotalValue}>{formatCurrency(total)}</Text>
+      </View>
     </LinearGradient>
   );
 };
@@ -728,8 +865,29 @@ const HomeScreen = ({ navigation }) => {
     });
   };
 
+  // Refresh only today's tile
+  const refreshTodayTile = async () => {
+    const todayData = await fetchTodayOnly();
+    if (todayData && salesTiles.length > 0) {
+      const updatedTiles = [...salesTiles];
+      const todayIndex = updatedTiles.findIndex(t => t.isToday);
+      if (todayIndex >= 0) {
+        updatedTiles[todayIndex] = todayData;
+      }
+      setSalesTiles(updatedTiles);
+      const cached = await loadCachedSalesData();
+      const aggregates = cached?.aggregates || { customers: allCustomers, items: allItems, payments: paymentBreakdown };
+      saveSalesDataToCache(updatedTiles, aggregates);
+    }
+  };
+
   const renderTile = ({ item, index }) => (
-    <SalesTile data={item} index={index} lastWeekSales={getLastWeekSales(index)} />
+    <SalesTile
+      data={item}
+      index={index}
+      lastWeekSales={getLastWeekSales(index)}
+      onRefreshToday={item.isToday ? refreshTodayTile : null}
+    />
   );
 
   return (
@@ -793,28 +951,36 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.loadingText}>Loading sales...</Text>
             </View>
           ) : (
-            <FlatList
-              data={salesTiles}
-              renderItem={renderTile}
-              keyExtractor={(item, index) => `tile-${index}`}
+            <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.tilesContainer}
               snapToInterval={TILE_WIDTH + TILE_MARGIN * 2}
               decelerationRate="fast"
-            />
+            >
+              {/* Daily Sales Tiles */}
+              {salesTiles.map((tile, index) => (
+                <SalesTile
+                  key={`tile-${index}`}
+                  data={tile}
+                  index={index}
+                  lastWeekSales={getLastWeekSales(index)}
+                  onRefreshToday={tile.isToday ? refreshTodayTile : null}
+                />
+              ))}
+
+              {/* Summary Tiles */}
+              {salesTiles.length > 0 && (
+                <>
+                  <GraphSummaryTile salesData={salesTiles} />
+                  {allCustomers.length > 0 && <TopCustomersTile customers={allCustomers} />}
+                  {allItems.length > 0 && <TopItemsTile items={allItems} />}
+                  {Object.keys(paymentBreakdown).length > 0 && <PaymentsTile payments={paymentBreakdown} />}
+                </>
+              )}
+            </ScrollView>
           )}
         </View>
-
-        {/* Summary Card */}
-        {salesTiles.length > 0 && (
-          <SummaryCard
-            salesData={salesTiles}
-            allCustomers={allCustomers}
-            allItems={allItems}
-            paymentBreakdown={paymentBreakdown}
-          />
-        )}
 
         {/* Top Stock */}
         <View style={styles.inventorySection}>
@@ -929,8 +1095,35 @@ const styles = StyleSheet.create({
   tileSection: { marginTop: 4 },
   tileSectionTitle: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.8)', marginBottom: 4 },
   tileListText: { fontSize: 10, color: '#FFFFFF', marginBottom: 2 },
+  tileRefreshButton: { position: 'absolute', top: 8, left: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
   loadingContainer: { height: 200, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 8, fontSize: 12, color: '#666666' },
+  // Summary Tiles
+  summaryTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 14, minHeight: 240 },
+  summaryTileTitle: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 },
+  summaryTileScroll: { flex: 1, marginBottom: 8 },
+  summaryGraphContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 60, marginBottom: 12, paddingHorizontal: 2 },
+  summaryGraphBar: { flex: 1, alignItems: 'center', marginHorizontal: 1 },
+  summaryGraphBarFill: { width: '100%', backgroundColor: '#4ADE80', borderRadius: 3 },
+  summaryGraphLabel: { fontSize: 8, color: 'rgba(255,255,255,0.6)', marginTop: 3 },
+  summaryTileStats: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 10 },
+  summaryTileStatItem: { flex: 1, alignItems: 'center' },
+  summaryTileStatValue: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  summaryTileStatLabel: { fontSize: 9, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  summaryListRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+  summaryListRank: { width: 20, fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
+  summaryListName: { flex: 1, fontSize: 11, color: '#FFFFFF' },
+  summaryListValue: { fontSize: 11, fontWeight: '600', color: '#FFFFFF' },
+  paymentRow: { marginBottom: 8 },
+  paymentInfo: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 },
+  paymentMethod: { fontSize: 11, color: '#FFFFFF', fontWeight: '500' },
+  paymentPercent: { fontSize: 10, color: 'rgba(255,255,255,0.7)' },
+  paymentBarBg: { height: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3, overflow: 'hidden' },
+  paymentBarFill: { height: '100%', backgroundColor: '#FFFFFF', borderRadius: 3 },
+  paymentAmount: { fontSize: 10, color: 'rgba(255,255,255,0.8)', marginTop: 2, textAlign: 'right' },
+  paymentTotal: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.2)', paddingTop: 8, marginTop: 4 },
+  paymentTotalLabel: { fontSize: 12, color: '#FFFFFF', fontWeight: '600' },
+  paymentTotalValue: { fontSize: 14, color: '#FFFFFF', fontWeight: '700' },
   // Summary Card
   summaryCard: { backgroundColor: '#FFFFFF', marginHorizontal: 16, marginBottom: 16, borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 3 },
   summaryTitle: { fontSize: 16, fontWeight: '700', color: '#1A1A1A', marginBottom: 16 },
