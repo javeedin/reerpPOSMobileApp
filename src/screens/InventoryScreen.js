@@ -351,6 +351,9 @@ const InventoryScreen = ({ navigation }) => {
   const [selectedStore, setSelectedStore] = useState(STORE_OPTIONS[0]);
   const [showStoreModal, setShowStoreModal] = useState(false);
 
+  // Cache for store data - persists across store switches
+  const storeDataCache = useRef({});
+
   // Sorting and filtering - now with column selection and direction
   const [sortColumn, setSortColumn] = useState('none'); // 'none', 'itemNumber', 'itemDescription', 'primaryQuantity'
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc', 'desc'
@@ -496,8 +499,20 @@ const InventoryScreen = ({ navigation }) => {
 
       // Get last sync time
       const meta = await getSyncMetadata();
+      let syncTime = null;
       if (meta?.onhand?.lastSync) {
-        setLastSync(new Date(meta.onhand.lastSync));
+        syncTime = new Date(meta.onhand.lastSync);
+        setLastSync(syncTime);
+      }
+
+      // Cache the loaded data for the current store
+      if (data && data.length > 0) {
+        storeDataCache.current[selectedStore.id] = {
+          data: data,
+          lastSync: syncTime,
+          orgCode: data[0].organizationCode || '',
+          subinvCode: data[0].subinventoryCode || '',
+        };
       }
     } catch (error) {
       console.error('Error loading onhand data:', error);
@@ -662,14 +677,39 @@ const InventoryScreen = ({ navigation }) => {
 
   // Handle store selection from modal
   const handleStoreSelect = (store) => {
+    // Save current store data to cache before switching
+    if (onhandData.length > 0) {
+      storeDataCache.current[selectedStore.id] = {
+        data: onhandData,
+        lastSync: lastSync,
+        orgCode: orgCode,
+        subinvCode: subinvCode,
+      };
+    }
+
     setSelectedStore(store);
     setShowStoreModal(false);
-    // Clear current data and reload for the new store
-    setOnhandData([]);
-    setFilteredData([]);
-    setDisplayData([]);
-    setOrgCode(store.organizationCode || '');
-    setSubinvCode(store.subinventory || '');
+
+    // Check if we have cached data for the new store
+    const cachedData = storeDataCache.current[store.id];
+    if (cachedData && cachedData.data.length > 0) {
+      // Restore from cache
+      setOnhandData(cachedData.data);
+      setFilteredData(cachedData.data);
+      setDisplayData(cachedData.data.slice(0, PAGE_SIZE));
+      setLastSync(cachedData.lastSync);
+      setOrgCode(cachedData.orgCode);
+      setSubinvCode(cachedData.subinvCode);
+      setPage(1);
+    } else {
+      // No cached data - clear and show empty state
+      setOnhandData([]);
+      setFilteredData([]);
+      setDisplayData([]);
+      setOrgCode(store.organizationCode || '');
+      setSubinvCode(store.subinventory || '');
+      setLastSync(null);
+    }
   };
 
   // Load more for quick filter
