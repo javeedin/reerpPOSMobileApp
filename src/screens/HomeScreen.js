@@ -22,6 +22,7 @@ import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
+import { getMenuData } from '../services/api';
 
 const { width } = Dimensions.get('window');
 const TILE_WIDTH = width * 0.72;
@@ -94,9 +95,9 @@ const getSpecialTheme = (date) => {
 };
 
 // Quick Actions
-const QuickActions = ({ navigation }) => {
+const QuickActions = ({ navigation, onNewOrderPress }) => {
   const actions = [
-    { icon: 'cart-outline', label: 'New Order', onPress: () => navigation.navigate('CustomerSelection'), color: '#2196F3' },
+    { icon: 'cart-outline', label: 'New Order', onPress: onNewOrderPress, color: '#2196F3' },
     { icon: 'scan-outline', label: 'Scan', onPress: () => navigation.navigate('Scan'), color: '#9C27B0' },
     { icon: 'sync-outline', label: 'Sync', onPress: () => navigation.navigate('SyncData'), color: '#4CAF50' },
     { icon: 'cube-outline', label: 'Stock', onPress: () => navigation.navigate('MainTabs', { screen: 'Inventory' }), color: '#FF9800' },
@@ -510,6 +511,72 @@ const SourceStoreModal = ({ visible, onSelect, onClose }) => {
   );
 };
 
+// Sales Menu Selection Modal
+const SalesMenuModal = ({ visible, menus, onSelect, onClose, isLoading }) => {
+  // Filter menus with transaction_type = 'SALES'
+  const salesMenus = menus.filter(m =>
+    (m.transaction_type || '').toUpperCase() === 'SALES'
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <TouchableOpacity
+        style={styles.storeModalOverlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View style={styles.storeModalContainer}>
+          <View style={styles.storeModalHeader}>
+            <Text style={styles.storeModalTitle}>Select Order Type</Text>
+            <TouchableOpacity onPress={onClose} style={styles.storeModalClose}>
+              <Ionicons name="close" size={24} color="#666666" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.storeModalSubtitle}>Choose a sales transaction type</Text>
+
+          {isLoading ? (
+            <View style={styles.menuLoadingContainer}>
+              <ActivityIndicator size="large" color="#2196F3" />
+              <Text style={styles.menuLoadingText}>Loading menus...</Text>
+            </View>
+          ) : salesMenus.length === 0 ? (
+            <View style={styles.menuEmptyContainer}>
+              <Ionicons name="alert-circle-outline" size={48} color="#999999" />
+              <Text style={styles.menuEmptyText}>No sales menus available</Text>
+            </View>
+          ) : (
+            <ScrollView style={styles.menuScrollView} showsVerticalScrollIndicator={false}>
+              <View style={styles.storeOptions}>
+                {salesMenus.map((menu, index) => (
+                  <TouchableOpacity
+                    key={menu.name || index}
+                    style={styles.storeOption}
+                    onPress={() => onSelect(menu)}
+                  >
+                    <View style={[styles.storeIconBox, { backgroundColor: '#E8F5E9' }]}>
+                      <Ionicons name="cart" size={28} color="#4CAF50" />
+                    </View>
+                    <View style={styles.storeInfo}>
+                      <Text style={styles.storeName}>{menu.name}</Text>
+                      {menu.ordertype && (
+                        <Text style={styles.storeSubtitle}>{menu.ordertype}</Text>
+                      )}
+                      <Text style={styles.storeParams}>
+                        {menu.payment_form || 'Direct'} • {menu.pricelist || 'Default'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={24} color="#CCCCCC" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 const HomeScreen = ({ navigation }) => {
   const { user, isSyncing, syncProgress } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
@@ -522,6 +589,9 @@ const HomeScreen = ({ navigation }) => {
   const [allItems, setAllItems] = useState([]);
   const [paymentBreakdown, setPaymentBreakdown] = useState({});
   const [showStoreModal, setShowStoreModal] = useState(false);
+  const [showSalesMenuModal, setShowSalesMenuModal] = useState(false);
+  const [salesMenus, setSalesMenus] = useState([]);
+  const [isLoadingMenus, setIsLoadingMenus] = useState(false);
   const dataLoadedRef = useRef(false);
 
   // Load cached data - cache never expires for historical data
@@ -884,6 +954,55 @@ const HomeScreen = ({ navigation }) => {
     });
   };
 
+  // Handle opening the sales menu modal
+  const handleNewOrderPress = async () => {
+    setIsLoadingMenus(true);
+    setShowSalesMenuModal(true);
+
+    try {
+      const menuData = await getMenuData();
+      if (menuData && Array.isArray(menuData)) {
+        setSalesMenus(menuData);
+      } else if (menuData && menuData.items) {
+        setSalesMenus(menuData.items);
+      } else {
+        setSalesMenus([]);
+      }
+    } catch (error) {
+      console.error('Error loading menus:', error);
+      setSalesMenus([]);
+    } finally {
+      setIsLoadingMenus(false);
+    }
+  };
+
+  // Handle sales menu selection
+  const handleSalesMenuSelect = (menu) => {
+    setShowSalesMenuModal(false);
+
+    // Prepare menu config for order (same as MenuDetailScreen)
+    const paymentFormValue = (menu?.payment_form || '').toUpperCase().trim();
+
+    const menuConfig = {
+      name: menu?.name || '',
+      orderType: menu?.ordertype || '',
+      transactionType: menu?.transaction_type || '',
+      paymentForm: paymentFormValue,
+      priceList: menu?.pricelist || '',
+      allowDiscount: menu?.allow_discount === 'YES' || menu?.allow_discount === 'Y',
+      allowTax: menu?.allow_tax === 'YES' || menu?.allow_tax === 'Y',
+      signatureRequired: menu?.signature_required === 'YES' || menu?.signature_required === 'Y',
+      approvalRequired: menu?.approval_required === 'YES' || menu?.approval_required === 'Y',
+      showVatLabel: menu?.show_vat_label === 'YES' || menu?.show_vat_label === 'Y',
+      dutyFree: menu?.Duty_free === 'YES' || menu?.Duty_free === 'Y',
+      creditSales: menu?.creditsales === 'YES' || menu?.creditsales === 'Y',
+      warehouse: menu?.warehouse || '',
+      subinventory: menu?.subinventory || '',
+    };
+
+    navigation.navigate('CustomerSelection', { menuConfig });
+  };
+
   // Refresh only today's tile
   const refreshTodayTile = async () => {
     const todayData = await fetchTodayOnly();
@@ -929,6 +1048,14 @@ const HomeScreen = ({ navigation }) => {
         onClose={() => setShowStoreModal(false)}
       />
 
+      <SalesMenuModal
+        visible={showSalesMenuModal}
+        menus={salesMenus}
+        onSelect={handleSalesMenuSelect}
+        onClose={() => setShowSalesMenuModal(false)}
+        isLoading={isLoadingMenus}
+      />
+
       <LinearGradient colors={['#1A1A2E', '#16213E']} style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
@@ -956,7 +1083,7 @@ const HomeScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2196F3" />}
       >
-        <QuickActions navigation={navigation} />
+        <QuickActions navigation={navigation} onNewOrderPress={handleNewOrderPress} />
 
         {/* Sales Tiles */}
         <View style={styles.salesSection}>
@@ -1202,6 +1329,11 @@ const styles = StyleSheet.create({
   storeModalTitle: { fontSize: 18, fontWeight: '700', color: '#1A1A1A' },
   storeModalClose: { padding: 4 },
   storeModalSubtitle: { fontSize: 13, color: '#666666', paddingHorizontal: 20, marginTop: 8 },
+  menuScrollView: { maxHeight: 400 },
+  menuLoadingContainer: { padding: 40, alignItems: 'center' },
+  menuLoadingText: { marginTop: 12, fontSize: 14, color: '#666666' },
+  menuEmptyContainer: { padding: 40, alignItems: 'center' },
+  menuEmptyText: { marginTop: 12, fontSize: 14, color: '#999999' },
   storeOptions: { padding: 20 },
   storeOption: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#F8F8F8', borderRadius: 12, marginBottom: 12 },
   storeIconBox: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#E3F2FD', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
