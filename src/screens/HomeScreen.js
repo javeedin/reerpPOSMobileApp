@@ -762,13 +762,17 @@ const HomeScreen = ({ navigation }) => {
     // Try to load from cache first
     if (!forceRefresh) {
       const cached = await loadCachedSalesData();
-      if (cached && cached.tiles && cached.tiles.length > 0) {
+      // Only use cache if it has both tiles AND aggregates with data
+      const hasValidAggregates = cached?.aggregates &&
+        (cached.aggregates.customers?.length > 0 ||
+         cached.aggregates.items?.length > 0 ||
+         Object.keys(cached.aggregates.payments || {}).length > 0);
+
+      if (cached && cached.tiles && cached.tiles.length > 0 && hasValidAggregates) {
         setSalesTiles(cached.tiles);
-        if (cached.aggregates) {
-          setAllCustomers(cached.aggregates.customers || []);
-          setAllItems(cached.aggregates.items || []);
-          setPaymentBreakdown(cached.aggregates.payments || {});
-        }
+        setAllCustomers(cached.aggregates.customers || []);
+        setAllItems(cached.aggregates.items || []);
+        setPaymentBreakdown(cached.aggregates.payments || {});
         setIsLoadingTiles(false);
         dataLoadedRef.current = true;
 
@@ -776,6 +780,10 @@ const HomeScreen = ({ navigation }) => {
         loadInventoryData();
         loadStoreRequests();
         return;
+      }
+      // If cache exists but no aggregates, clear it and fetch fresh
+      if (cached && cached.tiles && !hasValidAggregates) {
+        await AsyncStorage.removeItem(SALES_CACHE_KEY);
       }
     }
 
