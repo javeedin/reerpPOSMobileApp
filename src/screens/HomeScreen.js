@@ -22,7 +22,7 @@ import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
-import { getMenuData } from '../services/api';
+import { getMenuData, getMenuOptions } from '../services/api';
 
 const { width } = Dimensions.get('window');
 const TILE_WIDTH = width * 0.72;
@@ -964,12 +964,35 @@ const HomeScreen = ({ navigation }) => {
     setShowSalesMenuModal(true);
 
     try {
-      const menuData = await getMenuData();
+      // First try cached menu data
+      let menuData = await getMenuData();
+
+      // If no cached data, fetch from API
+      if (!menuData || (Array.isArray(menuData) && menuData.length === 0)) {
+        console.log('[HomeScreen] No cached menus, fetching from API...');
+        const username = user?.username || '';
+        const apiResult = await getMenuOptions(username);
+
+        if (apiResult.success && apiResult.data) {
+          menuData = apiResult.data;
+          console.log('[HomeScreen] API menu response:', JSON.stringify(menuData).substring(0, 500));
+        }
+      }
+
+      // Handle different response formats
       if (menuData && Array.isArray(menuData)) {
+        console.log('[HomeScreen] Menu is array with', menuData.length, 'items');
         setSalesMenus(menuData);
-      } else if (menuData && menuData.items) {
+      } else if (menuData && menuData.items && Array.isArray(menuData.items)) {
+        console.log('[HomeScreen] Menu has items array with', menuData.items.length, 'items');
         setSalesMenus(menuData.items);
+      } else if (menuData && typeof menuData === 'object') {
+        // Maybe it's an object with menu items as values
+        const menus = Object.values(menuData).filter(m => m && typeof m === 'object' && m.name);
+        console.log('[HomeScreen] Menu converted from object with', menus.length, 'items');
+        setSalesMenus(menus);
       } else {
+        console.log('[HomeScreen] No valid menu data found');
         setSalesMenus([]);
       }
     } catch (error) {
