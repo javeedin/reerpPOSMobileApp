@@ -513,10 +513,11 @@ const SourceStoreModal = ({ visible, onSelect, onClose }) => {
 
 // Sales Menu Selection Modal
 const SalesMenuModal = ({ visible, menus, onSelect, onClose, isLoading }) => {
-  // Filter menus with transaction_type = 'SALES'
-  const salesMenus = menus.filter(m =>
-    (m.transaction_type || '').toUpperCase() === 'SALES'
-  );
+  // Filter menus with transaction_type = 'SALES' or 'RETURNS'
+  const salesMenus = menus.filter(m => {
+    const type = (m.transaction_type || '').toUpperCase();
+    return type === 'SALES' || type === 'RETURNS';
+  });
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -532,7 +533,7 @@ const SalesMenuModal = ({ visible, menus, onSelect, onClose, isLoading }) => {
               <Ionicons name="close" size={24} color="#666666" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.storeModalSubtitle}>Choose a sales transaction type</Text>
+          <Text style={styles.storeModalSubtitle}>Choose a transaction type</Text>
 
           {isLoading ? (
             <View style={styles.menuLoadingContainer}>
@@ -547,27 +548,30 @@ const SalesMenuModal = ({ visible, menus, onSelect, onClose, isLoading }) => {
           ) : (
             <ScrollView style={styles.menuScrollView} showsVerticalScrollIndicator={false}>
               <View style={styles.storeOptions}>
-                {salesMenus.map((menu, index) => (
-                  <TouchableOpacity
-                    key={menu.name || index}
-                    style={styles.storeOption}
-                    onPress={() => onSelect(menu)}
-                  >
-                    <View style={[styles.storeIconBox, { backgroundColor: '#E8F5E9' }]}>
-                      <Ionicons name="cart" size={28} color="#4CAF50" />
-                    </View>
-                    <View style={styles.storeInfo}>
-                      <Text style={styles.storeName}>{menu.name}</Text>
-                      {menu.ordertype && (
-                        <Text style={styles.storeSubtitle}>{menu.ordertype}</Text>
-                      )}
-                      <Text style={styles.storeParams}>
-                        {menu.payment_form || 'Direct'} • {menu.pricelist || 'Default'}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={24} color="#CCCCCC" />
-                  </TouchableOpacity>
-                ))}
+                {salesMenus.map((menu, index) => {
+                  const isReturns = (menu.transaction_type || '').toUpperCase() === 'RETURNS';
+                  return (
+                    <TouchableOpacity
+                      key={menu.name || index}
+                      style={styles.storeOption}
+                      onPress={() => onSelect(menu)}
+                    >
+                      <View style={[styles.storeIconBox, { backgroundColor: isReturns ? '#FFF3E0' : '#E8F5E9' }]}>
+                        <Ionicons name={isReturns ? 'return-down-back' : 'cart'} size={28} color={isReturns ? '#FF9800' : '#4CAF50'} />
+                      </View>
+                      <View style={styles.storeInfo}>
+                        <Text style={styles.storeName}>{menu.name}</Text>
+                        {menu.ordertype && (
+                          <Text style={styles.storeSubtitle}>{menu.ordertype}</Text>
+                        )}
+                        <Text style={styles.storeParams}>
+                          {menu.transaction_type} • {menu.payment_form || 'Direct'} • {menu.pricelist || 'Default'}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={24} color="#CCCCCC" />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </ScrollView>
           )}
