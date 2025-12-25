@@ -25,6 +25,7 @@
         "backgroundColor": "#0A1628"
       },
       "package": "com.fcpos.app",
+      "versionCode": 1,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
