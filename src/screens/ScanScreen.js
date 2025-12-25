@@ -18,10 +18,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-// TEMPORARILY DISABLED - expo-camera has compatibility issues with SDK 53
-// import { CameraView, useCameraPermissions } from 'expo-camera';
-const CameraView = ({ children, ...props }) => <View {...props}>{children}</View>;
-const useCameraPermissions = () => [{ granted: false }, () => Promise.resolve({ granted: false })];
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useFocusEffect } from '@react-navigation/native';
