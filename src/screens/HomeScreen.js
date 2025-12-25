@@ -578,12 +578,12 @@ const HomeScreen = ({ navigation }) => {
         dayCustomers[name] = (dayCustomers[name] || 0) + (order.calculatedTotalNet || 0);
       });
 
-      // Get day-specific top items
+      // Get day-specific top items - API uses itemDesc, itemCode, qty
       const dayItems = {};
       orders.forEach(order => {
         (order.lines || []).forEach(line => {
-          const name = line.itemDescription || line.description || line.itemNumber || 'Unknown';
-          dayItems[name] = (dayItems[name] || 0) + (parseFloat(line.orderedQuantity) || parseFloat(line.quantity) || 1);
+          const name = line.itemDesc || line.itemDescription || line.itemCode || line.itemNumber || 'Unknown';
+          dayItems[name] = (dayItems[name] || 0) + (parseFloat(line.qty) || parseFloat(line.orderedQuantity) || parseFloat(line.quantity) || 1);
         });
       });
 
@@ -646,10 +646,10 @@ const HomeScreen = ({ navigation }) => {
         const customerName = order.accountName || order.customerName || order.accountNumber || 'Unknown';
         customerTotals[customerName] = (customerTotals[customerName] || 0) + (order.calculatedTotalNet || 0);
 
-        // Aggregate items
+        // Aggregate items - API uses itemDesc, itemCode, qty
         (order.lines || []).forEach(line => {
-          const itemName = line.itemDescription || line.description || line.itemNumber || 'Unknown';
-          itemTotals[itemName] = (itemTotals[itemName] || 0) + (parseFloat(line.orderedQuantity) || parseFloat(line.quantity) || 1);
+          const itemName = line.itemDesc || line.itemDescription || line.itemCode || line.itemNumber || 'Unknown';
+          itemTotals[itemName] = (itemTotals[itemName] || 0) + (parseFloat(line.qty) || parseFloat(line.orderedQuantity) || parseFloat(line.quantity) || 1);
         });
 
         // Aggregate payments
@@ -676,12 +676,12 @@ const HomeScreen = ({ navigation }) => {
           dayCustomers[name] = (dayCustomers[name] || 0) + (order.calculatedTotalNet || 0);
         });
 
-        // Get day-specific top items
+        // Get day-specific top items - API uses itemDesc, itemCode, qty
         const dayItems = {};
         dayOrders.forEach(order => {
           (order.lines || []).forEach(line => {
-            const name = line.itemDescription || line.description || line.itemNumber || 'Unknown';
-            dayItems[name] = (dayItems[name] || 0) + (parseFloat(line.orderedQuantity) || parseFloat(line.quantity) || 1);
+            const name = line.itemDesc || line.itemDescription || line.itemCode || line.itemNumber || 'Unknown';
+            dayItems[name] = (dayItems[name] || 0) + (parseFloat(line.qty) || parseFloat(line.orderedQuantity) || parseFloat(line.quantity) || 1);
           });
         });
 
@@ -1081,7 +1081,7 @@ const styles = StyleSheet.create({
   // Sales Section
   salesSection: { marginBottom: 16 },
   tilesContainer: { paddingHorizontal: 8 },
-  salesTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 14, minHeight: 240, position: 'relative', overflow: 'hidden' },
+  salesTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 14, minHeight: 180, position: 'relative', overflow: 'hidden' },
   todayTile: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' },
   specialBadge: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.3)', paddingVertical: 4, alignItems: 'center' },
   specialBadgeText: { fontSize: 10, fontWeight: '700', color: '#FFFFFF' },
@@ -1107,7 +1107,7 @@ const styles = StyleSheet.create({
   loadingContainer: { height: 200, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 8, fontSize: 12, color: '#666666' },
   // Summary Tiles
-  summaryTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 14, minHeight: 240 },
+  summaryTile: { width: TILE_WIDTH, marginHorizontal: TILE_MARGIN, borderRadius: 16, padding: 14, minHeight: 180 },
   summaryTileTitle: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 },
   summaryTileScroll: { flex: 1, marginBottom: 8 },
   summaryGraphContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 60, marginBottom: 12, paddingHorizontal: 2 },
