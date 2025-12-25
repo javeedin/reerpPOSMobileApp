@@ -57,7 +57,10 @@
           "savePhotosPermission": "Allow FCPos to save photos.",
           "isAccessMediaLocationEnabled": true
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-asset",
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {
