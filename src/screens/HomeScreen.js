@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,234 +12,59 @@ import {
   ActivityIndicator,
   BackHandler,
   Alert,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
-import { getOrders, ORDER_STATUS, PAYMENT_METHODS } from '../services/orderService';
+import { getOrders, ORDER_STATUS } from '../services/orderService';
 import { getOnhand } from '../services/syncService';
-import { getAllLocalAdjustments } from '../services/onhandService';
 
 const { width } = Dimensions.get('window');
-const cardWidth = (width - 60) / 2;
+const TILE_WIDTH = width * 0.85;
+const TILE_MARGIN = 10;
 
-// Icon mapping based on menu item names
-const getMenuIcon = (name) => {
-  const lowerName = (name || '').toLowerCase();
+// Tile colors for variety
+const TILE_COLORS = [
+  { primary: '#667eea', secondary: '#764ba2' },
+  { primary: '#f093fb', secondary: '#f5576c' },
+  { primary: '#4facfe', secondary: '#00f2fe' },
+  { primary: '#43e97b', secondary: '#38f9d7' },
+  { primary: '#fa709a', secondary: '#fee140' },
+  { primary: '#a8edea', secondary: '#fed6e3' },
+  { primary: '#ff9a9e', secondary: '#fecfef' },
+];
 
-  // Sales related
-  if (lowerName.includes('sales') || lowerName.includes('sell')) return 'cart';
-  if (lowerName.includes('order')) return 'receipt';
-  if (lowerName.includes('pos') || lowerName.includes('point of sale')) return 'card';
-
-  // Purchase related
-  if (lowerName.includes('purchase') || lowerName.includes('buy')) return 'bag';
-  if (lowerName.includes('vendor') || lowerName.includes('supplier')) return 'business';
-
-  // Inventory related
-  if (lowerName.includes('inventory') || lowerName.includes('stock')) return 'cube';
-  if (lowerName.includes('warehouse')) return 'home';
-  if (lowerName.includes('transfer')) return 'swap-horizontal';
-  if (lowerName.includes('receiving') || lowerName.includes('receive')) return 'arrow-down-circle';
-  if (lowerName.includes('shipping') || lowerName.includes('ship')) return 'airplane';
-  if (lowerName.includes('cycle count') || lowerName.includes('count')) return 'sync';
-  if (lowerName.includes('adjustment')) return 'create';
-
-  // Customer related
-  if (lowerName.includes('customer') || lowerName.includes('client')) return 'people';
-  if (lowerName.includes('contact')) return 'call';
-
-  // Financial
-  if (lowerName.includes('price') || lowerName.includes('pricing')) return 'pricetag';
-  if (lowerName.includes('payment')) return 'wallet';
-  if (lowerName.includes('invoice')) return 'document-text';
-  if (lowerName.includes('discount')) return 'gift';
-  if (lowerName.includes('tax')) return 'calculator';
-
-  // Reports
-  if (lowerName.includes('report')) return 'bar-chart';
-  if (lowerName.includes('analytics') || lowerName.includes('dashboard')) return 'analytics';
-  if (lowerName.includes('summary')) return 'list';
-
-  // Returns
-  if (lowerName.includes('return') || lowerName.includes('refund')) return 'return-down-back';
-
-  // Miscellaneous
-  if (lowerName.includes('setting')) return 'settings';
-  if (lowerName.includes('user') || lowerName.includes('account')) return 'person';
-  if (lowerName.includes('search') || lowerName.includes('find')) return 'search';
-  if (lowerName.includes('scan') || lowerName.includes('barcode')) return 'barcode';
-  if (lowerName.includes('print')) return 'print';
-  if (lowerName.includes('notification') || lowerName.includes('alert')) return 'notifications';
-  if (lowerName.includes('location')) return 'location';
-  if (lowerName.includes('item') || lowerName.includes('product')) return 'cube-outline';
-  if (lowerName.includes('category')) return 'folder';
-  if (lowerName.includes('lodgment') || lowerName.includes('deposit')) return 'cash';
-  if (lowerName.includes('delivery')) return 'car';
-  if (lowerName.includes('pick') || lowerName.includes('picking')) return 'hand-left';
-  if (lowerName.includes('pack') || lowerName.includes('packing')) return 'archive';
-
-  // Default
-  return 'apps';
-};
-
-// Module icon mapping
-const getModuleIcon = (moduleName) => {
-  const lowerName = (moduleName || '').toLowerCase();
-
-  if (lowerName.includes('sales')) return 'cart';
-  if (lowerName.includes('purchase')) return 'bag';
-  if (lowerName.includes('inventory')) return 'cube';
-  if (lowerName.includes('warehouse')) return 'home';
-  if (lowerName.includes('customer')) return 'people';
-  if (lowerName.includes('report')) return 'bar-chart';
-  if (lowerName.includes('setting')) return 'settings';
-  if (lowerName.includes('order')) return 'receipt';
-  if (lowerName.includes('finance') || lowerName.includes('accounting')) return 'wallet';
-  if (lowerName.includes('admin')) return 'shield';
-
-  return 'grid';
-};
-
-// KPI Card Component
-const KPICard = ({ title, value, icon, color, trend, trendValue, isMultiline }) => (
-  <View style={[styles.kpiCard, { borderLeftColor: color }]}>
-    <View style={styles.kpiHeader}>
-      <View style={[styles.kpiIconContainer, { backgroundColor: `${color}15` }]}>
-        <Ionicons name={icon} size={24} color={color} />
-      </View>
-      {trend && trendValue && (
-        <View style={[styles.trendBadge, { backgroundColor: trend === 'up' ? colors.accentGreen + '15' : colors.accentRed + '15' }]}>
-          <Ionicons
-            name={trend === 'up' ? 'trending-up' : 'trending-down'}
-            size={14}
-            color={trend === 'up' ? colors.accentGreen : colors.accentRed}
-          />
-          <Text style={[styles.trendText, { color: trend === 'up' ? colors.accentGreen : colors.accentRed }]}>
-            {trendValue}
-          </Text>
-        </View>
-      )}
-      {!trend && trendValue && (
-        <View style={[styles.trendBadge, { backgroundColor: colors.textMuted + '15' }]}>
-          <Text style={[styles.trendText, { color: colors.textMuted }]}>
-            {trendValue}
-          </Text>
-        </View>
-      )}
-    </View>
-    <Text style={[styles.kpiValue, isMultiline && styles.kpiValueMultiline]} numberOfLines={isMultiline ? 4 : 1}>
-      {value}
-    </Text>
-    <Text style={styles.kpiTitle}>{title}</Text>
-  </View>
-);
-
-// Module Card Component
-const ModuleCard = ({ module, onPress, isExpanded }) => (
-  <TouchableOpacity
-    style={[styles.moduleCard, isExpanded && styles.moduleCardExpanded]}
-    onPress={onPress}
-    activeOpacity={0.8}
-  >
-    <View style={styles.moduleContent}>
-      <View style={styles.moduleIconContainer}>
-        <Ionicons name={getModuleIcon(module.Menu)} size={28} color={colors.accent} />
-      </View>
-      <View style={styles.moduleInfo}>
-        <Text style={styles.moduleName}>{module.Menu}</Text>
-        <Text style={styles.moduleCount}>
-          {module.SubMenuItems?.length || 0} items
-        </Text>
-      </View>
-      <Ionicons
-        name={isExpanded ? 'chevron-up' : 'chevron-down'}
-        size={24}
-        color={colors.textMuted}
-      />
-    </View>
-  </TouchableOpacity>
-);
-
-// Menu Item Component
-const MenuItem = ({ item, onPress }) => (
-  <TouchableOpacity style={styles.menuItem} onPress={() => onPress(item)} activeOpacity={0.7}>
-    <View style={styles.menuItemContent}>
-      <View style={styles.menuItemIconContainer}>
-        <Ionicons name={getMenuIcon(item.name)} size={24} color={colors.accent} />
-      </View>
-      <View style={styles.menuItemInfo}>
-        <Text style={styles.menuItemName} numberOfLines={2}>
-          {item.name}
-        </Text>
-        {item.ordertype && (
-          <Text style={styles.menuItemType}>{item.ordertype}</Text>
-        )}
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-    </View>
-  </TouchableOpacity>
-);
-
-// Quick Links Section
-const QuickLinks = ({ menuData, onItemPress, onSyncPress, onScanPress }) => {
-  const quickLinkItems = [];
-  menuData?.forEach(module => {
-    module.SubMenuItems?.forEach(item => {
-      if (item.quicklink === 'yes' && quickLinkItems.length < 5) {
-        quickLinkItems.push({ ...item, moduleName: module.Menu });
-      }
-    });
-  });
+// Quick Action Icons Component
+const QuickActions = ({ navigation }) => {
+  const actions = [
+    { icon: 'cart-outline', label: 'New Order', onPress: () => navigation.navigate('CustomerSelection'), color: '#2196F3' },
+    { icon: 'scan-outline', label: 'Scan', onPress: () => navigation.navigate('Scan'), color: '#9C27B0' },
+    { icon: 'sync-outline', label: 'Sync', onPress: () => navigation.navigate('SyncData'), color: '#4CAF50' },
+    { icon: 'cube-outline', label: 'Stock', onPress: () => navigation.navigate('MainTabs', { screen: 'Inventory' }), color: '#FF9800' },
+    { icon: 'document-text-outline', label: 'Reports', onPress: () => navigation.navigate('LodgementReport'), color: '#E91E63' },
+    { icon: 'card-outline', label: 'Credit', onPress: () => navigation.navigate('CreditCheck'), color: '#00BCD4' },
+  ];
 
   return (
-    <View style={styles.quickLinksSection}>
-      <Text style={styles.sectionTitle}>Quick Actions</Text>
+    <View style={styles.quickActionsContainer}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.quickLinksContainer}
+        contentContainerStyle={styles.quickActionsContent}
       >
-        {/* Scan - Static Quick Action */}
-        <TouchableOpacity
-          style={styles.quickLinkItem}
-          onPress={onScanPress}
-        >
-          <View style={[styles.quickLinkIconContainer, { backgroundColor: (colors.accentPurple || '#9C27B0') + '15' }]}>
-            <Ionicons name="scan" size={28} color={colors.accentPurple || '#9C27B0'} />
-          </View>
-          <Text style={styles.quickLinkName} numberOfLines={2}>
-            Scan
-          </Text>
-        </TouchableOpacity>
-
-        {/* Sync Data - Static Quick Action */}
-        <TouchableOpacity
-          style={styles.quickLinkItem}
-          onPress={onSyncPress}
-        >
-          <View style={[styles.quickLinkIconContainer, { backgroundColor: colors.accentGreen + '15' }]}>
-            <Ionicons name="sync" size={28} color={colors.accentGreen} />
-          </View>
-          <Text style={styles.quickLinkName} numberOfLines={2}>
-            Sync Data
-          </Text>
-        </TouchableOpacity>
-
-        {quickLinkItems.map((item, index) => (
+        {actions.map((action, index) => (
           <TouchableOpacity
-            key={`quick-${index}`}
-            style={styles.quickLinkItem}
-            onPress={() => onItemPress(item)}
+            key={index}
+            style={styles.quickActionItem}
+            onPress={action.onPress}
           >
-            <View style={styles.quickLinkIconContainer}>
-              <Ionicons name={getMenuIcon(item.name)} size={28} color={colors.accent} />
+            <View style={[styles.quickActionIcon, { backgroundColor: action.color + '15' }]}>
+              <Ionicons name={action.icon} size={26} color={action.color} />
             </View>
-            <Text style={styles.quickLinkName} numberOfLines={2}>
-              {item.name}
-            </Text>
+            <Text style={styles.quickActionLabel}>{action.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -247,115 +72,305 @@ const QuickLinks = ({ menuData, onItemPress, onSyncPress, onScanPress }) => {
   );
 };
 
-const HomeScreen = ({ navigation }) => {
-  const { user, menuData, refreshMenuData, isSyncing, syncProgress } = useAuth();
-  const [expandedModule, setExpandedModule] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [kpiData, setKpiData] = useState([
-    { title: "Today's Sales", value: 'MUR 0', icon: 'cart', color: colors.accent },
-    { title: 'Orders', value: '0', icon: 'receipt', color: colors.accentGreen },
-    { title: 'Payments', value: 'Loading...', icon: 'wallet', color: colors.accentOrange },
-    { title: 'Inventory', value: '0 items', icon: 'cube', color: colors.accentPurple },
-  ]);
+// Sales Tile Component
+const SalesTile = ({ data, colorIndex }) => {
+  const tileColors = TILE_COLORS[colorIndex % TILE_COLORS.length];
+  const isToday = data.isToday;
 
-  // Load KPI data from real sources
-  const loadKpiData = useCallback(async () => {
+  const formatCurrency = (amount) => {
+    return amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  };
+
+  const getDayName = (date) => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[date.getDay()];
+  };
+
+  const formatDate = (date) => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${date.getDate()} ${months[date.getMonth()]}`;
+  };
+
+  return (
+    <LinearGradient
+      colors={[tileColors.primary, tileColors.secondary]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.salesTile, isToday && styles.todayTile]}
+    >
+      {isToday && (
+        <View style={styles.todayBadge}>
+          <Text style={styles.todayBadgeText}>TODAY</Text>
+        </View>
+      )}
+
+      <View style={styles.tileHeader}>
+        <Text style={styles.tileDay}>{getDayName(data.date)}</Text>
+        <Text style={styles.tileDate}>{formatDate(data.date)}</Text>
+      </View>
+
+      <View style={styles.tileSalesContainer}>
+        <Text style={styles.tileSalesLabel}>Total Sales</Text>
+        <Text style={styles.tileSalesAmount}>MUR {formatCurrency(data.totalSales)}</Text>
+        {data.comparison !== null && (
+          <View style={styles.comparisonContainer}>
+            <Ionicons
+              name={data.comparison >= 0 ? 'trending-up' : 'trending-down'}
+              size={16}
+              color={data.comparison >= 0 ? '#4ADE80' : '#F87171'}
+            />
+            <Text style={[styles.comparisonText, { color: data.comparison >= 0 ? '#4ADE80' : '#F87171' }]}>
+              {data.comparison >= 0 ? '+' : ''}{formatCurrency(data.comparison)} vs prev day
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.tileStats}>
+        <View style={styles.tileStatItem}>
+          <Ionicons name="receipt-outline" size={18} color="rgba(255,255,255,0.9)" />
+          <Text style={styles.tileStatValue}>{data.orderCount}</Text>
+          <Text style={styles.tileStatLabel}>Orders</Text>
+        </View>
+        <View style={styles.tileStatDivider} />
+        <View style={styles.tileStatItem}>
+          <Ionicons name="people-outline" size={18} color="rgba(255,255,255,0.9)" />
+          <Text style={styles.tileStatValue}>{data.customerCount}</Text>
+          <Text style={styles.tileStatLabel}>Customers</Text>
+        </View>
+      </View>
+
+      {data.topCustomers && data.topCustomers.length > 0 && (
+        <View style={styles.tileSection}>
+          <Text style={styles.tileSectionTitle}>Top Customers</Text>
+          {data.topCustomers.slice(0, 3).map((customer, idx) => (
+            <View key={idx} style={styles.tileListItem}>
+              <Text style={styles.tileListRank}>{idx + 1}.</Text>
+              <Text style={styles.tileListName} numberOfLines={1}>{customer.name}</Text>
+              <Text style={styles.tileListValue}>MUR {formatCurrency(customer.amount)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {data.topItems && data.topItems.length > 0 && (
+        <View style={styles.tileSection}>
+          <Text style={styles.tileSectionTitle}>Top Items</Text>
+          {data.topItems.slice(0, 4).map((item, idx) => (
+            <View key={idx} style={styles.tileListItem}>
+              <Text style={styles.tileListRank}>{idx + 1}.</Text>
+              <Text style={styles.tileListName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.tileListValue}>x{item.qty}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </LinearGradient>
+  );
+};
+
+// Empty Tile for loading state
+const LoadingTile = () => (
+  <View style={[styles.salesTile, styles.loadingTile]}>
+    <ActivityIndicator size="large" color="#2196F3" />
+    <Text style={styles.loadingText}>Loading sales data...</Text>
+  </View>
+);
+
+const HomeScreen = ({ navigation }) => {
+  const { user, isSyncing, syncProgress } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
+  const [salesTiles, setSalesTiles] = useState([]);
+  const [isLoadingTiles, setIsLoadingTiles] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [dateRange, setDateRange] = useState({ start: -3, end: 4 }); // Days from today
+  const flatListRef = useRef(null);
+  const initialScrollDone = useRef(false);
+
+  // Generate sales data for a specific date
+  const generateSalesDataForDate = useCallback(async (targetDate, allOrders, previousDaySales = null) => {
+    const dateStart = new Date(targetDate);
+    dateStart.setHours(0, 0, 0, 0);
+    const dateEnd = new Date(targetDate);
+    dateEnd.setHours(23, 59, 59, 999);
+
+    // Filter orders for this date
+    const dayOrders = allOrders.filter(order => {
+      if (order.status !== ORDER_STATUS.CONFIRMED) return false;
+      const orderDate = new Date(order.orderDate);
+      return orderDate >= dateStart && orderDate <= dateEnd;
+    });
+
+    // Calculate total sales
+    const totalSales = dayOrders.reduce((sum, order) => {
+      return sum + (order.totals?.totalNet || 0);
+    }, 0);
+
+    // Get unique customers and their totals
+    const customerTotals = {};
+    dayOrders.forEach(order => {
+      const customerName = order.customerInfo?.name || order.customerInfo?.customerNumber || 'Unknown';
+      customerTotals[customerName] = (customerTotals[customerName] || 0) + (order.totals?.totalNet || 0);
+    });
+
+    const topCustomers = Object.entries(customerTotals)
+      .map(([name, amount]) => ({ name, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 3);
+
+    // Get top items
+    const itemTotals = {};
+    dayOrders.forEach(order => {
+      (order.items || []).forEach(item => {
+        const itemName = item.description || item.itemNumber || 'Unknown';
+        itemTotals[itemName] = (itemTotals[itemName] || 0) + (item.quantity || 1);
+      });
+    });
+
+    const topItems = Object.entries(itemTotals)
+      .map(([name, qty]) => ({ name, qty }))
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 4);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isToday = dateStart.getTime() === today.getTime();
+
+    return {
+      date: dateStart,
+      isToday,
+      totalSales,
+      orderCount: dayOrders.length,
+      customerCount: Object.keys(customerTotals).length,
+      topCustomers,
+      topItems,
+      comparison: previousDaySales !== null ? totalSales - previousDaySales : null,
+    };
+  }, []);
+
+  // Load sales tiles for date range
+  const loadSalesTiles = useCallback(async (startOffset, endOffset) => {
     try {
-      // Get all orders
       const allOrders = await getOrders();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Filter today's orders (confirmed only)
-      const todaysOrders = allOrders.filter(order => {
-        if (order.status !== ORDER_STATUS.CONFIRMED) return false;
-        const orderDate = new Date(order.orderDate);
-        orderDate.setHours(0, 0, 0, 0);
-        return orderDate.getTime() === today.getTime();
-      });
+      const tiles = [];
+      let previousDaySales = null;
 
-      // Calculate today's sales total
-      const todaysSales = todaysOrders.reduce((sum, order) => {
-        return sum + (order.totals?.totalNet || 0);
-      }, 0);
+      // Generate tiles from oldest to newest
+      for (let i = startOffset; i <= endOffset; i++) {
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + i);
 
-      // Count total orders today
-      const ordersCount = todaysOrders.length;
-
-      // Calculate payment breakdown
-      const paymentBreakdown = {};
-      todaysOrders.forEach(order => {
-        (order.payments || []).forEach(payment => {
-          const method = payment.method || 'OTHER';
-          paymentBreakdown[method] = (paymentBreakdown[method] || 0) + (payment.amount || 0);
-        });
-      });
-
-      // Format payment breakdown for display
-      const paymentMethods = Object.keys(paymentBreakdown);
-      let paymentDisplay = 'No payments';
-      if (paymentMethods.length > 0) {
-        paymentDisplay = paymentMethods.map(m => `${m}: ${paymentBreakdown[m].toFixed(0)}`).join('\n');
+        const tileData = await generateSalesDataForDate(targetDate, allOrders, previousDaySales);
+        tiles.push(tileData);
+        previousDaySales = tileData.totalSales;
       }
 
-      // Get inventory data with local adjustments
-      const onhandData = await getOnhand() || [];
-      const localAdjustments = await getAllLocalAdjustments();
-
-      // Calculate adjusted quantities
-      let totalItems = onhandData.length;
-      let totalQty = 0;
-
-      onhandData.forEach(item => {
-        const baseQty = parseFloat(item.onHandQty) || 0;
-        const adjustment = localAdjustments[item.itemNumber] || 0;
-        const adjustedQty = baseQty + adjustment;
-        totalQty += adjustedQty;
-      });
-
-      // Update KPI data
-      setKpiData([
-        {
-          title: "Today's Sales",
-          value: todaysSales.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-          icon: 'cart',
-          color: colors.accent,
-          trendValue: `${ordersCount} orders`
-        },
-        {
-          title: 'Orders Today',
-          value: ordersCount.toString(),
-          icon: 'receipt',
-          color: colors.accentGreen,
-        },
-        {
-          title: 'Payments',
-          value: paymentDisplay,
-          icon: 'wallet',
-          color: colors.accentOrange,
-          isMultiline: true,
-        },
-        {
-          title: 'Inventory',
-          value: `${totalItems}`,
-          icon: 'cube',
-          color: colors.accentPurple,
-          trendValue: `Qty: ${Math.round(totalQty).toLocaleString()}`
-        },
-      ]);
+      return tiles;
     } catch (error) {
-      console.error('Error loading KPI data:', error);
+      console.error('Error loading sales tiles:', error);
+      return [];
     }
-  }, []);
+  }, [generateSalesDataForDate]);
 
-  // Load KPI data on mount and when screen focuses
+  // Initial load
+  const initialLoad = useCallback(async () => {
+    setIsLoadingTiles(true);
+    const tiles = await loadSalesTiles(dateRange.start, dateRange.end);
+    setSalesTiles(tiles);
+    setIsLoadingTiles(false);
+  }, [loadSalesTiles, dateRange]);
+
+  // Load more tiles (left or right)
+  const loadMoreTiles = useCallback(async (direction) => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+
+    try {
+      const allOrders = await getOrders();
+
+      if (direction === 'left') {
+        // Load older dates
+        const newStart = dateRange.start - 3;
+        const newTiles = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = newStart; i < dateRange.start; i++) {
+          const targetDate = new Date(today);
+          targetDate.setDate(today.getDate() + i);
+          const tileData = await generateSalesDataForDate(targetDate, allOrders, null);
+          newTiles.push(tileData);
+        }
+
+        setSalesTiles(prev => [...newTiles, ...prev]);
+        setDateRange(prev => ({ ...prev, start: newStart }));
+      } else {
+        // Load newer dates
+        const newEnd = dateRange.end + 3;
+        const newTiles = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = dateRange.end + 1; i <= newEnd; i++) {
+          const targetDate = new Date(today);
+          targetDate.setDate(today.getDate() + i);
+          const tileData = await generateSalesDataForDate(targetDate, allOrders, null);
+          newTiles.push(tileData);
+        }
+
+        setSalesTiles(prev => [...prev, ...newTiles]);
+        setDateRange(prev => ({ ...prev, end: newEnd }));
+      }
+    } catch (error) {
+      console.error('Error loading more tiles:', error);
+    }
+
+    setLoadingMore(false);
+  }, [loadingMore, dateRange, generateSalesDataForDate]);
+
+  // Handle scroll end to load more
+  const handleScrollEnd = useCallback((event) => {
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+
+    // Near start - load older dates
+    if (contentOffset.x < 50) {
+      loadMoreTiles('left');
+    }
+
+    // Near end - load newer dates
+    if (contentOffset.x + layoutMeasurement.width > contentSize.width - 50) {
+      loadMoreTiles('right');
+    }
+  }, [loadMoreTiles]);
+
+  // Scroll to today on initial load
+  useEffect(() => {
+    if (!isLoadingTiles && salesTiles.length > 0 && flatListRef.current && !initialScrollDone.current) {
+      const todayIndex = salesTiles.findIndex(tile => tile.isToday);
+      if (todayIndex >= 0) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index: todayIndex,
+            animated: false,
+            viewPosition: 0.5
+          });
+          initialScrollDone.current = true;
+        }, 100);
+      }
+    }
+  }, [isLoadingTiles, salesTiles]);
+
+  // Load data on mount and focus
   useFocusEffect(
     useCallback(() => {
-      loadKpiData();
-    }, [loadKpiData])
+      initialLoad();
+    }, [initialLoad])
   );
 
-  // Handle back button - prevent going back from home screen
+  // Handle back button
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
@@ -367,142 +382,181 @@ const HomeScreen = ({ navigation }) => {
             { text: 'Exit', style: 'destructive', onPress: () => BackHandler.exitApp() },
           ]
         );
-        return true; // Prevent default back behavior
+        return true;
       };
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-
       return () => subscription.remove();
     }, [])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refreshMenuData(), loadKpiData()]);
+    initialScrollDone.current = false;
+    await initialLoad();
     setRefreshing(false);
   };
 
-  const handleModulePress = (moduleId) => {
-    setExpandedModule(expandedModule === moduleId ? null : moduleId);
-  };
+  const renderTile = ({ item, index }) => (
+    <SalesTile data={item} colorIndex={index} />
+  );
 
-  const handleMenuItemPress = (item) => {
-    navigation.navigate('MenuDetail', { item });
-  };
+  const getItemLayout = (data, index) => ({
+    length: TILE_WIDTH + TILE_MARGIN * 2,
+    offset: (TILE_WIDTH + TILE_MARGIN * 2) * index,
+    index,
+  });
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+      <StatusBar barStyle="light-content" backgroundColor="#1A1A2E" />
 
       {/* Sync Progress Modal */}
-      <Modal
-        visible={isSyncing}
-        transparent={true}
-        animationType="fade"
-      >
+      <Modal visible={isSyncing} transparent animationType="fade">
         <View style={styles.syncOverlay}>
           <View style={styles.syncModal}>
-            <ActivityIndicator size="large" color={colors.accent} />
+            <ActivityIndicator size="large" color="#2196F3" />
             <Text style={styles.syncTitle}>Syncing Data</Text>
             <Text style={styles.syncProgress}>{syncProgress}</Text>
-            <Text style={styles.syncHint}>Please wait...</Text>
           </View>
         </View>
       </Modal>
 
-      {/* Blue Header Only */}
-      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate('AccountDetails')} style={styles.menuButton}>
-          <Ionicons name="person-circle" size={32} color="#FFFFFF" />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.welcomeText}>Welcome back,</Text>
-          <Text style={styles.userName}>{user?.username || 'User'}</Text>
-        </View>
-        <View style={styles.headerRightButtons}>
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={onRefresh}
-            disabled={refreshing || isSyncing}
-          >
-            <Ionicons
-              name={refreshing || isSyncing ? "sync" : "refresh-outline"}
-              size={22}
-              color={refreshing || isSyncing ? 'rgba(255,255,255,0.5)' : '#FFFFFF'}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.storyButton}
-            onPress={() => navigation.navigate('Story')}
-          >
-            <Ionicons name="play-circle-outline" size={26} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications-outline" size={26} color="#FFFFFF" />
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationCount}>3</Text>
-            </View>
-          </TouchableOpacity>
+      {/* Header */}
+      <LinearGradient colors={['#1A1A2E', '#16213E']} style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.welcomeText}>Welcome back,</Text>
+            <Text style={styles.userName}>{user?.username || 'User'}</Text>
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.headerButton} onPress={onRefresh}>
+              <Ionicons name="refresh-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerButton} onPress={() => navigation.navigate('Story')}>
+              <Ionicons name="play-circle-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerButton}>
+              <Ionicons name="notifications-outline" size={24} color="#FFFFFF" />
+              <View style={styles.notificationBadge} />
+            </TouchableOpacity>
+          </View>
         </View>
       </LinearGradient>
 
-      {/* White Content Area */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2196F3" />
         }
       >
-        {/* KPI Cards Section */}
-        <View style={styles.kpiSection}>
-          <Text style={styles.sectionTitle}>Dashboard</Text>
-          <View style={styles.kpiGrid}>
-            {kpiData.map((kpi, index) => (
-              <KPICard key={index} {...kpi} />
-            ))}
+        {/* Quick Actions */}
+        <QuickActions navigation={navigation} />
+
+        {/* Sales Tiles Section */}
+        <View style={styles.salesSection}>
+          <View style={styles.saleHeaderRow}>
+            <Text style={styles.sectionTitle}>Sales Overview</Text>
+            <TouchableOpacity onPress={() => flatListRef.current?.scrollToIndex({
+              index: salesTiles.findIndex(t => t.isToday),
+              animated: true,
+              viewPosition: 0.5
+            })}>
+              <Text style={styles.todayLink}>Go to Today</Text>
+            </TouchableOpacity>
           </View>
+
+          {isLoadingTiles ? (
+            <LoadingTile />
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={salesTiles}
+              renderItem={renderTile}
+              keyExtractor={(item, index) => `tile-${index}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tilesContainer}
+              snapToInterval={TILE_WIDTH + TILE_MARGIN * 2}
+              decelerationRate="fast"
+              onMomentumScrollEnd={handleScrollEnd}
+              getItemLayout={getItemLayout}
+              onScrollToIndexFailed={(info) => {
+                setTimeout(() => {
+                  flatListRef.current?.scrollToIndex({
+                    index: info.index,
+                    animated: false
+                  });
+                }, 100);
+              }}
+              ListHeaderComponent={
+                loadingMore ? (
+                  <View style={styles.loadingMoreContainer}>
+                    <ActivityIndicator size="small" color="#2196F3" />
+                  </View>
+                ) : null
+              }
+              ListFooterComponent={
+                loadingMore ? (
+                  <View style={styles.loadingMoreContainer}>
+                    <ActivityIndicator size="small" color="#2196F3" />
+                  </View>
+                ) : null
+              }
+            />
+          )}
         </View>
 
-        {/* Quick Links */}
-        <QuickLinks
-          menuData={menuData}
-          onItemPress={handleMenuItemPress}
-          onScanPress={() => navigation.navigate('Scan')}
-          onSyncPress={() => navigation.navigate('SyncData')}
-        />
-
-        {/* Modules Section */}
-        <View style={styles.modulesSection}>
-          <Text style={styles.sectionTitle}>Modules</Text>
-          {menuData && menuData.length > 0 ? (
-            menuData.map((module) => (
-              <View key={module.Id}>
-                <ModuleCard
-                  module={module}
-                  onPress={() => handleModulePress(module.Id)}
-                  isExpanded={expandedModule === module.Id}
-                />
-                {expandedModule === module.Id && (
-                  <View style={styles.menuItemsContainer}>
-                    {module.SubMenuItems?.map((item, index) => (
-                      <MenuItem
-                        key={`${module.Id}-${index}`}
-                        item={item}
-                        onPress={handleMenuItemPress}
-                      />
-                    ))}
-                  </View>
-                )}
+        {/* Summary Cards */}
+        <View style={styles.summarySection}>
+          <Text style={styles.sectionTitle}>Quick Stats</Text>
+          <View style={styles.summaryGrid}>
+            <TouchableOpacity
+              style={styles.summaryCard}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Orders' })}
+            >
+              <View style={[styles.summaryIconBg, { backgroundColor: '#E3F2FD' }]}>
+                <Ionicons name="cart-outline" size={24} color="#2196F3" />
               </View>
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="folder-open-outline" size={48} color={colors.textMuted} />
-              <Text style={styles.emptyStateText}>No modules available</Text>
-            </View>
-          )}
+              <Text style={styles.summaryLabel}>Orders</Text>
+              <Ionicons name="chevron-forward" size={18} color="#999" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.summaryCard}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Inventory' })}
+            >
+              <View style={[styles.summaryIconBg, { backgroundColor: '#FFF3E0' }]}>
+                <Ionicons name="cube-outline" size={24} color="#FF9800" />
+              </View>
+              <Text style={styles.summaryLabel}>Inventory</Text>
+              <Ionicons name="chevron-forward" size={18} color="#999" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.summaryCard}
+              onPress={() => navigation.navigate('HistoryOrders')}
+            >
+              <View style={[styles.summaryIconBg, { backgroundColor: '#E8F5E9' }]}>
+                <Ionicons name="time-outline" size={24} color="#4CAF50" />
+              </View>
+              <Text style={styles.summaryLabel}>History</Text>
+              <Ionicons name="chevron-forward" size={18} color="#999" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.summaryCard}
+              onPress={() => navigation.navigate('StoreRequests')}
+            >
+              <View style={[styles.summaryIconBg, { backgroundColor: '#FCE4EC' }]}>
+                <Ionicons name="swap-horizontal-outline" size={24} color="#E91E63" />
+              </View>
+              <Text style={styles.summaryLabel}>Requests</Text>
+              <Ionicons name="chevron-forward" size={18} color="#999" />
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -512,277 +566,277 @@ const HomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F5F5F5',
   },
-  // Header Styles (Blue)
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
     paddingTop: 50,
     paddingBottom: 20,
+    paddingHorizontal: 20,
   },
-  menuButton: {
-    padding: 4,
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  headerCenter: {
-    flex: 1,
-    marginLeft: 12,
-  },
+  headerLeft: {},
   welcomeText: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.7)',
   },
   userName: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '700',
     color: '#FFFFFF',
     textTransform: 'capitalize',
   },
-  headerRightButtons: {
+  headerRight: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
-  refreshButton: {
-    padding: 6,
-  },
-  storyButton: {
-    padding: 6,
-  },
-  notificationButton: {
+  headerButton: {
     padding: 8,
     position: 'relative',
   },
   notificationBadge: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: colors.accentRed,
-    borderRadius: 10,
-    width: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF5252',
   },
-  notificationCount: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  // Content Styles (White)
   scrollView: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
+  // Quick Actions
+  quickActionsContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 16,
     marginBottom: 16,
-    paddingHorizontal: 20,
-  },
-  // KPI Styles
-  kpiSection: {
-    marginTop: 20,
-  },
-  kpiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 14,
-    gap: 12,
-  },
-  kpiCard: {
-    width: cardWidth,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  kpiHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  kpiIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  trendBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 10,
-    gap: 2,
-  },
-  trendText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  kpiValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginBottom: 4,
-  },
-  kpiValueMultiline: {
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 16,
-  },
-  kpiTitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  // Quick Links Styles
-  quickLinksSection: {
-    marginTop: 24,
-  },
-  quickLinksContainer: {
-    paddingHorizontal: 16,
-  },
-  quickLinkItem: {
-    width: 90,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    marginRight: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
     elevation: 2,
   },
-  quickLinkIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
+  quickActionsContent: {
+    paddingHorizontal: 16,
+  },
+  quickActionItem: {
+    alignItems: 'center',
+    marginRight: 20,
+    width: 70,
+  },
+  quickActionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
   },
-  quickLinkName: {
-    fontSize: 11,
-    color: colors.textSecondary,
+  quickActionLabel: {
+    fontSize: 12,
+    color: '#1A1A1A',
+    fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 14,
   },
-  // Modules Styles
-  modulesSection: {
-    marginTop: 24,
-    paddingHorizontal: 16,
+  // Sales Section
+  salesSection: {
+    marginBottom: 20,
   },
-  moduleCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  moduleCardExpanded: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    marginBottom: 0,
-  },
-  moduleContent: {
+  saleHeaderRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 20,
+    marginBottom: 12,
   },
-  moduleIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 14,
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
   },
-  moduleInfo: {
-    flex: 1,
-  },
-  moduleName: {
-    fontSize: 16,
+  todayLink: {
+    fontSize: 14,
+    color: '#2196F3',
     fontWeight: '600',
-    color: colors.textPrimary,
+  },
+  tilesContainer: {
+    paddingHorizontal: 10,
+  },
+  salesTile: {
+    width: TILE_WIDTH,
+    marginHorizontal: TILE_MARGIN,
+    borderRadius: 20,
+    padding: 20,
+    minHeight: 320,
+  },
+  todayTile: {
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.5)',
+  },
+  todayBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  todayBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  tileHeader: {
+    marginBottom: 16,
+  },
+  tileDay: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  tileDate: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  tileSalesContainer: {
+    marginBottom: 16,
+  },
+  tileSalesLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
     marginBottom: 4,
   },
-  moduleCount: {
-    fontSize: 13,
-    color: colors.textSecondary,
+  tileSalesAmount: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
-  // Menu Items Styles
-  menuItemsContainer: {
-    backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    marginBottom: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  menuItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  menuItemContent: {
+  comparisonContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
   },
-  menuItemIconContainer: {
+  comparisonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  tileStats: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  tileStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  tileStatDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  tileStatValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 4,
+  },
+  tileStatLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+  },
+  tileSection: {
+    marginTop: 8,
+  },
+  tileSectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 8,
+  },
+  tileListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  tileListRank: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    width: 20,
+  },
+  tileListName: {
+    flex: 1,
+    fontSize: 13,
+    color: '#FFFFFF',
+    fontWeight: '500',
+  },
+  tileListValue: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  loadingTile: {
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#666666',
+  },
+  loadingMoreContainer: {
+    width: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Summary Section
+  summarySection: {
+    paddingHorizontal: 20,
+  },
+  summaryGrid: {
+    marginTop: 12,
+  },
+  summaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  summaryIconBg: {
     width: 44,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: colors.surface,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
   },
-  menuItemInfo: {
+  summaryLabel: {
     flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
   },
-  menuItemName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.textPrimary,
-    marginBottom: 2,
-  },
-  menuItemType: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  // Empty State
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyStateText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  // Sync Modal Styles
+  // Sync Modal
   syncOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -796,28 +850,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '80%',
     maxWidth: 300,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
   },
   syncTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: colors.textPrimary,
+    color: '#1A1A1A',
     marginTop: 16,
-    marginBottom: 8,
   },
   syncProgress: {
     fontSize: 14,
-    color: colors.accent,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  syncHint: {
-    fontSize: 12,
-    color: colors.textMuted,
+    color: '#2196F3',
+    marginTop: 8,
   },
 });
 

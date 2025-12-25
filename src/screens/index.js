@@ -30,3 +30,7 @@ export { default as CreditCheckScreen } from './CreditCheckScreen';
 export { default as HistoryOrdersScreen } from './HistoryOrdersScreen';
 // Store requests screen
 export { default as StoreRequestsScreen } from './StoreRequestsScreen';
+// New navigation screens
+export { default as YouScreen } from './YouScreen';
+export { default as MenuScreen } from './MenuScreen';
+export { default as AutoPilotScreen } from './AutoPilotScreen';

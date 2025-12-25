@@ -3,21 +3,22 @@ import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Modal, Animated }
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 import {
   HomeScreen,
   OrdersScreen,
   InventoryScreen,
-  StoreRequestsScreen,
+  YouScreen,
+  MenuScreen,
+  AutoPilotScreen,
 } from '../screens';
 
 const Tab = createBottomTabNavigator();
 const { width } = Dimensions.get('window');
 
 // Orders Flyout Menu Component
-const OrdersFlyout = ({ visible, onClose, onSelectLocal, onSelectHistory }) => {
+const OrdersFlyout = ({ visible, onClose, onSelectLocal, onSelectHistory, onSelectStoreRequests }) => {
   if (!visible) return null;
 
   return (
@@ -41,28 +42,42 @@ const OrdersFlyout = ({ visible, onClose, onSelectLocal, onSelectHistory }) => {
               style={styles.flyoutOption}
               onPress={onSelectLocal}
             >
-              <View style={[styles.flyoutIconContainer, { backgroundColor: colors.accent + '20' }]}>
-                <Ionicons name="phone-portrait-outline" size={20} color={colors.accent} />
+              <View style={[styles.flyoutIconContainer, { backgroundColor: '#2196F3' + '20' }]}>
+                <Ionicons name="phone-portrait-outline" size={20} color="#2196F3" />
               </View>
               <View style={styles.flyoutOptionInfo}>
                 <Text style={styles.flyoutOptionTitle}>Local Orders</Text>
                 <Text style={styles.flyoutOptionDesc}>Orders saved on this device</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              <Ionicons name="chevron-forward" size={18} color="#666666" />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.flyoutOption}
               onPress={onSelectHistory}
             >
-              <View style={[styles.flyoutIconContainer, { backgroundColor: (colors.accentGreen || '#4CAF50') + '20' }]}>
-                <Ionicons name="cloud-outline" size={20} color={colors.accentGreen || '#4CAF50'} />
+              <View style={[styles.flyoutIconContainer, { backgroundColor: '#4CAF50' + '20' }]}>
+                <Ionicons name="cloud-outline" size={20} color="#4CAF50" />
               </View>
               <View style={styles.flyoutOptionInfo}>
                 <Text style={styles.flyoutOptionTitle}>Order History</Text>
                 <Text style={styles.flyoutOptionDesc}>Query orders from server</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              <Ionicons name="chevron-forward" size={18} color="#666666" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.flyoutOption}
+              onPress={onSelectStoreRequests}
+            >
+              <View style={[styles.flyoutIconContainer, { backgroundColor: '#FF9800' + '20' }]}>
+                <Ionicons name="swap-horizontal-outline" size={20} color="#FF9800" />
+              </View>
+              <View style={styles.flyoutOptionInfo}>
+                <Text style={styles.flyoutOptionTitle}>Store Requests</Text>
+                <Text style={styles.flyoutOptionDesc}>Stock requisitions & transfers</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#666666" />
             </TouchableOpacity>
           </View>
         </View>
@@ -91,10 +106,14 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
     mainNavigation.navigate('HistoryOrders');
   };
 
+  const handleSelectStoreRequests = () => {
+    setShowOrdersFlyout(false);
+    mainNavigation.navigate('StoreRequests');
+  };
+
   return (
     <View style={styles.tabBarContainer}>
-      <LinearGradient
-        colors={[colors.backgroundCard, colors.primaryDark]}
+      <View
         style={[styles.tabBar, { paddingBottom: bottomPadding + 10 }]}
       >
         {state.routes.map((route, index) => {
@@ -130,14 +149,20 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
             case 'Home':
               iconName = isFocused ? 'home' : 'home-outline';
               break;
+            case 'You':
+              iconName = isFocused ? 'person' : 'person-outline';
+              break;
             case 'Orders':
               iconName = isFocused ? 'cart' : 'cart-outline';
               break;
             case 'Inventory':
               iconName = isFocused ? 'cube' : 'cube-outline';
               break;
-            case 'Requests':
-              iconName = isFocused ? 'swap-horizontal' : 'swap-horizontal-outline';
+            case 'Menu':
+              iconName = isFocused ? 'menu' : 'menu-outline';
+              break;
+            case 'AutoPilot':
+              iconName = isFocused ? 'sparkles' : 'sparkles-outline';
               break;
             default:
               iconName = 'ellipse';
@@ -154,7 +179,7 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
                 <Ionicons
                   name={iconName}
                   size={24}
-                  color={isFocused ? colors.accent : colors.textMuted}
+                  color={isFocused ? '#2196F3' : '#666666'}
                 />
               </View>
               <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>
@@ -164,7 +189,7 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
             </TouchableOpacity>
           );
         })}
-      </LinearGradient>
+      </View>
 
       {/* Orders Flyout Menu */}
       <OrdersFlyout
@@ -172,6 +197,7 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
         onClose={() => setShowOrdersFlyout(false)}
         onSelectLocal={handleSelectLocal}
         onSelectHistory={handleSelectHistory}
+        onSelectStoreRequests={handleSelectStoreRequests}
       />
     </View>
   );
@@ -191,6 +217,11 @@ const BottomTabs = () => {
         options={{ tabBarLabel: 'Home' }}
       />
       <Tab.Screen
+        name="You"
+        component={YouScreen}
+        options={{ tabBarLabel: 'You' }}
+      />
+      <Tab.Screen
         name="Orders"
         component={OrdersScreen}
         options={{ tabBarLabel: 'Orders' }}
@@ -201,9 +232,14 @@ const BottomTabs = () => {
         options={{ tabBarLabel: 'Inventory' }}
       />
       <Tab.Screen
-        name="Requests"
-        component={StoreRequestsScreen}
-        options={{ tabBarLabel: 'Requests' }}
+        name="Menu"
+        component={MenuScreen}
+        options={{ tabBarLabel: 'Menu' }}
+      />
+      <Tab.Screen
+        name="AutoPilot"
+        component={AutoPilotScreen}
+        options={{ tabBarLabel: 'Lucy' }}
       />
     </Tab.Navigator>
   );
@@ -220,15 +256,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingTop: 10,
     paddingHorizontal: 10,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: '#E0E0E0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 20,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
   },
   tabItem: {
     flex: 1,
@@ -245,23 +280,23 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   tabIconContainerActive: {
-    backgroundColor: 'rgba(0, 217, 255, 0.15)',
+    backgroundColor: 'rgba(33, 150, 243, 0.15)',
   },
   tabLabel: {
     fontSize: 11,
-    color: colors.textMuted,
+    color: '#333333',
     fontWeight: '500',
   },
   tabLabelActive: {
-    color: colors.accent,
-    fontWeight: '600',
+    color: '#000000',
+    fontWeight: '700',
   },
   activeIndicator: {
     position: 'absolute',
     top: -10,
     width: 24,
     height: 3,
-    backgroundColor: colors.accent,
+    backgroundColor: '#2196F3',
     borderRadius: 2,
   },
   // Flyout Styles
