@@ -46,7 +46,7 @@ const STORE_OPTIONS = [
     name: 'GPH Store',
     subtitle: 'Pharmacy',
     organizationCode: 'GPH',
-    subinventory: 'Stores',
+    subinventory: 'STORES',
     icon: 'medkit',
   },
 ];
