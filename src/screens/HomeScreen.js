@@ -979,22 +979,49 @@ const HomeScreen = ({ navigation }) => {
         }
       }
 
-      // Handle different response formats
+      // Extract menu items from nested structure
+      // API returns: [{ Menu: "Order Management", SubMenuItems: [...] }, ...]
+      let allMenuItems = [];
+
       if (menuData && Array.isArray(menuData)) {
-        console.log('[HomeScreen] Menu is array with', menuData.length, 'items');
-        setSalesMenus(menuData);
+        // Check if it's the nested structure with Menu sections
+        if (menuData.length > 0 && menuData[0].SubMenuItems) {
+          // Find "Order Management" section and get its SubMenuItems
+          const orderManagementSection = menuData.find(
+            section => section.Menu === 'Order Management'
+          );
+
+          if (orderManagementSection && orderManagementSection.SubMenuItems) {
+            // Filter to only show items where PageName is 'NewOrder'
+            allMenuItems = orderManagementSection.SubMenuItems.filter(
+              item => item.PageName === 'NewOrder'
+            );
+            console.log('[HomeScreen] Found', allMenuItems.length, 'NewOrder items from Order Management');
+          } else {
+            // Fallback: get all SubMenuItems from all sections
+            menuData.forEach(section => {
+              if (section.SubMenuItems && Array.isArray(section.SubMenuItems)) {
+                allMenuItems = [...allMenuItems, ...section.SubMenuItems];
+              }
+            });
+            console.log('[HomeScreen] Extracted', allMenuItems.length, 'items from all sections');
+          }
+        } else {
+          // It's already a flat array of menu items
+          allMenuItems = menuData;
+          console.log('[HomeScreen] Menu is flat array with', allMenuItems.length, 'items');
+        }
       } else if (menuData && menuData.items && Array.isArray(menuData.items)) {
-        console.log('[HomeScreen] Menu has items array with', menuData.items.length, 'items');
-        setSalesMenus(menuData.items);
-      } else if (menuData && typeof menuData === 'object') {
-        // Maybe it's an object with menu items as values
-        const menus = Object.values(menuData).filter(m => m && typeof m === 'object' && m.name);
-        console.log('[HomeScreen] Menu converted from object with', menus.length, 'items');
-        setSalesMenus(menus);
-      } else {
-        console.log('[HomeScreen] No valid menu data found');
-        setSalesMenus([]);
+        allMenuItems = menuData.items;
+        console.log('[HomeScreen] Menu has items array with', allMenuItems.length, 'items');
       }
+
+      console.log('[HomeScreen] Total menu items to show:', allMenuItems.length);
+      if (allMenuItems.length > 0) {
+        console.log('[HomeScreen] Sample item:', JSON.stringify(allMenuItems[0]).substring(0, 300));
+      }
+
+      setSalesMenus(allMenuItems);
     } catch (error) {
       console.error('Error loading menus:', error);
       setSalesMenus([]);

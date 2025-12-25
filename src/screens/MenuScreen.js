@@ -47,19 +47,37 @@ const MenuScreen = () => {
         }
       }
 
-      // Handle different response formats
+      // Handle nested structure: [{ Menu: "Order Management", SubMenuItems: [...] }, ...]
       let menuList = [];
+
       if (menuData && Array.isArray(menuData)) {
-        menuList = menuData;
+        // Check if it's nested structure with Menu sections
+        if (menuData.length > 0 && menuData[0].SubMenuItems) {
+          // Extract all SubMenuItems from all sections with section info
+          menuData.forEach(section => {
+            if (section.SubMenuItems && Array.isArray(section.SubMenuItems)) {
+              section.SubMenuItems.forEach(item => {
+                menuList.push({
+                  ...item,
+                  _sectionName: section.Menu, // Keep track of which section it belongs to
+                });
+              });
+            }
+          });
+          console.log('[MenuScreen] Extracted', menuList.length, 'items from nested structure');
+        } else {
+          // It's already a flat array
+          menuList = menuData;
+          console.log('[MenuScreen] Menu is flat array with', menuList.length, 'items');
+        }
       } else if (menuData && menuData.items && Array.isArray(menuData.items)) {
         menuList = menuData.items;
-      } else if (menuData && typeof menuData === 'object') {
-        menuList = Object.values(menuData).filter(m => m && typeof m === 'object' && m.name);
+        console.log('[MenuScreen] Menu has items array with', menuList.length, 'items');
       }
 
       console.log('[MenuScreen] Total menus loaded:', menuList.length);
       if (menuList.length > 0) {
-        console.log('[MenuScreen] Sample menu:', JSON.stringify(menuList[0]));
+        console.log('[MenuScreen] Sample menu:', JSON.stringify(menuList[0]).substring(0, 500));
       }
 
       setMenus(menuList);
