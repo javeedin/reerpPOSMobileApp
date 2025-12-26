@@ -4,7 +4,7 @@ import axios from 'axios';
 
 // GitHub raw file URL - This is your single source of truth for version info
 // Update this file in your repo to trigger updates for all users
-const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/main/version.json';
+const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/claude/general-session-3r6VJ/version.json';
 
 /**
  * Get current app version from app.json
