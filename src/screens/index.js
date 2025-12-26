@@ -34,3 +34,8 @@ export { default as StoreRequestsScreen } from './StoreRequestsScreen';
 export { default as YouScreen } from './YouScreen';
 export { default as MenuScreen } from './MenuScreen';
 export { default as AutoPilotScreen } from './AutoPilotScreen';
+// CRM screens
+export { default as CRMHomeScreen } from './CRMHomeScreen';
+export { default as CustomerDetailScreen } from './CustomerDetailScreen';
+export { default as CustomerSearchScreen } from './CustomerSearchScreen';
+export { default as CustomerListScreen } from './CustomerListScreen';

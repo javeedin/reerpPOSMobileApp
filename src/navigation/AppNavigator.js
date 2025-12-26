@@ -23,6 +23,11 @@ import {
   CreditCheckScreen,
   HistoryOrdersScreen,
   StoreRequestsScreen,
+  // CRM screens
+  CRMHomeScreen,
+  CustomerDetailScreen,
+  CustomerSearchScreen,
+  CustomerListScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -69,6 +74,11 @@ const MainStack = () => {
       <Stack.Screen name="HistoryOrders" component={HistoryOrdersScreen} />
       {/* Store requests screen */}
       <Stack.Screen name="StoreRequests" component={StoreRequestsScreen} />
+      {/* CRM screens */}
+      <Stack.Screen name="CRMHome" component={CRMHomeScreen} />
+      <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
+      <Stack.Screen name="CustomerSearch" component={CustomerSearchScreen} />
+      <Stack.Screen name="CustomerList" component={CustomerListScreen} />
     </Stack.Navigator>
   );
 };
