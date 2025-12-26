@@ -2,12 +2,9 @@ import { Linking, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import axios from 'axios';
 
-// Your version API endpoint - UPDATE THIS with your actual endpoint
-// Option 1: Use your existing Oracle ORDS API
-const VERSION_API_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/APPVERSION/CHECK';
-
-// Fallback: GitHub raw file URL (use your actual branch)
-const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/claude/general-session-3r6VJ/version.json';
+// GitHub raw file URL - This is your single source of truth for version info
+// Update this file in your repo to trigger updates for all users
+const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/main/version.json';
 
 /**
  * Get current app version from app.json
@@ -54,20 +51,17 @@ export const checkForUpdate = async () => {
   console.log('[VersionService] Current app version:', currentVersion);
 
   try {
-    // Try primary API first
-    let response;
-    try {
-      response = await axios.get(VERSION_API_URL, { timeout: 10000 });
-    } catch (primaryError) {
-      console.log('[VersionService] Primary API failed, trying GitHub fallback...');
-      response = await axios.get(GITHUB_VERSION_URL, { timeout: 10000 });
-    }
+    // Fetch version info from GitHub
+    console.log('[VersionService] Checking GitHub for updates...');
+    const response = await axios.get(GITHUB_VERSION_URL, {
+      timeout: 10000,
+      headers: { 'Cache-Control': 'no-cache' } // Avoid cached responses
+    });
 
     const versionInfo = response.data;
-    console.log('[VersionService] Server version info:', versionInfo);
+    console.log('[VersionService] GitHub version info:', versionInfo);
 
-    // Handle array response (Oracle ORDS returns array)
-    const config = Array.isArray(versionInfo) ? versionInfo[0] : versionInfo;
+    const config = versionInfo;
 
     if (!config) {
       console.log('[VersionService] No version config found');
