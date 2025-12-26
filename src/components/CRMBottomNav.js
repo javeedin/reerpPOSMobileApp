@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   // Floating button container - bottom aligned with icons
   floatingContainer: {
     position: 'absolute',
-    bottom: 18,
+    bottom: 8,
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
