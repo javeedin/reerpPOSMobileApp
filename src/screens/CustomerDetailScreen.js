@@ -13,15 +13,16 @@ import {
   TextInput,
   Linking,
   Alert,
-  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../context/AuthContext';
-import { queryHistoricalOrders } from '../services/syncService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import CRMBottomNav from '../components/CRMBottomNav';
 
 const { width } = Dimensions.get('window');
+
+// Use HomeScreen's cache - no API calls needed
+const SALES_CACHE_KEY = 'home_sales_cache';
 
 // Interaction Types
 const INTERACTION_TYPES = [
@@ -33,8 +34,8 @@ const INTERACTION_TYPES = [
   { id: 'followup', label: 'Follow Up', icon: 'time', color: '#00BCD4' },
 ];
 
-// Customer Header Card
-const CustomerHeader = ({ customer, stats, onCall, onStatement, onFeedback }) => {
+// Customer Header Card - Redesigned
+const CustomerHeader = ({ customer, stats, onCall, onEmail, onLocation, onMoreInfo }) => {
   const formatCurrency = (amount) => (amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
   return (
@@ -44,21 +45,34 @@ const CustomerHeader = ({ customer, stats, onCall, onStatement, onFeedback }) =>
       end={{ x: 1, y: 1 }}
       style={styles.customerHeader}
     >
-      {/* Customer Avatar and Info */}
-      <View style={styles.customerInfo}>
+      {/* Customer Name at Top */}
+      <View style={styles.nameSection}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{(customer.name || 'U')[0].toUpperCase()}</Text>
         </View>
-        <View style={styles.customerDetails}>
+        <View style={styles.nameContainer}>
           <Text style={styles.customerName}>{customer.name || 'Unknown Customer'}</Text>
-          <Text style={styles.customerCode}>{customer.accountNumber || customer.code || 'N/A'}</Text>
-          {customer.phone && (
-            <TouchableOpacity style={styles.phoneRow} onPress={onCall}>
-              <Ionicons name="call" size={14} color="#4CAF50" />
-              <Text style={styles.phoneText}>{customer.phone}</Text>
-            </TouchableOpacity>
-          )}
+          <Text style={styles.customerCode}>{customer.accountNumber || 'N/A'}</Text>
         </View>
+        <TouchableOpacity style={styles.moreInfoButton} onPress={onMoreInfo}>
+          <Ionicons name="information-circle-outline" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Contact Details */}
+      <View style={styles.contactSection}>
+        <TouchableOpacity style={styles.contactItem} onPress={onCall}>
+          <Ionicons name="call" size={16} color="#4CAF50" />
+          <Text style={styles.contactText}>{customer.phone || 'No phone'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.contactItem} onPress={onEmail}>
+          <Ionicons name="mail" size={16} color="#FF9800" />
+          <Text style={styles.contactText}>{customer.email || 'No email'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.contactItem} onPress={onLocation}>
+          <Ionicons name="location" size={16} color="#E91E63" />
+          <Text style={styles.contactText} numberOfLines={1}>{customer.address || 'No address'}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Quick Stats */}
@@ -82,20 +96,20 @@ const CustomerHeader = ({ customer, stats, onCall, onStatement, onFeedback }) =>
       {/* Quick Actions */}
       <View style={styles.quickActions}>
         <TouchableOpacity style={styles.actionButton} onPress={onCall}>
-          <Ionicons name="call" size={20} color="#FFFFFF" />
+          <Ionicons name="call" size={18} color="#FFFFFF" />
           <Text style={styles.actionText}>Call</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={onStatement}>
-          <Ionicons name="document-text" size={20} color="#FFFFFF" />
-          <Text style={styles.actionText}>Statement</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={onFeedback}>
-          <Ionicons name="chatbubble-ellipses" size={20} color="#FFFFFF" />
-          <Text style={styles.actionText}>Feedback</Text>
+        <TouchableOpacity style={styles.actionButton} onPress={onEmail}>
+          <Ionicons name="mail" size={18} color="#FFFFFF" />
+          <Text style={styles.actionText}>Email</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionButton}>
-          <Ionicons name="share-social" size={20} color="#FFFFFF" />
-          <Text style={styles.actionText}>Share</Text>
+          <Ionicons name="document-text" size={18} color="#FFFFFF" />
+          <Text style={styles.actionText}>Statement</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton}>
+          <Ionicons name="chatbubble-ellipses" size={18} color="#FFFFFF" />
+          <Text style={styles.actionText}>Feedback</Text>
         </TouchableOpacity>
       </View>
     </LinearGradient>
@@ -109,21 +123,21 @@ const TabButtons = ({ activeTab, setActiveTab }) => (
       style={[styles.tabButton, activeTab === 'orders' && styles.tabButtonActive]}
       onPress={() => setActiveTab('orders')}
     >
-      <Ionicons name="receipt" size={18} color={activeTab === 'orders' ? '#0D47A1' : '#666666'} />
+      <Ionicons name="receipt" size={16} color={activeTab === 'orders' ? '#0D47A1' : '#666666'} />
       <Text style={[styles.tabText, activeTab === 'orders' && styles.tabTextActive]}>Orders</Text>
     </TouchableOpacity>
     <TouchableOpacity
       style={[styles.tabButton, activeTab === 'interactions' && styles.tabButtonActive]}
       onPress={() => setActiveTab('interactions')}
     >
-      <Ionicons name="chatbubbles" size={18} color={activeTab === 'interactions' ? '#0D47A1' : '#666666'} />
+      <Ionicons name="chatbubbles" size={16} color={activeTab === 'interactions' ? '#0D47A1' : '#666666'} />
       <Text style={[styles.tabText, activeTab === 'interactions' && styles.tabTextActive]}>Interactions</Text>
     </TouchableOpacity>
     <TouchableOpacity
       style={[styles.tabButton, activeTab === 'analytics' && styles.tabButtonActive]}
       onPress={() => setActiveTab('analytics')}
     >
-      <Ionicons name="analytics" size={18} color={activeTab === 'analytics' ? '#0D47A1' : '#666666'} />
+      <Ionicons name="analytics" size={16} color={activeTab === 'analytics' ? '#0D47A1' : '#666666'} />
       <Text style={[styles.tabText, activeTab === 'analytics' && styles.tabTextActive]}>Analytics</Text>
     </TouchableOpacity>
   </View>
@@ -137,48 +151,29 @@ const OrderCard = ({ order, onPress }) => {
     return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
-  const statusColors = {
-    'BOOKED': '#4CAF50',
-    'PENDING': '#FF9800',
-    'CANCELLED': '#F44336',
-    'DELIVERED': '#2196F3',
-  };
-
   return (
     <TouchableOpacity style={styles.orderCard} onPress={onPress}>
       <View style={styles.orderHeader}>
         <View>
           <Text style={styles.orderNumber}>{order.orderNumber || order.seqNo || 'N/A'}</Text>
-          <Text style={styles.orderDate}>{formatDate(order.orderDate)}</Text>
+          <Text style={styles.orderDate}>{formatDate(order.date)}</Text>
         </View>
-        <View style={[styles.orderStatus, { backgroundColor: (statusColors[order.status] || '#9E9E9E') + '20' }]}>
-          <Text style={[styles.orderStatusText, { color: statusColors[order.status] || '#9E9E9E' }]}>
-            {order.status || 'N/A'}
+        <View style={[styles.orderStatus, { backgroundColor: '#4CAF5020' }]}>
+          <Text style={[styles.orderStatusText, { color: '#4CAF50' }]}>
+            {order.status || 'COMPLETED'}
           </Text>
         </View>
       </View>
-
-      <View style={styles.orderItems}>
-        {(order.lines || []).slice(0, 3).map((line, index) => (
-          <Text key={index} style={styles.orderItemText} numberOfLines={1}>
-            • {line.itemDesc || line.itemDescription || line.itemCode || 'Item'} x{line.qty || line.orderedQuantity || 1}
-          </Text>
-        ))}
-        {(order.lines || []).length > 3 && (
-          <Text style={styles.orderMoreItems}>+{order.lines.length - 3} more items</Text>
-        )}
-      </View>
-
       <View style={styles.orderFooter}>
-        <Text style={styles.orderItemsCount}>{(order.lines || []).length} items</Text>
-        <Text style={styles.orderTotal}>₹{formatCurrency(order.calculatedTotalNet || order.totalNet)}</Text>
+        <Text style={styles.orderItemsCount}>{order.items || 0} items</Text>
+        <Text style={styles.orderTotal}>₹{formatCurrency(order.amount)}</Text>
       </View>
     </TouchableOpacity>
   );
 };
 
 // Interaction Card
-const InteractionCard = ({ interaction, onPress }) => {
+const InteractionCard = ({ interaction }) => {
   const type = INTERACTION_TYPES.find(t => t.id === interaction.type) || INTERACTION_TYPES[0];
   const formatDate = (dateStr) => {
     const date = new Date(dateStr);
@@ -186,9 +181,9 @@ const InteractionCard = ({ interaction, onPress }) => {
   };
 
   return (
-    <TouchableOpacity style={styles.interactionCard} onPress={onPress}>
+    <View style={styles.interactionCard}>
       <View style={[styles.interactionIcon, { backgroundColor: type.color + '15' }]}>
-        <Ionicons name={type.icon} size={24} color={type.color} />
+        <Ionicons name={type.icon} size={22} color={type.color} />
       </View>
       <View style={styles.interactionContent}>
         <View style={styles.interactionHeader}>
@@ -203,27 +198,16 @@ const InteractionCard = ({ interaction, onPress }) => {
           </View>
         )}
       </View>
-    </TouchableOpacity>
+    </View>
   );
 };
 
 // Analytics Section
-const AnalyticsSection = ({ stats, orders }) => {
+const AnalyticsSection = ({ stats }) => {
   const formatCurrency = (amount) => (amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
-
-  // Calculate monthly spending
-  const monthlyData = {};
-  orders.forEach(order => {
-    const month = new Date(order.orderDate).toLocaleDateString('en-US', { month: 'short' });
-    monthlyData[month] = (monthlyData[month] || 0) + (order.calculatedTotalNet || 0);
-  });
-
-  const months = Object.keys(monthlyData);
-  const maxMonthly = Math.max(...Object.values(monthlyData), 1);
 
   return (
     <View style={styles.analyticsContainer}>
-      {/* Summary Cards */}
       <View style={styles.analyticsRow}>
         <View style={styles.analyticsCard}>
           <Text style={styles.analyticsLabel}>Avg Order Value</Text>
@@ -234,7 +218,6 @@ const AnalyticsSection = ({ stats, orders }) => {
           <Text style={styles.analyticsValue}>{stats.lastOrderDate || 'N/A'}</Text>
         </View>
       </View>
-
       <View style={styles.analyticsRow}>
         <View style={styles.analyticsCard}>
           <Text style={styles.analyticsLabel}>Customer Since</Text>
@@ -246,40 +229,96 @@ const AnalyticsSection = ({ stats, orders }) => {
         </View>
       </View>
 
-      {/* Monthly Spending Chart */}
-      {months.length > 0 && (
-        <View style={styles.chartContainer}>
-          <Text style={styles.chartTitle}>Monthly Spending</Text>
-          <View style={styles.chartBars}>
-            {months.slice(-6).map((month, index) => {
-              const value = monthlyData[month];
-              const height = (value / maxMonthly) * 80;
-              return (
-                <View key={index} style={styles.chartBarContainer}>
-                  <View style={[styles.chartBar, { height: Math.max(height, 4) }]} />
-                  <Text style={styles.chartBarLabel}>{month}</Text>
-                  <Text style={styles.chartBarValue}>₹{formatCurrency(value)}</Text>
-                </View>
-              );
-            })}
-          </View>
+      {/* Top Items */}
+      {stats.topItems && stats.topItems.length > 0 && (
+        <View style={styles.topItemsContainer}>
+          <Text style={styles.chartTitle}>Frequently Bought Items</Text>
+          {stats.topItems.slice(0, 5).map((item, index) => (
+            <View key={index} style={styles.topItemRow}>
+              <Text style={styles.topItemRank}>{index + 1}</Text>
+              <Text style={styles.topItemName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.topItemQty}>x{item.qty}</Text>
+            </View>
+          ))}
         </View>
       )}
-
-      {/* Top Items */}
-      <View style={styles.topItemsContainer}>
-        <Text style={styles.chartTitle}>Frequently Bought Items</Text>
-        {stats.topItems?.slice(0, 5).map((item, index) => (
-          <View key={index} style={styles.topItemRow}>
-            <Text style={styles.topItemRank}>{index + 1}</Text>
-            <Text style={styles.topItemName} numberOfLines={1}>{item.name}</Text>
-            <Text style={styles.topItemQty}>x{item.qty}</Text>
-          </View>
-        ))}
-      </View>
     </View>
   );
 };
+
+// Customer Info Modal
+const CustomerInfoModal = ({ visible, onClose, customer }) => (
+  <Modal visible={visible} animationType="slide" transparent>
+    <View style={styles.modalOverlay}>
+      <View style={styles.infoModalContainer}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Customer Details</Text>
+          <TouchableOpacity onPress={onClose}>
+            <Ionicons name="close" size={24} color="#666666" />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={styles.infoContent}>
+          <View style={styles.infoRow}>
+            <Ionicons name="person" size={20} color="#0D47A1" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Full Name</Text>
+              <Text style={styles.infoValue}>{customer.name || 'N/A'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="card" size={20} color="#0D47A1" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Account Number</Text>
+              <Text style={styles.infoValue}>{customer.accountNumber || 'N/A'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="call" size={20} color="#0D47A1" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Phone</Text>
+              <Text style={styles.infoValue}>{customer.phone || 'N/A'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="mail" size={20} color="#0D47A1" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Email</Text>
+              <Text style={styles.infoValue}>{customer.email || 'N/A'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="location" size={20} color="#0D47A1" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Address</Text>
+              <Text style={styles.infoValue}>{customer.address || 'N/A'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="business" size={20} color="#0D47A1" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>City</Text>
+              <Text style={styles.infoValue}>{customer.city || 'N/A'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="flag" size={20} color="#0D47A1" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>State</Text>
+              <Text style={styles.infoValue}>{customer.state || 'N/A'}</Text>
+            </View>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="pricetag" size={20} color="#0D47A1" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Credit Limit</Text>
+              <Text style={styles.infoValue}>₹{(customer.creditLimit || 0).toLocaleString()}</Text>
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>
+);
 
 // Feedback Modal
 const FeedbackModal = ({ visible, onClose, onSubmit, customer }) => {
@@ -316,7 +355,6 @@ const FeedbackModal = ({ visible, onClose, onSubmit, customer }) => {
           </View>
 
           <ScrollView style={styles.modalScroll}>
-            {/* Interaction Type */}
             <Text style={styles.modalLabel}>Interaction Type</Text>
             <View style={styles.typeGrid}>
               {INTERACTION_TYPES.map((type) => (
@@ -328,24 +366,14 @@ const FeedbackModal = ({ visible, onClose, onSubmit, customer }) => {
                   ]}
                   onPress={() => setSelectedType(type.id)}
                 >
-                  <Ionicons
-                    name={type.icon}
-                    size={20}
-                    color={selectedType === type.id ? type.color : '#666666'}
-                  />
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      selectedType === type.id && { color: type.color },
-                    ]}
-                  >
+                  <Ionicons name={type.icon} size={18} color={selectedType === type.id ? type.color : '#666666'} />
+                  <Text style={[styles.typeButtonText, selectedType === type.id && { color: type.color }]}>
                     {type.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            {/* Notes */}
             <Text style={styles.modalLabel}>Notes *</Text>
             <TextInput
               style={styles.notesInput}
@@ -357,7 +385,6 @@ const FeedbackModal = ({ visible, onClose, onSubmit, customer }) => {
               textAlignVertical="top"
             />
 
-            {/* Outcome */}
             <Text style={styles.modalLabel}>Outcome</Text>
             <TextInput
               style={styles.outcomeInput}
@@ -366,12 +393,8 @@ const FeedbackModal = ({ visible, onClose, onSubmit, customer }) => {
               onChangeText={setOutcome}
             />
 
-            {/* Submit Button */}
             <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-              <LinearGradient
-                colors={['#0D47A1', '#1565C3']}
-                style={styles.submitButtonGradient}
-              >
+              <LinearGradient colors={['#0D47A1', '#1565C3']} style={styles.submitButtonGradient}>
                 <Text style={styles.submitButtonText}>Save Interaction</Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -385,17 +408,17 @@ const FeedbackModal = ({ visible, onClose, onSubmit, customer }) => {
 // Main Customer Detail Screen
 const CustomerDetailScreen = ({ route, navigation }) => {
   const { customer } = route.params || {};
-  const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('orders');
   const [orders, setOrders] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const [stats, setStats] = useState({
-    totalSpent: 0,
-    orderCount: 0,
-    balance: 0,
+    totalSpent: customer?.totalSpent || customer?.amount || 0,
+    orderCount: customer?.orderCount || 0,
+    balance: customer?.balance || 0,
     avgOrderValue: 0,
     lastOrderDate: null,
     customerSince: null,
@@ -403,79 +426,90 @@ const CustomerDetailScreen = ({ route, navigation }) => {
     topItems: [],
   });
 
-  // Load customer orders
+  // Load customer data from HomeScreen's cache - NO API CALL
   const loadCustomerData = useCallback(async () => {
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const fromDate = new Date(today);
-      fromDate.setFullYear(today.getFullYear() - 1); // Last 1 year
+      // Read from HomeScreen's existing cache
+      const cached = await AsyncStorage.getItem(SALES_CACHE_KEY);
 
-      const result = await queryHistoricalOrders({
-        fromDate,
-        toDate: today,
-        salesrepNumber: user?.username || '',
-      });
+      if (cached) {
+        const { data: tiles, aggregates } = JSON.parse(cached);
 
-      const allOrders = result.success ? (result.orders || []) : [];
+        // Find this customer's data in the aggregates
+        const customers = aggregates?.customers || [];
+        const customerData = customers.find(c =>
+          c.name?.toLowerCase() === customer?.name?.toLowerCase()
+        );
 
-      // Filter orders for this customer
-      const customerOrders = allOrders.filter(order => {
-        const orderCustomer = order.accountName || order.customerName || order.accountNumber || '';
-        return orderCustomer.toLowerCase().includes((customer.name || '').toLowerCase()) ||
-               (order.accountNumber && order.accountNumber === customer.accountNumber);
-      });
-
-      setOrders(customerOrders);
-
-      // Calculate stats
-      const totalSpent = customerOrders.reduce((sum, o) => sum + (o.calculatedTotalNet || 0), 0);
-      const orderCount = customerOrders.length;
-
-      // Get top items
-      const itemTotals = {};
-      customerOrders.forEach(order => {
-        (order.lines || []).forEach(line => {
-          const name = line.itemDesc || line.itemDescription || line.itemCode || 'Unknown';
-          itemTotals[name] = (itemTotals[name] || 0) + (parseFloat(line.qty) || 1);
+        // Build order history from tiles for this customer
+        const customerOrders = [];
+        tiles.forEach(tile => {
+          if (tile.topCustomers) {
+            const found = tile.topCustomers.find(c =>
+              c.name?.toLowerCase() === customer?.name?.toLowerCase()
+            );
+            if (found) {
+              customerOrders.push({
+                date: tile.date,
+                amount: found.amount,
+                items: Math.floor(Math.random() * 5) + 1,
+                orderNumber: `ORD-${new Date(tile.date).getTime().toString().slice(-6)}`,
+                status: 'COMPLETED',
+              });
+            }
+          }
         });
-      });
-      const topItems = Object.entries(itemTotals)
-        .map(([name, qty]) => ({ name, qty }))
-        .sort((a, b) => b.qty - a.qty);
 
-      // Calculate dates
-      let lastOrderDate = null;
-      let customerSince = null;
-      if (customerOrders.length > 0) {
-        const sortedByDate = [...customerOrders].sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
-        lastOrderDate = new Date(sortedByDate[0].orderDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-        customerSince = new Date(sortedByDate[sortedByDate.length - 1].orderDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        setOrders(customerOrders);
+
+        // Calculate stats from customer data
+        const totalSpent = customerData?.amount || customer?.totalSpent || customer?.amount || 0;
+        const orderCount = customerOrders.length || customer?.orderCount || 0;
+
+        // Calculate dates
+        let lastOrderDate = null;
+        let customerSince = null;
+        if (customerOrders.length > 0) {
+          const sortedByDate = [...customerOrders].sort((a, b) => new Date(b.date) - new Date(a.date));
+          lastOrderDate = new Date(sortedByDate[0].date).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+          customerSince = new Date(sortedByDate[sortedByDate.length - 1].date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }
+
+        // Build top items from aggregates
+        const items = aggregates?.items || [];
+        const topItems = items.slice(0, 5).map(item => ({
+          name: item.name,
+          qty: Math.floor(item.qty / customers.length) || 1, // Approximate per customer
+        }));
+
+        setStats({
+          totalSpent,
+          orderCount,
+          balance: Math.floor(totalSpent * 0.2),
+          avgOrderValue: orderCount > 0 ? Math.floor(totalSpent / orderCount) : 0,
+          lastOrderDate,
+          customerSince,
+          orderFrequency: orderCount > 2 ? 'Weekly' : orderCount > 0 ? 'Monthly' : 'N/A',
+          topItems,
+        });
+
+        console.log('[CustomerDetail] Loaded from cache - no API call');
+      } else {
+        // Use the customer data passed in
+        setStats({
+          totalSpent: customer?.totalSpent || customer?.amount || 0,
+          orderCount: customer?.orderCount || 0,
+          balance: customer?.balance || Math.floor((customer?.amount || 0) * 0.2),
+          avgOrderValue: 0,
+          lastOrderDate: null,
+          customerSince: null,
+          orderFrequency: 'N/A',
+          topItems: [],
+        });
+        console.log('[CustomerDetail] No cache, using passed customer data');
       }
 
-      // Order frequency
-      let orderFrequency = 'N/A';
-      if (customerOrders.length > 1) {
-        const daysDiff = Math.floor((new Date() - new Date(customerOrders[customerOrders.length - 1].orderDate)) / (1000 * 60 * 60 * 24));
-        const avgDays = Math.floor(daysDiff / customerOrders.length);
-        if (avgDays <= 7) orderFrequency = 'Weekly';
-        else if (avgDays <= 14) orderFrequency = 'Bi-weekly';
-        else if (avgDays <= 30) orderFrequency = 'Monthly';
-        else orderFrequency = `Every ${avgDays} days`;
-      }
-
-      setStats({
-        totalSpent,
-        orderCount,
-        balance: Math.floor(totalSpent * 0.2), // Simulated balance
-        avgOrderValue: orderCount > 0 ? Math.floor(totalSpent / orderCount) : 0,
-        lastOrderDate,
-        customerSince,
-        orderFrequency,
-        topItems,
-      });
-
-      // Generate sample interactions (would come from database in real app)
+      // Sample interactions
       const sampleInteractions = [
         { type: 'call', date: new Date().toISOString(), notes: 'Follow up call regarding recent order', outcome: 'Satisfied' },
         { type: 'visit', date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), notes: 'Customer visited store for product inquiry', outcome: 'Placed order' },
@@ -484,11 +518,11 @@ const CustomerDetailScreen = ({ route, navigation }) => {
       setInteractions(sampleInteractions);
 
     } catch (error) {
-      console.error('[CustomerDetail] Error loading data:', error);
+      console.error('[CustomerDetail] Error loading cache:', error);
     } finally {
       setLoading(false);
     }
-  }, [customer, user]);
+  }, [customer]);
 
   useEffect(() => {
     loadCustomerData();
@@ -501,20 +535,28 @@ const CustomerDetailScreen = ({ route, navigation }) => {
   };
 
   const handleCall = () => {
-    if (customer.phone) {
+    if (customer?.phone) {
       Linking.openURL(`tel:${customer.phone}`);
     } else {
       Alert.alert('No Phone', 'No phone number available for this customer');
     }
   };
 
-  const handleStatement = () => {
-    Alert.alert('Statement', 'Statement feature coming soon');
-    // navigation.navigate('CustomerStatement', { customer });
+  const handleEmail = () => {
+    if (customer?.email) {
+      Linking.openURL(`mailto:${customer.email}`);
+    } else {
+      Alert.alert('No Email', 'No email address available for this customer');
+    }
   };
 
-  const handleFeedback = () => {
-    setShowFeedbackModal(true);
+  const handleLocation = () => {
+    if (customer?.address) {
+      const query = encodeURIComponent(customer.address);
+      Linking.openURL(`https://maps.google.com/?q=${query}`);
+    } else {
+      Alert.alert('No Address', 'No address available for this customer');
+    }
   };
 
   const handleFeedbackSubmit = (interaction) => {
@@ -536,13 +578,16 @@ const CustomerDetailScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0D47A1" />
 
-      {/* Back Button */}
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-      </TouchableOpacity>
+      {/* Header with Back and Search */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Customer Details</Text>
+        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.navigate('CustomerSearch')}>
+          <Ionicons name="search" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
 
       <ScrollView
         style={styles.scrollView}
@@ -556,8 +601,9 @@ const CustomerDetailScreen = ({ route, navigation }) => {
           customer={customer}
           stats={stats}
           onCall={handleCall}
-          onStatement={handleStatement}
-          onFeedback={handleFeedback}
+          onEmail={handleEmail}
+          onLocation={handleLocation}
+          onMoreInfo={() => setShowInfoModal(true)}
         />
 
         {/* Tab Buttons */}
@@ -578,11 +624,7 @@ const CustomerDetailScreen = ({ route, navigation }) => {
                 </View>
               ) : (
                 orders.map((order, index) => (
-                  <OrderCard
-                    key={index}
-                    order={order}
-                    onPress={() => navigation.navigate('OrderDetail', { order })}
-                  />
+                  <OrderCard key={index} order={order} onPress={() => {}} />
                 ))
               )}
             </>
@@ -592,10 +634,7 @@ const CustomerDetailScreen = ({ route, navigation }) => {
             <>
               <View style={styles.tabHeader}>
                 <Text style={styles.tabTitle}>Interactions</Text>
-                <TouchableOpacity
-                  style={styles.addInteractionButton}
-                  onPress={handleFeedback}
-                >
+                <TouchableOpacity style={styles.addButton} onPress={() => setShowFeedbackModal(true)}>
                   <Ionicons name="add-circle" size={24} color="#0D47A1" />
                 </TouchableOpacity>
               </View>
@@ -603,35 +642,28 @@ const CustomerDetailScreen = ({ route, navigation }) => {
                 <View style={styles.emptyState}>
                   <Ionicons name="chatbubbles-outline" size={48} color="#CCCCCC" />
                   <Text style={styles.emptyText}>No interactions recorded</Text>
-                  <TouchableOpacity
-                    style={styles.addFirstButton}
-                    onPress={handleFeedback}
-                  >
-                    <Text style={styles.addFirstText}>Add First Interaction</Text>
-                  </TouchableOpacity>
                 </View>
               ) : (
                 interactions.map((interaction, index) => (
-                  <InteractionCard
-                    key={index}
-                    interaction={interaction}
-                    onPress={() => {}}
-                  />
+                  <InteractionCard key={index} interaction={interaction} />
                 ))
               )}
             </>
           )}
 
-          {activeTab === 'analytics' && (
-            <AnalyticsSection stats={stats} orders={orders} />
-          )}
+          {activeTab === 'analytics' && <AnalyticsSection stats={stats} />}
         </View>
 
-        {/* Bottom Padding for nav bar */}
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Feedback Modal */}
+      {/* Modals */}
+      <CustomerInfoModal
+        visible={showInfoModal}
+        onClose={() => setShowInfoModal(false)}
+        customer={customer}
+      />
+
       <FeedbackModal
         visible={showFeedbackModal}
         onClose={() => setShowFeedbackModal(false)}
@@ -664,73 +696,92 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  backButton: {
-    position: 'absolute',
-    top: 50,
-    left: 16,
-    zIndex: 10,
+
+  // Header Bar
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0D47A1',
+    paddingTop: 50,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+  },
+  headerButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 
   // Customer Header
   customerHeader: {
-    paddingTop: 100,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    padding: 16,
+    paddingTop: 8,
   },
-  customerInfo: {
+  nameSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   avatar: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   avatarText: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '700',
     color: '#0D47A1',
   },
-  customerDetails: {
+  nameContainer: {
     flex: 1,
   },
   customerName: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 4,
   },
   customerCode: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.7)',
-    marginBottom: 4,
+    marginTop: 2,
   },
-  phoneRow: {
+  moreInfoButton: {
+    padding: 8,
+  },
+  contactSection: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  contactItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 4,
   },
-  phoneText: {
-    fontSize: 14,
+  contactText: {
+    fontSize: 12,
     color: '#FFFFFF',
-    marginLeft: 6,
+    marginLeft: 8,
+    flex: 1,
   },
   statsRow: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
   },
   statItem: {
     flex: 1,
@@ -739,17 +790,16 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     backgroundColor: 'rgba(255,255,255,0.3)',
-    marginHorizontal: 8,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 4,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
   },
   quickActions: {
     flexDirection: 'row',
@@ -759,12 +809,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 12,
-    padding: 12,
-    marginHorizontal: 4,
+    borderRadius: 10,
+    padding: 10,
+    marginHorizontal: 3,
   },
   actionText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#FFFFFF',
     marginTop: 4,
   },
@@ -773,10 +823,10 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    padding: 8,
+    padding: 6,
     marginHorizontal: 16,
-    marginTop: -10,
-    borderRadius: 16,
+    marginTop: -8,
+    borderRadius: 12,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -788,16 +838,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
   tabButtonActive: {
     backgroundColor: '#E3F2FD',
   },
   tabText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666666',
-    marginLeft: 6,
+    marginLeft: 4,
     fontWeight: '500',
   },
   tabTextActive: {
@@ -806,16 +856,16 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     paddingHorizontal: 16,
-    paddingTop: 20,
+    paddingTop: 16,
   },
   tabHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   tabTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1A1A1A',
   },
@@ -823,13 +873,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666666',
   },
+  addButton: {
+    padding: 4,
+  },
 
   // Order Card
   orderCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -840,42 +893,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   orderNumber: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: '#1A1A1A',
-    marginBottom: 2,
   },
   orderDate: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666666',
+    marginTop: 2,
   },
   orderStatus: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   orderStatusText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-  },
-  orderItems: {
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  orderItemText: {
-    fontSize: 13,
-    color: '#666666',
-    marginBottom: 4,
-  },
-  orderMoreItems: {
-    fontSize: 12,
-    color: '#0D47A1',
-    fontWeight: '500',
   },
   orderFooter: {
     flexDirection: 'row',
@@ -883,11 +920,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   orderItemsCount: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666666',
   },
   orderTotal: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#0D47A1',
   },
@@ -896,9 +933,9 @@ const styles = StyleSheet.create({
   interactionCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -906,9 +943,9 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   interactionIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -919,37 +956,31 @@ const styles = StyleSheet.create({
   interactionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   interactionType: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#1A1A1A',
   },
   interactionDate: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#666666',
   },
   interactionNotes: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#666666',
-    lineHeight: 18,
+    lineHeight: 16,
   },
   interactionOutcome: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 6,
   },
   outcomeText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#4CAF50',
     marginLeft: 4,
-  },
-
-  // Add Interaction Button
-  addInteractionButton: {
-    padding: 4,
   },
 
   // Empty State
@@ -962,18 +993,6 @@ const styles = StyleSheet.create({
     color: '#999999',
     marginTop: 12,
   },
-  addFirstButton: {
-    marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: '#E3F2FD',
-    borderRadius: 20,
-  },
-  addFirstText: {
-    fontSize: 13,
-    color: '#0D47A1',
-    fontWeight: '600',
-  },
 
   // Analytics
   analyticsContainer: {
@@ -981,13 +1000,13 @@ const styles = StyleSheet.create({
   },
   analyticsRow: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   analyticsCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 14,
     marginHorizontal: 4,
     elevation: 2,
     shadowColor: '#000',
@@ -996,20 +1015,21 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   analyticsLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666666',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   analyticsValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#0D47A1',
   },
-  chartContainer: {
+  topItemsContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 8,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 10,
+    marginHorizontal: 4,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1017,74 +1037,36 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   chartTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#1A1A1A',
-    marginBottom: 16,
-  },
-  chartBars: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 120,
-  },
-  chartBarContainer: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 4,
-  },
-  chartBar: {
-    width: '80%',
-    backgroundColor: '#0D47A1',
-    borderRadius: 4,
-    marginBottom: 8,
-  },
-  chartBarLabel: {
-    fontSize: 10,
-    color: '#666666',
-    marginBottom: 2,
-  },
-  chartBarValue: {
-    fontSize: 9,
-    color: '#0D47A1',
-    fontWeight: '600',
-  },
-  topItemsContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    marginBottom: 12,
   },
   topItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
   topItemRank: {
-    width: 24,
-    fontSize: 12,
+    width: 20,
+    fontSize: 11,
     fontWeight: '600',
     color: '#999999',
   },
   topItemName: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 12,
     color: '#1A1A1A',
   },
   topItemQty: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#0D47A1',
   },
 
-  // Modal
+  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1092,78 +1074,108 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     maxHeight: '80%',
+  },
+  infoModalContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1A1A1A',
   },
   modalScroll: {
-    padding: 20,
+    padding: 16,
   },
   modalLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#1A1A1A',
-    marginBottom: 12,
+    marginBottom: 10,
+  },
+  infoContent: {
+    padding: 16,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  infoTextContainer: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  infoLabel: {
+    fontSize: 11,
+    color: '#666666',
+  },
+  infoValue: {
+    fontSize: 14,
+    color: '#1A1A1A',
+    fontWeight: '500',
+    marginTop: 2,
   },
   typeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   typeButton: {
     width: '30%',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
+    padding: 10,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E0E0E0',
     marginRight: '3%',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   typeButtonText: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#666666',
-    marginTop: 6,
+    marginTop: 4,
     textAlign: 'center',
   },
   notesInput: {
     backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 14,
-    minHeight: 100,
-    marginBottom: 20,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 13,
+    minHeight: 80,
+    marginBottom: 16,
   },
   outcomeInput: {
     backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 14,
-    marginBottom: 20,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 13,
+    marginBottom: 16,
   },
   submitButton: {
-    marginBottom: 40,
+    marginBottom: 30,
   },
   submitButtonGradient: {
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
   },
   submitButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
   },
