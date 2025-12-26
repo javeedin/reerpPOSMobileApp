@@ -4,11 +4,10 @@ import axios from 'axios';
 
 // Your version API endpoint - UPDATE THIS with your actual endpoint
 // Option 1: Use your existing Oracle ORDS API
-// Option 2: Use a free JSON hosting like jsonbin.io, npoint.io, or GitHub raw file
 const VERSION_API_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/APPVERSION/CHECK';
 
-// Fallback: GitHub raw file URL (create a version.json in your repo)
-const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/main/version.json';
+// Fallback: GitHub raw file URL (use your actual branch)
+const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/claude/general-session-3r6VJ/version.json';
 
 /**
  * Get current app version from app.json
