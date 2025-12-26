@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
+import CRMBottomNav from '../components/CRMBottomNav';
 
 // Use the same cache key as HomeScreen
 const SALES_CACHE_KEY = 'home_sales_cache';
@@ -215,7 +216,7 @@ const CustomerListScreen = ({ route, navigation }) => {
           data={customers}
           renderItem={renderCustomer}
           keyExtractor={(item, index) => item.accountNumber || `customer-${index}`}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 120 }]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -225,6 +226,9 @@ const CustomerListScreen = ({ route, navigation }) => {
           }
         />
       )}
+
+      {/* CRM Bottom Navigation */}
+      <CRMBottomNav navigation={navigation} activeTab="" />
     </View>
   );
 };

@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders } from '../services/syncService';
+import CRMBottomNav from '../components/CRMBottomNav';
 
 const { width } = Dimensions.get('window');
 
@@ -626,7 +627,8 @@ const CustomerDetailScreen = ({ route, navigation }) => {
           )}
         </View>
 
-        <View style={{ height: 100 }} />
+        {/* Bottom Padding for nav bar */}
+        <View style={{ height: 120 }} />
       </ScrollView>
 
       {/* Feedback Modal */}
@@ -636,6 +638,9 @@ const CustomerDetailScreen = ({ route, navigation }) => {
         onSubmit={handleFeedbackSubmit}
         customer={customer}
       />
+
+      {/* CRM Bottom Navigation */}
+      <CRMBottomNav navigation={navigation} activeTab="" />
     </View>
   );
 };

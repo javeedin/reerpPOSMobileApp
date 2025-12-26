@@ -20,8 +20,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { queryHistoricalOrders } from '../services/syncService';
+import CRMBottomNav from '../components/CRMBottomNav';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 40;
@@ -32,12 +33,12 @@ const SALES_CACHE_KEY = 'home_sales_cache';
 
 // Service Icons Data
 const QUICK_SERVICES = [
+  { id: 'new_customer', icon: 'person-add-outline', label: 'Create\nCustomer', color: '#4CAF50', screen: 'CreateCustomer' },
   { id: 'balance', icon: 'wallet-outline', label: 'Check\nBalance', color: '#2196F3', screen: 'CustomerSearch', params: { mode: 'balance' } },
-  { id: 'statement', icon: 'document-text-outline', label: 'Send\nStatement', color: '#4CAF50', screen: 'CustomerSearch', params: { mode: 'statement' } },
-  { id: 'call', icon: 'call-outline', label: 'Call\nCustomer', color: '#FF9800', screen: 'CustomerSearch', params: { mode: 'call' } },
+  { id: 'statement', icon: 'document-text-outline', label: 'Send\nStatement', color: '#FF9800', screen: 'CustomerSearch', params: { mode: 'statement' } },
+  { id: 'call', icon: 'call-outline', label: 'Call\nCustomer', color: '#9C27B0', screen: 'CustomerSearch', params: { mode: 'call' } },
   { id: 'feedback', icon: 'chatbubble-ellipses-outline', label: 'Record\nFeedback', color: '#E91E63', screen: 'CustomerSearch', params: { mode: 'feedback' } },
-  { id: 'pos', icon: 'storefront-outline', label: 'POS\nHome', color: '#9C27B0', screen: 'POSHome' },
-  { id: 'orders', icon: 'receipt-outline', label: 'Customer\nOrders', color: '#00BCD4', screen: 'CustomerSearch', params: { mode: 'orders' } },
+  { id: 'pos', icon: 'storefront-outline', label: 'POS\nHome', color: '#00BCD4', screen: 'POSHome' },
 ];
 
 const SERVICES = [
@@ -698,55 +699,12 @@ const CRMHomeScreen = ({ navigation }) => {
         {/* Recent Activity */}
         <RecentActivitySection activities={crmData.recentActivity} navigation={navigation} />
 
-        {/* Bottom Padding */}
-        <View style={{ height: 100 }} />
+        {/* Bottom Padding for nav bar */}
+        <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Floating My Policies Button (like Bajaj) */}
-      <TouchableOpacity
-        style={styles.floatingButton}
-        onPress={() => navigation.navigate('CustomerList')}
-      >
-        <LinearGradient
-          colors={['#0D47A1', '#1565C3']}
-          style={styles.floatingButtonGradient}
-        >
-          <Ionicons name="people" size={24} color="#FFFFFF" />
-          <Text style={styles.floatingButtonText}>My{'\n'}Customers</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {/* Bottom Navigation Bar */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="home" size={24} color="#0D47A1" />
-          <Text style={[styles.navLabel, styles.navLabelActive]}>Home</Text>
-          <View style={styles.navIndicator} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('CustomerSearch')}
-        >
-          <Ionicons name="person-outline" size={24} color="#666666" />
-          <Text style={styles.navLabel}>Search</Text>
-        </TouchableOpacity>
-        {/* Center space for floating button */}
-        <View style={styles.navItemCenter} />
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('CRMOffers')}
-        >
-          <Ionicons name="pricetag-outline" size={24} color="#666666" />
-          <Text style={styles.navLabel}>Offers</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.navItem}
-          onPress={() => navigation.navigate('CRMMore')}
-        >
-          <Ionicons name="add-circle-outline" size={24} color="#666666" />
-          <Text style={styles.navLabel}>More</Text>
-        </TouchableOpacity>
-      </View>
+      {/* CRM Bottom Navigation with curved toolbar */}
+      <CRMBottomNav navigation={navigation} activeTab="home" />
     </View>
   );
 };
