@@ -152,10 +152,10 @@ const styles = StyleSheet.create({
     color: '#0D47A1',
     fontWeight: '600',
   },
-  // Floating button container positioned above toolbar
+  // Floating button container - bottom aligned with icons
   floatingContainer: {
     position: 'absolute',
-    bottom: 45,
+    bottom: 18,
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
@@ -163,9 +163,9 @@ const styles = StyleSheet.create({
   // Curved white background behind button
   curvedBackground: {
     position: 'absolute',
-    bottom: -10,
+    bottom: -20,
     width: 90,
-    height: 50,
+    height: 56,
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 45,
     borderTopRightRadius: 45,
