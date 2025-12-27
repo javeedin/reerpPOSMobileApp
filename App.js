@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider } from './src/context/AuthContext';
 import { AppNavigator } from './src/navigation';
 import ForceUpdateModal from './src/components/ForceUpdateModal';
-import { checkForUpdate, openDownloadUrl, getCurrentVersion } from './src/services/versionService';
+import { checkForUpdate, openDownloadUrl } from './src/services/versionService';
 
 export default function App() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -57,18 +57,20 @@ export default function App() {
         <StatusBar style="light" backgroundColor="#0A1628" />
         <AppNavigator />
 
-        {/* Force Update Modal */}
-        <ForceUpdateModal
-          visible={showUpdateModal}
-          currentVersion={getCurrentVersion()}
-          latestVersion={updateInfo?.latestVersion || '1.0.0'}
-          releaseNotes={updateInfo?.releaseNotes || ''}
-          downloadUrl={updateInfo?.downloadUrl || ''}
-          forceUpdate={updateInfo?.forceUpdate || false}
-          onUpdate={handleUpdate}
-          onLater={handleLater}
-          isDownloading={isDownloading}
-        />
+        {/* Force Update Modal - only show when updateInfo is available */}
+        {updateInfo && (
+          <ForceUpdateModal
+            visible={showUpdateModal}
+            currentVersion={updateInfo.installedVersion || '1.0.0'}
+            latestVersion={updateInfo.latestVersion || '1.0.0'}
+            releaseNotes={updateInfo.releaseNotes || ''}
+            downloadUrl={updateInfo.downloadUrl || ''}
+            forceUpdate={updateInfo.forceUpdate || false}
+            onUpdate={handleUpdate}
+            onLater={handleLater}
+            isDownloading={isDownloading}
+          />
+        )}
       </AuthProvider>
     </View>
   );
