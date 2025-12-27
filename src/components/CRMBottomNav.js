@@ -4,9 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,97 +12,54 @@ const CRMBottomNav = ({ navigation, activeTab = 'home' }) => {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 10);
 
+  const navItems = [
+    { key: 'home', label: 'Home', icon: 'home', route: 'CRMHome' },
+    { key: 'search', label: 'My Profile', icon: 'person', route: 'CustomerSearch' },
+    { key: 'customers', label: 'Customers', icon: 'people', route: 'CustomerList' },
+    { key: 'offers', label: 'Offers', icon: 'pricetag', route: null },
+    { key: 'more', label: 'More', icon: 'apps', route: 'MainTabs' },
+  ];
+
   return (
     <View style={[styles.container, { paddingBottom: bottomPadding }]}>
-      {/* Main Toolbar Background */}
-      <View style={styles.toolbarBackground}>
-        {/* Navigation Items */}
-        <View style={styles.navContent}>
-          {/* Home */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => navigation.navigate('CRMHome')}
-          >
-            <Ionicons
-              name={activeTab === 'home' ? 'home' : 'home-outline'}
-              size={24}
-              color={activeTab === 'home' ? '#0D47A1' : '#666666'}
-            />
-            <Text style={[styles.navLabel, activeTab === 'home' && styles.navLabelActive]}>
-              Home
-            </Text>
-          </TouchableOpacity>
+      <View style={styles.toolbar}>
+        {navItems.map((item) => {
+          const isActive = activeTab === item.key;
+          const isCenter = item.key === 'customers';
 
-          {/* My Profile */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => navigation.navigate('CustomerSearch')}
-          >
-            <Ionicons
-              name={activeTab === 'search' ? 'person' : 'person-outline'}
-              size={24}
-              color={activeTab === 'search' ? '#0D47A1' : '#666666'}
-            />
-            <Text style={[styles.navLabel, activeTab === 'search' && styles.navLabelActive]}>
-              My Profile
-            </Text>
-          </TouchableOpacity>
-
-          {/* Center Spacer for Floating Button */}
-          <View style={styles.centerSpacer} />
-
-          {/* Offers */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => {}}
-          >
-            <Ionicons
-              name={activeTab === 'offers' ? 'pricetag' : 'pricetag-outline'}
-              size={24}
-              color={activeTab === 'offers' ? '#0D47A1' : '#666666'}
-            />
-            <Text style={[styles.navLabel, activeTab === 'offers' && styles.navLabelActive]}>
-              Offers
-            </Text>
-          </TouchableOpacity>
-
-          {/* More */}
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => navigation.navigate('MainTabs', { screen: 'Home' })}
-          >
-            <Ionicons
-              name="add-circle-outline"
-              size={24}
-              color={activeTab === 'more' ? '#0D47A1' : '#666666'}
-            />
-            <Text style={[styles.navLabel, activeTab === 'more' && styles.navLabelActive]}>
-              More
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Floating Center Button with Curved Background - Above Toolbar */}
-      <View style={styles.floatingContainer}>
-        {/* White curved background behind button */}
-        <View style={styles.curvedBackground} />
-
-        {/* My Customers Button */}
-        <TouchableOpacity
-          style={styles.floatingButton}
-          onPress={() => navigation.navigate('CustomerList')}
-          activeOpacity={0.9}
-        >
-          <LinearGradient
-            colors={['#0D47A1', '#1565C3']}
-            style={styles.floatingButtonGradient}
-          >
-            <Ionicons name="people" size={22} color="#FFFFFF" />
-            <Text style={styles.floatingButtonText}>My</Text>
-            <Text style={styles.floatingButtonText}>Customers</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.navItem, isCenter && styles.centerItem]}
+              onPress={() => {
+                if (item.route === 'MainTabs') {
+                  navigation.navigate('MainTabs', { screen: 'Home' });
+                } else if (item.route) {
+                  navigation.navigate(item.route);
+                }
+              }}
+            >
+              <View style={[
+                styles.iconWrapper,
+                isCenter && styles.centerIconWrapper,
+                isCenter && isActive && styles.centerIconWrapperActive
+              ]}>
+                <Ionicons
+                  name={isActive ? item.icon : `${item.icon}-outline`}
+                  size={isCenter ? 26 : 24}
+                  color={isCenter ? '#FFFFFF' : (isActive ? '#0D47A1' : '#666666')}
+                />
+              </View>
+              <Text style={[
+                styles.navLabel,
+                isActive && styles.navLabelActive,
+                isCenter && styles.centerLabel
+              ]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -116,10 +71,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    alignItems: 'center',
-  },
-  toolbarBackground: {
-    width: '100%',
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
@@ -129,10 +80,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
   },
-  navContent: {
+  toolbar: {
     flexDirection: 'row',
-    paddingTop: 10,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 6,
   },
   navItem: {
     flex: 1,
@@ -140,8 +91,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 4,
   },
-  centerSpacer: {
-    width: 90,
+  centerItem: {
+    marginTop: -20,
+  },
+  iconWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerIconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#0D47A1',
+    elevation: 6,
+    shadowColor: '#0D47A1',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+  },
+  centerIconWrapperActive: {
+    backgroundColor: '#1565C3',
   },
   navLabel: {
     fontSize: 10,
@@ -152,46 +121,10 @@ const styles = StyleSheet.create({
     color: '#0D47A1',
     fontWeight: '600',
   },
-  // Floating button container - positioned above toolbar
-  floatingContainer: {
-    position: 'absolute',
-    bottom: 22,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Curved white background - stays above toolbar border
-  curvedBackground: {
-    position: 'absolute',
-    bottom: -8,
-    width: 90,
-    height: 48,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 45,
-    borderTopRightRadius: 45,
-  },
-  floatingButton: {
-    elevation: 12,
-    shadowColor: '#0D47A1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    zIndex: 10,
-  },
-  floatingButtonGradient: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
-  },
-  floatingButtonText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    lineHeight: 10,
+  centerLabel: {
+    marginTop: 4,
+    color: '#0D47A1',
+    fontWeight: '600',
   },
 });
 
