@@ -908,6 +908,43 @@ const HomeScreen = ({ navigation }) => {
     }, [initialLoad])
   );
 
+  // Auto-check for updates on app start
+  useEffect(() => {
+    const autoCheckUpdate = async () => {
+      try {
+        console.log('[HomeScreen] Auto-checking for updates...');
+        const result = await checkForUpdate();
+        console.log('[HomeScreen] Auto-check result:', result);
+
+        if (result.updateRequired || result.forceUpdate) {
+          setUpdateInfo(result);
+          setShowUpdateModal(true);
+
+          // Auto-open download if update available
+          if (result.downloadUrl) {
+            Alert.alert(
+              'Update Available',
+              `A new version (${result.latestVersion}) is available.\n\n${result.releaseNotes || 'Please update to get the latest features.'}`,
+              [
+                { text: 'Later', style: 'cancel' },
+                {
+                  text: 'Download Now',
+                  onPress: () => openDownloadUrl(result.downloadUrl)
+                }
+              ]
+            );
+          }
+        }
+      } catch (error) {
+        console.log('[HomeScreen] Auto-check error:', error);
+      }
+    };
+
+    // Delay check by 2 seconds to let app load first
+    const timer = setTimeout(autoCheckUpdate, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {

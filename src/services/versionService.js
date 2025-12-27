@@ -51,11 +51,16 @@ export const checkForUpdate = async () => {
   console.log('[VersionService] Current app version:', currentVersion);
 
   try {
-    // Fetch version info from GitHub
+    // Fetch version info from GitHub with cache-busting
     console.log('[VersionService] Checking GitHub for updates...');
-    const response = await axios.get(GITHUB_VERSION_URL, {
+    const cacheBuster = `?t=${Date.now()}`;
+    const response = await axios.get(GITHUB_VERSION_URL + cacheBuster, {
       timeout: 10000,
-      headers: { 'Cache-Control': 'no-cache' } // Avoid cached responses
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     });
 
     const versionInfo = response.data;
