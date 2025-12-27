@@ -23,9 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
 import { getMenuData, getMenuOptions } from '../services/api';
-// Version check temporarily disabled
-// import { checkForUpdate, openDownloadUrl } from '../services/versionService';
-// import ForceUpdateModal from '../components/ForceUpdateModal';
+import { getCurrentVersion } from '../services/versionService';
 
 const { width } = Dimensions.get('window');
 const TILE_WIDTH = width * 0.72;
@@ -1128,7 +1126,10 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
             <Text style={styles.welcomeText}>Welcome back,</Text>
-            <Text style={styles.userName}>{user?.username || 'User'}</Text>
+            <View style={styles.userNameRow}>
+              <Text style={styles.userName}>{user?.username || 'User'}</Text>
+              <Text style={styles.versionBadge}>v{getCurrentVersion()}</Text>
+            </View>
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity style={styles.headerButton} onPress={onRefresh}>
@@ -1279,7 +1280,9 @@ const styles = StyleSheet.create({
   headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerLeft: {},
   welcomeText: { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
+  userNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   userName: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', textTransform: 'capitalize' },
+  versionBadge: { fontSize: 10, color: '#4CAF50', backgroundColor: 'rgba(76,175,80,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, overflow: 'hidden' },
   headerRight: { flexDirection: 'row', gap: 6 },
   headerButton: { padding: 6, position: 'relative' },
   notificationBadge: { position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF5252' },
