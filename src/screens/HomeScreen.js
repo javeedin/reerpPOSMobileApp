@@ -13,7 +13,6 @@ import {
   BackHandler,
   Alert,
   FlatList,
-  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -908,34 +907,6 @@ const HomeScreen = ({ navigation }) => {
       initialLoad(false); // Don't force refresh on focus
     }, [initialLoad])
   );
-
-  // Auto-check for updates on app start
-  useEffect(() => {
-    const autoCheckAndDownload = async () => {
-      try {
-        console.log('[HomeScreen] Auto-checking for updates...');
-        const result = await checkForUpdate();
-        console.log('[HomeScreen] Auto-check result:', result);
-
-        if (result.updateRequired && result.downloadUrl) {
-          console.log('[HomeScreen] Update available, opening download...');
-          // Open browser directly using Linking
-          Linking.openURL(result.downloadUrl).catch(err => {
-            console.log('[HomeScreen] Failed to open URL:', err);
-          });
-        } else if (result.forceUpdate && result.downloadUrl) {
-          setUpdateInfo(result);
-          setShowUpdateModal(true);
-        }
-      } catch (error) {
-        console.log('[HomeScreen] Auto-check error:', error);
-      }
-    };
-
-    // Delay check by 2 seconds to let app load first
-    const timer = setTimeout(autoCheckAndDownload, 2000);
-    return () => clearTimeout(timer);
-  }, []);
 
   useFocusEffect(
     useCallback(() => {

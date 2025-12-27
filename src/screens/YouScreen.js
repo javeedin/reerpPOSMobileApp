@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -10,21 +10,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { getInstalledVersion } from '../services/versionService';
 import colors from '../theme/colors';
 
 const YouScreen = () => {
   const navigation = useNavigation();
   const { user, logout } = useAuth();
-  const [appVersion, setAppVersion] = useState('1.0.0');
-
-  useEffect(() => {
-    const loadVersion = async () => {
-      const version = await getInstalledVersion();
-      setAppVersion(version);
-    };
-    loadVersion();
-  }, []);
 
   const menuItems = [
     { icon: 'person-outline', title: 'Account Details', screen: 'AccountDetails' },
@@ -96,7 +86,7 @@ const YouScreen = () => {
 
         {/* Version Info */}
         <View style={styles.versionContainer}>
-          <Text style={styles.versionText}>Version {appVersion}</Text>
+          <Text style={styles.versionText}>Version 1.0.0</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
