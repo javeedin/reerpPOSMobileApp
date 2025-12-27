@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
 import { getMenuData, getMenuOptions } from '../services/api';
-import { getCurrentVersion } from '../services/versionService';
+import { getCurrentVersion, checkForUpdate, openDownloadUrl } from '../services/versionService';
 
 const { width } = Dimensions.get('window');
 const TILE_WIDTH = width * 0.72;
@@ -1062,9 +1062,37 @@ const HomeScreen = ({ navigation }) => {
     navigation.navigate('CustomerSelection', { menuConfig });
   };
 
-  // Version check temporarily disabled
-  const handleCheckUpdate = () => {
-    Alert.alert('Coming Soon', 'Version check feature temporarily disabled');
+  // Version check - manual check via button
+  const handleCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const result = await checkForUpdate();
+      console.log('[HomeScreen] Version check result:', result);
+
+      if (result.updateRequired) {
+        Alert.alert(
+          'Update Available',
+          `New version ${result.latestVersion} is available!\n\nYou have: v${result.installedVersion}`,
+          [
+            { text: 'Later', style: 'cancel' },
+            {
+              text: 'Download Now',
+              onPress: () => openDownloadUrl(result.downloadUrl)
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Up to Date',
+          `You have the latest version (v${result.installedVersion})`
+        );
+      }
+    } catch (error) {
+      console.error('[HomeScreen] Version check error:', error);
+      Alert.alert('Error', 'Could not check for updates. Please try again.');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
   };
 
   // Refresh only today's tile
