@@ -13,6 +13,7 @@ import {
   BackHandler,
   Alert,
   FlatList,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,7 +24,7 @@ import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
 import { getMenuData, getMenuOptions } from '../services/api';
-import { checkForUpdate, downloadAndInstall, openDownloadUrl, getInstalledVersion } from '../services/versionService';
+import { checkForUpdate, openDownloadUrl, getInstalledVersion } from '../services/versionService';
 import ForceUpdateModal from '../components/ForceUpdateModal';
 
 const { width } = Dimensions.get('window');
@@ -917,9 +918,11 @@ const HomeScreen = ({ navigation }) => {
         console.log('[HomeScreen] Auto-check result:', result);
 
         if (result.updateRequired && result.downloadUrl) {
-          // Auto-download: open browser and save version
-          console.log('[HomeScreen] Update available, starting download...');
-          await downloadAndInstall(result.downloadUrl, result.latestVersion);
+          console.log('[HomeScreen] Update available, opening download...');
+          // Open browser directly using Linking
+          Linking.openURL(result.downloadUrl).catch(err => {
+            console.log('[HomeScreen] Failed to open URL:', err);
+          });
         } else if (result.forceUpdate && result.downloadUrl) {
           setUpdateInfo(result);
           setShowUpdateModal(true);
