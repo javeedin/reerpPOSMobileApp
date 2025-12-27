@@ -1,36 +1,21 @@
 import { Linking, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Application from 'expo-application';
 import axios from 'axios';
 
 // GitHub raw file URL - This is your single source of truth for version info
 const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/claude/general-session-3r6VJ/version.json';
 
-// Storage keys
-const INSTALLED_VERSION_KEY = 'installed_app_version';
-
 /**
- * Get installed version from AsyncStorage
+ * Get installed version from the actual APK/app binary
+ * This reads the version from app.json that's baked into the APK
  */
-export const getInstalledVersion = async () => {
-  try {
-    const version = await AsyncStorage.getItem(INSTALLED_VERSION_KEY);
-    return version || '1.0.0';
-  } catch (error) {
-    console.error('[VersionService] Error getting installed version:', error);
-    return '1.0.0';
-  }
-};
-
-/**
- * Save installed version to AsyncStorage
- */
-export const setInstalledVersion = async (version) => {
-  try {
-    await AsyncStorage.setItem(INSTALLED_VERSION_KEY, version);
-    console.log('[VersionService] Saved installed version:', version);
-  } catch (error) {
-    console.error('[VersionService] Error saving installed version:', error);
-  }
+export const getInstalledVersion = () => {
+  // This reads the native app version from the APK itself
+  // For Android: versionName from build.gradle
+  // Falls back to app.json version
+  const nativeVersion = Application.nativeApplicationVersion;
+  console.log('[VersionService] Native app version:', nativeVersion);
+  return nativeVersion || '1.0.0';
 };
 
 /**
@@ -54,7 +39,7 @@ export const compareVersions = (v1, v2) => {
  * Check if update is required
  */
 export const checkForUpdate = async () => {
-  const installedVersion = await getInstalledVersion();
+  const installedVersion = getInstalledVersion();
   console.log('[VersionService] Installed version:', installedVersion);
 
   try {
@@ -73,7 +58,7 @@ export const checkForUpdate = async () => {
     console.log('[VersionService] GitHub version info:', config);
 
     if (!config) {
-      return { updateRequired: false, forceUpdate: false };
+      return { updateRequired: false, forceUpdate: false, installedVersion };
     }
 
     const latestVersion = config.latestVersion || installedVersion;
@@ -103,30 +88,7 @@ export const checkForUpdate = async () => {
     };
   } catch (error) {
     console.error('[VersionService] Error checking for update:', error.message);
-    return { updateRequired: false, forceUpdate: false, error: error.message };
-  }
-};
-
-/**
- * Open download URL and mark version
- */
-export const downloadAndInstall = async (downloadUrl, version) => {
-  try {
-    console.log('[VersionService] Opening download URL:', downloadUrl);
-
-    // Save the version we're downloading
-    await setInstalledVersion(version);
-
-    // Open URL in browser to download
-    const supported = await Linking.canOpenURL(downloadUrl);
-    if (supported) {
-      await Linking.openURL(downloadUrl);
-      return { success: true };
-    }
-    return { success: false, error: 'Cannot open URL' };
-  } catch (error) {
-    console.error('[VersionService] Download error:', error);
-    return { success: false, error: error.message };
+    return { updateRequired: false, forceUpdate: false, installedVersion, error: error.message };
   }
 };
 
@@ -148,26 +110,16 @@ export const openDownloadUrl = async (url) => {
 };
 
 /**
- * Mark version as installed
+ * Get current version for display (synchronous)
  */
-export const markVersionInstalled = async (version) => {
-  await setInstalledVersion(version);
-};
-
-/**
- * Get current version for display
- */
-export const getCurrentVersion = async () => {
-  return await getInstalledVersion();
+export const getCurrentVersion = () => {
+  return getInstalledVersion();
 };
 
 export default {
   getInstalledVersion,
-  setInstalledVersion,
   getCurrentVersion,
   compareVersions,
   checkForUpdate,
-  downloadAndInstall,
   openDownloadUrl,
-  markVersionInstalled,
 };
