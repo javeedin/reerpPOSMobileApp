@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
 import { getMenuData, getMenuOptions } from '../services/api';
-import { checkForUpdate, downloadAndInstall, openDownloadUrl, getInstalledVersion, markVersionInstalled } from '../services/versionService';
+import { checkForUpdate, downloadAndInstall, openDownloadUrl, getInstalledVersion } from '../services/versionService';
 import ForceUpdateModal from '../components/ForceUpdateModal';
 
 const { width } = Dimensions.get('window');
@@ -908,7 +908,7 @@ const HomeScreen = ({ navigation }) => {
     }, [initialLoad])
   );
 
-  // Auto-check for updates on app start and download silently
+  // Auto-check for updates on app start
   useEffect(() => {
     const autoCheckAndDownload = async () => {
       try {
@@ -917,42 +917,10 @@ const HomeScreen = ({ navigation }) => {
         console.log('[HomeScreen] Auto-check result:', result);
 
         if (result.updateRequired && result.downloadUrl) {
-          setUpdateInfo(result);
-
-          // Show downloading notification
-          Alert.alert(
-            'Downloading Update',
-            `Downloading version ${result.latestVersion}...\n\n${result.releaseNotes || 'New features and improvements.'}`,
-            [{ text: 'OK' }]
-          );
-
-          // Start silent download and install
-          const downloadResult = await downloadAndInstall(
-            result.downloadUrl,
-            result.latestVersion,
-            (progress) => {
-              console.log('[HomeScreen] Download progress:', Math.round(progress * 100) + '%');
-            }
-          );
-
-          if (downloadResult.success) {
-            // After successful install, mark version as installed
-            await markVersionInstalled(result.latestVersion);
-            console.log('[HomeScreen] Update installed successfully');
-          } else {
-            // Fallback to browser download
-            console.log('[HomeScreen] Silent download failed, opening browser');
-            Alert.alert(
-              'Download Failed',
-              'Opening browser to download manually.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Download', onPress: () => openDownloadUrl(result.downloadUrl) }
-              ]
-            );
-          }
+          // Auto-download: open browser and save version
+          console.log('[HomeScreen] Update available, starting download...');
+          await downloadAndInstall(result.downloadUrl, result.latestVersion);
         } else if (result.forceUpdate && result.downloadUrl) {
-          // Force update - must update
           setUpdateInfo(result);
           setShowUpdateModal(true);
         }
