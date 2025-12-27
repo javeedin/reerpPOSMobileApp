@@ -1,9 +1,9 @@
 {
-  "latestVersion": "1.0.0",
+  "latestVersion": "1.0.1",
   "minVersion": "1.0.0",
   "forceUpdate": false,
-  "downloadUrl": "https://github.com/javeedin/reerpPOSMobileApp/releases/latest/download/fcpos.apk",
-  "releaseNotes": "Initial release with new features:\n- Amazon-style home screen\n- 12-day sales overview\n- Smart refresh for today's data\n- New Order menu selection",
-  "releaseDate": "2025-12-25",
-  "androidVersionCode": 1
+  "downloadUrl": "https://github.com/javeedin/reerpPOSMobileApp/releases/download/v1.0.1/FCpos_reero_v110.apk",
+  "releaseNotes": "Version 1.0.1 - CRM Module Added:\n- New CRM Home Screen\n- Customer Details Page\n- My Customers toolbar\n- Version display in You tab",
+  "releaseDate": "2025-12-27",
+  "androidVersionCode": 2
 }
