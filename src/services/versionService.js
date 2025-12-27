@@ -1,21 +1,18 @@
-import { Linking, Platform } from 'react-native';
-import * as Application from 'expo-application';
+import { Linking } from 'react-native';
+import Constants from 'expo-constants';
 import axios from 'axios';
 
 // GitHub raw file URL - This is your single source of truth for version info
 const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/claude/general-session-3r6VJ/version.json';
 
 /**
- * Get installed version from the actual APK/app binary
- * This reads the version from app.json that's baked into the APK
+ * Get installed version from app.json (works in both dev and production)
  */
 export const getInstalledVersion = () => {
-  // This reads the native app version from the APK itself
-  // For Android: versionName from build.gradle
-  // Falls back to app.json version
-  const nativeVersion = Application.nativeApplicationVersion;
-  console.log('[VersionService] Native app version:', nativeVersion);
-  return nativeVersion || '1.0.0';
+  // This reads from app.json version field
+  const version = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+  console.log('[VersionService] App version from app.json:', version);
+  return version;
 };
 
 /**
