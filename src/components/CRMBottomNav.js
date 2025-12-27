@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   // Floating button container - positioned above toolbar
   floatingContainer: {
     position: 'absolute',
-    bottom: 35,
+    bottom: 22,
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
