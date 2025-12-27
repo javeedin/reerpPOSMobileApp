@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
 import { getMenuData, getMenuOptions } from '../services/api';
-import { checkForUpdate, openDownloadUrl, getInstalledVersion } from '../services/versionService';
+import { checkForUpdate, openDownloadUrl } from '../services/versionService';
 import ForceUpdateModal from '../components/ForceUpdateModal';
 
 const { width } = Dimensions.get('window');
@@ -1076,7 +1076,7 @@ const HomeScreen = ({ navigation }) => {
       } else if (result.error) {
         Alert.alert('Check Failed', 'Could not check for updates. Please try again later.');
       } else {
-        Alert.alert('Up to Date', `You have the latest version (v${getCurrentVersion()})`);
+        Alert.alert('Up to Date', `You have the latest version (v${result.installedVersion})`);
       }
     } catch (error) {
       console.error('[HomeScreen] Version check error:', error);
