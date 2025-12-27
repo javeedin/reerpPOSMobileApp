@@ -1,26 +1,63 @@
 import { Linking, Platform } from 'react-native';
-import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
+import * as IntentLauncher from 'expo-intent-launcher';
 import axios from 'axios';
 
 // GitHub raw file URL - This is your single source of truth for version info
-// Update this file in your repo to trigger updates for all users
 const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/javeedin/reerpPOSMobileApp/claude/general-session-3r6VJ/version.json';
 
+// Storage keys
+const INSTALLED_VERSION_KEY = 'installed_app_version';
+const DOWNLOADED_VERSION_KEY = 'downloaded_app_version';
+
 /**
- * Get current app version from app.json
+ * Get installed version from AsyncStorage
+ * This is the version user has installed (not hardcoded)
  */
-export const getCurrentVersion = () => {
-  return Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+export const getInstalledVersion = async () => {
+  try {
+    const version = await AsyncStorage.getItem(INSTALLED_VERSION_KEY);
+    return version || '1.0.0'; // Default to 1.0.0 if not set
+  } catch (error) {
+    console.error('[VersionService] Error getting installed version:', error);
+    return '1.0.0';
+  }
 };
 
 /**
- * Get current build number
+ * Save installed version to AsyncStorage
+ * Call this after successful app update/install
  */
-export const getCurrentBuildNumber = () => {
-  if (Platform.OS === 'android') {
-    return Constants.expoConfig?.android?.versionCode || 1;
+export const setInstalledVersion = async (version) => {
+  try {
+    await AsyncStorage.setItem(INSTALLED_VERSION_KEY, version);
+    console.log('[VersionService] Saved installed version:', version);
+  } catch (error) {
+    console.error('[VersionService] Error saving installed version:', error);
   }
-  return Constants.expoConfig?.ios?.buildNumber || '1';
+};
+
+/**
+ * Get last downloaded version (to avoid re-downloading)
+ */
+export const getDownloadedVersion = async () => {
+  try {
+    return await AsyncStorage.getItem(DOWNLOADED_VERSION_KEY);
+  } catch (error) {
+    return null;
+  }
+};
+
+/**
+ * Save downloaded version
+ */
+export const setDownloadedVersion = async (version) => {
+  try {
+    await AsyncStorage.setItem(DOWNLOADED_VERSION_KEY, version);
+  } catch (error) {
+    console.error('[VersionService] Error saving downloaded version:', error);
+  }
 };
 
 /**
@@ -44,11 +81,14 @@ export const compareVersions = (v1, v2) => {
 
 /**
  * Check if update is required
- * Returns: { updateRequired, forceUpdate, latestVersion, downloadUrl, releaseNotes }
+ * Compares GitHub version with stored installed version
  */
 export const checkForUpdate = async () => {
-  const currentVersion = getCurrentVersion();
-  console.log('[VersionService] Current app version:', currentVersion);
+  const installedVersion = await getInstalledVersion();
+  const downloadedVersion = await getDownloadedVersion();
+
+  console.log('[VersionService] Installed version:', installedVersion);
+  console.log('[VersionService] Last downloaded version:', downloadedVersion);
 
   try {
     // Fetch version info from GitHub with cache-busting
@@ -63,49 +103,49 @@ export const checkForUpdate = async () => {
       }
     });
 
-    const versionInfo = response.data;
-    console.log('[VersionService] GitHub version info:', versionInfo);
-
-    const config = versionInfo;
+    const config = response.data;
+    console.log('[VersionService] GitHub version info:', config);
 
     if (!config) {
       console.log('[VersionService] No version config found');
       return { updateRequired: false, forceUpdate: false };
     }
 
-    const latestVersion = config.latestVersion || config.latest_version || config.version || currentVersion;
-    const minVersion = config.minVersion || config.min_version || config.minimumVersion || '1.0.0';
-    const downloadUrl = config.downloadUrl || config.download_url || config.apkUrl || '';
-    const releaseNotes = config.releaseNotes || config.release_notes || config.notes || '';
-    const forceUpdate = config.forceUpdate === true || config.force_update === 'Y' || config.force_update === true;
+    const latestVersion = config.latestVersion || config.version || installedVersion;
+    const minVersion = config.minVersion || '1.0.0';
+    const downloadUrl = config.downloadUrl || '';
+    const releaseNotes = config.releaseNotes || '';
+    const forceUpdate = config.forceUpdate === true;
 
-    // Check if update is available
-    const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
+    // Check if update is available (latest > installed)
+    const hasUpdate = compareVersions(latestVersion, installedVersion) > 0;
 
-    // Check if force update is required (current version < minimum version)
-    const requiresForceUpdate = compareVersions(minVersion, currentVersion) > 0;
+    // Check if already downloaded this version
+    const alreadyDownloaded = downloadedVersion === latestVersion;
+
+    // Check if force update is required
+    const requiresForceUpdate = compareVersions(minVersion, installedVersion) > 0;
 
     console.log('[VersionService] Check result:', {
-      currentVersion,
+      installedVersion,
       latestVersion,
-      minVersion,
       hasUpdate,
+      alreadyDownloaded,
       requiresForceUpdate,
-      forceUpdate,
     });
 
     return {
-      updateRequired: hasUpdate,
+      updateRequired: hasUpdate && !alreadyDownloaded,
       forceUpdate: requiresForceUpdate || forceUpdate,
       latestVersion,
       minVersion,
-      currentVersion,
+      installedVersion,
       downloadUrl,
       releaseNotes,
+      alreadyDownloaded,
     };
   } catch (error) {
     console.error('[VersionService] Error checking for update:', error.message);
-    // Don't block the app if version check fails
     return {
       updateRequired: false,
       forceUpdate: false,
@@ -115,7 +155,66 @@ export const checkForUpdate = async () => {
 };
 
 /**
- * Open download URL in browser
+ * Download APK silently and trigger install
+ */
+export const downloadAndInstall = async (downloadUrl, version, onProgress) => {
+  if (!downloadUrl) {
+    console.error('[VersionService] No download URL provided');
+    return { success: false, error: 'No download URL' };
+  }
+
+  try {
+    console.log('[VersionService] Starting download:', downloadUrl);
+
+    const fileName = `fcpos_${version.replace(/\./g, '_')}.apk`;
+    const fileUri = FileSystem.documentDirectory + fileName;
+
+    // Download the APK
+    const downloadResumable = FileSystem.createDownloadResumable(
+      downloadUrl,
+      fileUri,
+      {},
+      (downloadProgress) => {
+        const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+        console.log('[VersionService] Download progress:', Math.round(progress * 100) + '%');
+        if (onProgress) {
+          onProgress(progress);
+        }
+      }
+    );
+
+    const result = await downloadResumable.downloadAsync();
+    console.log('[VersionService] Download complete:', result.uri);
+
+    // Save downloaded version
+    await setDownloadedVersion(version);
+
+    // Trigger install
+    if (Platform.OS === 'android') {
+      // Get content URI for the file
+      const contentUri = await FileSystem.getContentUriAsync(result.uri);
+
+      // Launch install intent
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data: contentUri,
+        flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+        type: 'application/vnd.android.package-archive',
+      });
+
+      return { success: true, fileUri: result.uri };
+    } else {
+      // iOS - open in browser
+      await Linking.openURL(downloadUrl);
+      return { success: true };
+    }
+  } catch (error) {
+    console.error('[VersionService] Download/install error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Open download URL in browser (fallback)
  */
 export const openDownloadUrl = async (url) => {
   if (!url) {
@@ -139,6 +238,22 @@ export const openDownloadUrl = async (url) => {
 };
 
 /**
+ * Mark current version as installed (call after app update)
+ */
+export const markVersionInstalled = async (version) => {
+  await setInstalledVersion(version);
+  // Clear downloaded version since it's now installed
+  await AsyncStorage.removeItem(DOWNLOADED_VERSION_KEY);
+};
+
+/**
+ * Get current version for display
+ */
+export const getCurrentVersion = async () => {
+  return await getInstalledVersion();
+};
+
+/**
  * Format version for display
  */
 export const formatVersion = (version) => {
@@ -146,10 +261,13 @@ export const formatVersion = (version) => {
 };
 
 export default {
+  getInstalledVersion,
+  setInstalledVersion,
   getCurrentVersion,
-  getCurrentBuildNumber,
   compareVersions,
   checkForUpdate,
+  downloadAndInstall,
   openDownloadUrl,
+  markVersionInstalled,
   formatVersion,
 };

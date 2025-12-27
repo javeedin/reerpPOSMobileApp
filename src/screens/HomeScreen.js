@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
 import { getMenuData, getMenuOptions } from '../services/api';
-import { checkForUpdate, openDownloadUrl, getCurrentVersion } from '../services/versionService';
+import { checkForUpdate, downloadAndInstall, openDownloadUrl, getInstalledVersion, markVersionInstalled } from '../services/versionService';
 import ForceUpdateModal from '../components/ForceUpdateModal';
 
 const { width } = Dimensions.get('window');
@@ -908,32 +908,53 @@ const HomeScreen = ({ navigation }) => {
     }, [initialLoad])
   );
 
-  // Auto-check for updates on app start
+  // Auto-check for updates on app start and download silently
   useEffect(() => {
-    const autoCheckUpdate = async () => {
+    const autoCheckAndDownload = async () => {
       try {
         console.log('[HomeScreen] Auto-checking for updates...');
         const result = await checkForUpdate();
         console.log('[HomeScreen] Auto-check result:', result);
 
-        if (result.updateRequired || result.forceUpdate) {
+        if (result.updateRequired && result.downloadUrl) {
           setUpdateInfo(result);
-          setShowUpdateModal(true);
 
-          // Auto-open download if update available
-          if (result.downloadUrl) {
+          // Show downloading notification
+          Alert.alert(
+            'Downloading Update',
+            `Downloading version ${result.latestVersion}...\n\n${result.releaseNotes || 'New features and improvements.'}`,
+            [{ text: 'OK' }]
+          );
+
+          // Start silent download and install
+          const downloadResult = await downloadAndInstall(
+            result.downloadUrl,
+            result.latestVersion,
+            (progress) => {
+              console.log('[HomeScreen] Download progress:', Math.round(progress * 100) + '%');
+            }
+          );
+
+          if (downloadResult.success) {
+            // After successful install, mark version as installed
+            await markVersionInstalled(result.latestVersion);
+            console.log('[HomeScreen] Update installed successfully');
+          } else {
+            // Fallback to browser download
+            console.log('[HomeScreen] Silent download failed, opening browser');
             Alert.alert(
-              'Update Available',
-              `A new version (${result.latestVersion}) is available.\n\n${result.releaseNotes || 'Please update to get the latest features.'}`,
+              'Download Failed',
+              'Opening browser to download manually.',
               [
-                { text: 'Later', style: 'cancel' },
-                {
-                  text: 'Download Now',
-                  onPress: () => openDownloadUrl(result.downloadUrl)
-                }
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Download', onPress: () => openDownloadUrl(result.downloadUrl) }
               ]
             );
           }
+        } else if (result.forceUpdate && result.downloadUrl) {
+          // Force update - must update
+          setUpdateInfo(result);
+          setShowUpdateModal(true);
         }
       } catch (error) {
         console.log('[HomeScreen] Auto-check error:', error);
@@ -941,7 +962,7 @@ const HomeScreen = ({ navigation }) => {
     };
 
     // Delay check by 2 seconds to let app load first
-    const timer = setTimeout(autoCheckUpdate, 2000);
+    const timer = setTimeout(autoCheckAndDownload, 2000);
     return () => clearTimeout(timer);
   }, []);
 
