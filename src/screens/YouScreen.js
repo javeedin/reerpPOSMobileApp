@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
+import { getCurrentVersion } from '../services/versionService';
 import colors from '../theme/colors';
 
 const YouScreen = () => {
@@ -83,6 +84,11 @@ const YouScreen = () => {
           <Ionicons name="log-out-outline" size={22} color="#FF5252" />
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
+
+        {/* Version Info */}
+        <View style={styles.versionContainer}>
+          <Text style={styles.versionText}>Version {getCurrentVersion()}</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -202,6 +208,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FF5252',
+  },
+  versionContainer: {
+    alignItems: 'center',
+    marginTop: 24,
+    paddingBottom: 20,
+  },
+  versionText: {
+    fontSize: 12,
+    color: '#999999',
   },
 });
 
