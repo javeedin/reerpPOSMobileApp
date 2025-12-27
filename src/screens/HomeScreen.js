@@ -23,8 +23,9 @@ import { useAuth } from '../context/AuthContext';
 import { queryHistoricalOrders, getOnhand } from '../services/syncService';
 import { getRequisitions } from '../services/stockRequisitionService';
 import { getMenuData, getMenuOptions } from '../services/api';
-import { checkForUpdate, openDownloadUrl } from '../services/versionService';
-import ForceUpdateModal from '../components/ForceUpdateModal';
+// Version check temporarily disabled
+// import { checkForUpdate, openDownloadUrl } from '../services/versionService';
+// import ForceUpdateModal from '../components/ForceUpdateModal';
 
 const { width } = Dimensions.get('window');
 const TILE_WIDTH = width * 0.72;
@@ -1063,44 +1064,9 @@ const HomeScreen = ({ navigation }) => {
     navigation.navigate('CustomerSelection', { menuConfig });
   };
 
-  // Check for app updates from GitHub
-  const handleCheckUpdate = async () => {
-    setIsCheckingUpdate(true);
-    try {
-      const result = await checkForUpdate();
-      console.log('[HomeScreen] Version check result:', result);
-
-      if (result.updateRequired || result.forceUpdate) {
-        setUpdateInfo(result);
-        setShowUpdateModal(true);
-      } else if (result.error) {
-        Alert.alert('Check Failed', 'Could not check for updates. Please try again later.');
-      } else {
-        Alert.alert('Up to Date', `You have the latest version (v${result.installedVersion})`);
-      }
-    } catch (error) {
-      console.error('[HomeScreen] Version check error:', error);
-      Alert.alert('Error', 'Failed to check for updates');
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  };
-
-  // Handle update button press
-  const handleUpdate = async () => {
-    if (updateInfo?.downloadUrl) {
-      await openDownloadUrl(updateInfo.downloadUrl);
-      if (!updateInfo.forceUpdate) {
-        setShowUpdateModal(false);
-      }
-    }
-  };
-
-  // Handle later button press
-  const handleUpdateLater = () => {
-    if (!updateInfo?.forceUpdate) {
-      setShowUpdateModal(false);
-    }
+  // Version check temporarily disabled
+  const handleCheckUpdate = () => {
+    Alert.alert('Coming Soon', 'Version check feature temporarily disabled');
   };
 
   // Refresh only today's tile
@@ -1156,16 +1122,7 @@ const HomeScreen = ({ navigation }) => {
         isLoading={isLoadingMenus}
       />
 
-      <ForceUpdateModal
-        visible={showUpdateModal}
-        currentVersion={getCurrentVersion()}
-        latestVersion={updateInfo?.latestVersion || '1.0.0'}
-        releaseNotes={updateInfo?.releaseNotes || ''}
-        downloadUrl={updateInfo?.downloadUrl || ''}
-        forceUpdate={updateInfo?.forceUpdate || false}
-        onUpdate={handleUpdate}
-        onLater={handleUpdateLater}
-      />
+      {/* ForceUpdateModal temporarily disabled */}
 
       <LinearGradient colors={['#1A1A2E', '#16213E']} style={styles.header}>
         <View style={styles.headerContent}>
