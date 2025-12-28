@@ -38,6 +38,12 @@
         "android.permission.READ_MEDIA_AUDIO"
       ]
     },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/icon.png",
+      "backgroundColor": "#0A1628",
+      "name": "FCPos Desktop"
+    },
     "plugins": [
       [
         "expo-camera",

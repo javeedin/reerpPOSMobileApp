@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 import axios from 'axios';
+
+// Only import SQLite on native platforms
+let SQLite = null;
+if (Platform.OS !== 'web') {
+  SQLite = require('expo-sqlite');
+}
 
 const BASE_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP';
 
@@ -8,6 +14,10 @@ const BASE_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oracleclo
 let pricelistDb = null;
 
 const getPricelistDb = async () => {
+  // SQLite not available on web
+  if (Platform.OS === 'web' || !SQLite) {
+    return null;
+  }
   if (!pricelistDb) {
     pricelistDb = await SQLite.openDatabaseAsync('pricelist.db');
     // Create table if not exists

@@ -14,11 +14,19 @@ import {
   Dimensions,
   Animated,
   TouchableWithoutFeedback,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+// Camera only available on native platforms
+let CameraView = null;
+let useCameraPermissions = null;
+if (Platform.OS !== 'web') {
+  const cameraModule = require('expo-camera');
+  CameraView = cameraModule.CameraView;
+  useCameraPermissions = cameraModule.useCameraPermissions;
+}
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useFocusEffect } from '@react-navigation/native';
@@ -95,10 +103,16 @@ const EditableField = ({ label, value, onChangeText, keyboardType = 'default', p
   </View>
 );
 
+// Web fallback hook for camera permissions
+const useWebCameraPermissions = () => [{ granted: false }, () => Promise.resolve({ granted: false })];
+
 const ScanScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const cameraRef = useRef(null);
-  const [permission, requestPermission] = useCameraPermissions();
+  // Use actual camera permissions on native, fallback on web
+  const [permission, requestPermission] = Platform.OS === 'web'
+    ? useWebCameraPermissions()
+    : useCameraPermissions();
 
   const [showCamera, setShowCamera] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
