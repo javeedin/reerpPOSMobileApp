@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
@@ -86,10 +87,13 @@ const MainStack = () => {
 // Main App Navigator
 const AppNavigator = () => {
   const { isLoggedIn, isLoading } = useAuth();
-  const [showSplash, setShowSplash] = useState(true);
+  // Skip splash on web for faster loading
+  const [showSplash, setShowSplash] = useState(Platform.OS !== 'web');
 
   useEffect(() => {
-    // Show splash for minimum 2.5 seconds
+    if (Platform.OS === 'web') return; // Skip splash on web
+
+    // Show splash for minimum 2.5 seconds on native
     const timer = setTimeout(() => {
       setShowSplash(false);
     }, 2500);
@@ -97,7 +101,7 @@ const AppNavigator = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Show splash screen initially
+  // Show splash screen initially (native only)
   if (showSplash || isLoading) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
