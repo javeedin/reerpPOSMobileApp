@@ -15,6 +15,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: false, // Disable CORS for API requests (Oracle Fusion Cloud doesn't support CORS)
     },
     icon: path.join(__dirname, '../assets/icon.png'),
     title: 'FCPos Desktop',
