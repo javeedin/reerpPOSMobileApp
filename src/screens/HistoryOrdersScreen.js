@@ -18,13 +18,152 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import colors from '../theme/colors';
 import { queryHistoricalOrders } from '../services/syncService';
 import { useAuth } from '../context/AuthContext';
 import BottomToolbar from '../components/BottomToolbar';
 
+// Conditionally import DateTimePicker only for native platforms
+let DateTimePicker = null;
+if (Platform.OS !== 'web') {
+  DateTimePicker = require('@react-native-community/datetimepicker').default;
+}
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Web Date Picker Modal Component
+const WebDatePickerModal = ({ visible, value, onClose, onSelect, title }) => {
+  const [selectedDate, setSelectedDate] = useState(value);
+  const insets = useSafeAreaInsets();
+
+  // Format date to YYYY-MM-DD for input
+  const formatForInput = (date) => {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleConfirm = () => {
+    onSelect(selectedDate);
+    onClose();
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={webPickerStyles.overlay}>
+        <View style={[webPickerStyles.container, { marginTop: insets.top + 100 }]}>
+          <View style={webPickerStyles.header}>
+            <Text style={webPickerStyles.title}>{title || 'Select Date'}</Text>
+            <TouchableOpacity onPress={onClose} style={webPickerStyles.closeBtn}>
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={webPickerStyles.inputContainer}>
+            <input
+              type="date"
+              value={formatForInput(selectedDate)}
+              onChange={(e) => setSelectedDate(new Date(e.target.value))}
+              style={{
+                width: '100%',
+                padding: 16,
+                fontSize: 18,
+                border: `2px solid ${colors.accent}`,
+                borderRadius: 8,
+                backgroundColor: colors.surface,
+                color: colors.textPrimary,
+                cursor: 'pointer',
+              }}
+            />
+          </View>
+
+          <View style={webPickerStyles.buttonRow}>
+            <TouchableOpacity style={webPickerStyles.cancelBtn} onPress={onClose}>
+              <Text style={webPickerStyles.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={webPickerStyles.confirmBtn} onPress={handleConfirm}>
+              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+              <Text style={webPickerStyles.confirmBtnText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const webPickerStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  container: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  closeBtn: {
+    padding: 4,
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  confirmBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 14,
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  confirmBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+});
 
 // Format number safely
 const formatNumber = (num) => {
@@ -867,22 +1006,43 @@ const HistoryOrdersScreen = ({ navigation }) => {
         <AnalyticsView orders={orders} />
       )}
 
-      {/* Date Pickers */}
-      {showFromPicker && (
-        <DateTimePicker
-          value={fromDate}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={handleFromDateChange}
-        />
-      )}
-      {showToPicker && (
-        <DateTimePicker
-          value={toDate}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={handleToDateChange}
-        />
+      {/* Date Pickers - Platform specific */}
+      {Platform.OS === 'web' ? (
+        <>
+          <WebDatePickerModal
+            visible={showFromPicker}
+            value={fromDate}
+            title="Select From Date"
+            onClose={() => setShowFromPicker(false)}
+            onSelect={(date) => setFromDate(date)}
+          />
+          <WebDatePickerModal
+            visible={showToPicker}
+            value={toDate}
+            title="Select To Date"
+            onClose={() => setShowToPicker(false)}
+            onSelect={(date) => setToDate(date)}
+          />
+        </>
+      ) : (
+        <>
+          {showFromPicker && DateTimePicker && (
+            <DateTimePicker
+              value={fromDate}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleFromDateChange}
+            />
+          )}
+          {showToPicker && DateTimePicker && (
+            <DateTimePicker
+              value={toDate}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleToDateChange}
+            />
+          )}
+        </>
       )}
 
       {/* Order Detail Modal */}
