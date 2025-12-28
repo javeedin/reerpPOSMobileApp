@@ -509,13 +509,17 @@ export const clearAllDataForLargePricelistSync = async () => {
       await AsyncStorage.multiRemove(pricelistKeys);
     }
 
-    // Clear SQLite pricelist data
-    try {
-      const db = await getPricelistDb();
-      await db.runAsync('DELETE FROM pricelist_items');
-      console.log('Cleared pricelist data from SQLite');
-    } catch (sqliteError) {
-      console.error('Error clearing SQLite pricelist:', sqliteError);
+    // Clear SQLite pricelist data (native only)
+    if (Platform.OS !== 'web') {
+      try {
+        const db = await getPricelistDb();
+        if (db) {
+          await db.runAsync('DELETE FROM pricelist_items');
+          console.log('Cleared pricelist data from SQLite');
+        }
+      } catch (sqliteError) {
+        console.error('Error clearing SQLite pricelist:', sqliteError);
+      }
     }
 
     // Reset metadata (but keep pricelist names)
@@ -759,8 +763,11 @@ export const getPriceListNames = async () => loadFromStorage(STORAGE_KEYS.PRICE_
 
 // Get total item count from SQLite
 const getTotalPriceListItemCount = async () => {
+  // SQLite not available on web
+  if (Platform.OS === 'web') return 0;
   try {
     const db = await getPricelistDb();
+    if (!db) return 0;
     const result = await db.getFirstAsync('SELECT COUNT(*) as count FROM pricelist_items');
     return result?.count || 0;
   } catch (error) {
@@ -777,8 +784,11 @@ const getTotalPriceListItemCount = async () => {
 
 // Search pricelist items by barcode or item number (fast with SQLite indexes)
 export const searchPriceListItems = async (query, limit = 50) => {
+  // SQLite not available on web
+  if (Platform.OS === 'web') return [];
   try {
     const db = await getPricelistDb();
+    if (!db) return [];
     const items = await db.getAllAsync(
       `SELECT * FROM pricelist_items
        WHERE barcode LIKE ? OR item_number LIKE ? OR item_desc LIKE ?
@@ -794,8 +804,11 @@ export const searchPriceListItems = async (query, limit = 50) => {
 
 // Get pricelist item by exact barcode (fast lookup)
 export const getPriceListItemByBarcode = async (barcode) => {
+  // SQLite not available on web
+  if (Platform.OS === 'web') return null;
   try {
     const db = await getPricelistDb();
+    if (!db) return null;
     const item = await db.getFirstAsync(
       'SELECT * FROM pricelist_items WHERE barcode = ?',
       [barcode]
@@ -809,8 +822,11 @@ export const getPriceListItemByBarcode = async (barcode) => {
 
 // Get price list items (all items from all price lists - from SQLite)
 export const getPriceListItems = async () => {
+  // SQLite not available on web
+  if (Platform.OS === 'web') return [];
   try {
     const db = await getPricelistDb();
+    if (!db) return [];
     const items = await db.getAllAsync('SELECT * FROM pricelist_items');
     console.log(`=== getPriceListItems Debug ===`);
     console.log(`Loaded ${items.length} total pricelist items from SQLite`);
@@ -828,8 +844,11 @@ export const getPriceListItems = async () => {
 
 // Get price list items with pagination (for large datasets - 10,000 per page)
 export const getPriceListItemsPaginated = async (page = 1, pageSize = 10000) => {
+  // SQLite not available on web
+  if (Platform.OS === 'web') return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false };
   try {
     const db = await getPricelistDb();
+    if (!db) return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false };
     const offset = (page - 1) * pageSize;
 
     // Get total count
@@ -862,8 +881,11 @@ export const getPriceListItemsPaginated = async (page = 1, pageSize = 10000) => 
 
 // Get items for a specific price list with pagination
 export const getItemsForPriceListPaginated = async (priceListName, page = 1, pageSize = 10000) => {
+  // SQLite not available on web
+  if (Platform.OS === 'web') return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false, priceListName };
   try {
     const db = await getPricelistDb();
+    if (!db) return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false, priceListName };
     const offset = (page - 1) * pageSize;
 
     // Get total count for this pricelist
@@ -900,11 +922,14 @@ export const getItemsForPriceListPaginated = async (priceListName, page = 1, pag
 
 // Get items for a specific price list (from SQLite)
 export const getItemsForPriceList = async (priceListName) => {
+  // SQLite not available on web
+  if (Platform.OS === 'web') return [];
   try {
     console.log(`=== getItemsForPriceList Debug ===`);
     console.log(`Looking for price list: "${priceListName}"`);
 
     const db = await getPricelistDb();
+    if (!db) return [];
 
     // First, show what price lists are actually in the database
     const uniqueLists = await db.getAllAsync('SELECT DISTINCT list_name FROM pricelist_items');
@@ -1094,13 +1119,17 @@ export const clearAllSyncData = async () => {
     await clearFromStorage(STORAGE_KEYS.PAYMENT_METHODS);
     await AsyncStorage.removeItem(STORAGE_KEYS.SYNC_META);
 
-    // Clear SQLite pricelist data
-    try {
-      const db = await getPricelistDb();
-      await db.runAsync('DELETE FROM pricelist_items');
-      console.log('Cleared pricelist data from SQLite');
-    } catch (sqliteError) {
-      console.error('Error clearing SQLite pricelist:', sqliteError);
+    // Clear SQLite pricelist data (native only)
+    if (Platform.OS !== 'web') {
+      try {
+        const db = await getPricelistDb();
+        if (db) {
+          await db.runAsync('DELETE FROM pricelist_items');
+          console.log('Cleared pricelist data from SQLite');
+        }
+      } catch (sqliteError) {
+        console.error('Error clearing SQLite pricelist:', sqliteError);
+      }
     }
 
     return { success: true };
@@ -1157,8 +1186,14 @@ const extractBogoFields = (item) => ({
 // Sync BOGO promotions
 export const syncBogo = async (onProgress) => {
   console.log('=== BOGO SYNC START ===');
+  // SQLite not available on web
+  if (Platform.OS === 'web') {
+    console.log('[syncBogo] Skipping on web - SQLite not available');
+    return { success: true, message: 'BOGO sync skipped on web' };
+  }
   try {
     const db = await getPricelistDb();
+    if (!db) return { success: false, message: 'Database not available' };
 
     if (onProgress) {
       onProgress({ status: 'Clearing old BOGO data...', fetched: 0 });
@@ -1263,8 +1298,11 @@ export const syncBogo = async (onProgress) => {
 // Get BOGO promotions for a specific main item code
 export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
   console.log(`[getBogoForItem] Looking up BOGO for item: ${mainItemCode}, customer: ${customerNumber}`);
+  // SQLite not available on web
+  if (Platform.OS === 'web') return [];
   try {
     const db = await getPricelistDb();
+    if (!db) return [];
 
     // First, check how many BOGO records exist in total
     const totalCount = await db.getFirstAsync('SELECT COUNT(*) as count FROM bogo_promotions');
@@ -1317,8 +1355,11 @@ export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
 
 // Get all BOGO promotions
 export const getAllBogo = async () => {
+  // SQLite not available on web
+  if (Platform.OS === 'web') return [];
   try {
     const db = await getPricelistDb();
+    if (!db) return [];
     const bogos = await db.getAllAsync('SELECT * FROM bogo_promotions');
     return bogos;
   } catch (error) {
