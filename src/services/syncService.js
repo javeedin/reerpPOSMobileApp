@@ -1,71 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import axios from 'axios';
-
-// Only import SQLite on native platforms
-let SQLite = null;
-if (Platform.OS !== 'web') {
-  SQLite = require('expo-sqlite');
-}
+import * as Database from './database';
 
 const BASE_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP';
 
-// SQLite database for pricelist (NO size limit!)
-let pricelistDb = null;
+// Initialize database on first use
+let dbInitialized = false;
 
-const getPricelistDb = async () => {
-  // SQLite not available on web
-  if (Platform.OS === 'web' || !SQLite) {
-    return null;
+const ensureDbInitialized = async () => {
+  if (!dbInitialized) {
+    await Database.initDatabase();
+    dbInitialized = true;
   }
-  if (!pricelistDb) {
-    pricelistDb = await SQLite.openDatabaseAsync('pricelist.db');
-    // Create table if not exists
-    await pricelistDb.execAsync(`
-      CREATE TABLE IF NOT EXISTS pricelist_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        list_name TEXT,
-        item_desc TEXT,
-        barcode TEXT,
-        item_number TEXT,
-        currency_code TEXT,
-        pricing_uom_code TEXT,
-        tax_code TEXT,
-        tax_rate TEXT,
-        base_price TEXT,
-        allow_discount TEXT,
-        alcoholic_flag TEXT,
-        inventory_item_id TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_list_name ON pricelist_items(list_name);
-      CREATE INDEX IF NOT EXISTS idx_item_number ON pricelist_items(item_number);
-      CREATE INDEX IF NOT EXISTS idx_barcode ON pricelist_items(barcode);
-
-      CREATE TABLE IF NOT EXISTS bogo_promotions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        line_id INTEGER,
-        promo_name TEXT,
-        promo_number TEXT,
-        promo_type TEXT,
-        main_item_code TEXT,
-        main_item_desc TEXT,
-        promo_item_code TEXT,
-        promo_item_desc TEXT,
-        promo_price TEXT,
-        buy_qty INTEGER,
-        get_qty INTEGER,
-        customer_number TEXT,
-        is_discount_allowed TEXT,
-        vat_code TEXT,
-        start_date TEXT,
-        end_date TEXT,
-        allow_delete_flag TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_bogo_main_item ON bogo_promotions(main_item_code);
-      CREATE INDEX IF NOT EXISTS idx_bogo_customer ON bogo_promotions(customer_number);
-    `);
-  }
-  return pricelistDb;
 };
 
 // Storage keys
@@ -509,17 +456,13 @@ export const clearAllDataForLargePricelistSync = async () => {
       await AsyncStorage.multiRemove(pricelistKeys);
     }
 
-    // Clear SQLite pricelist data (native only)
-    if (Platform.OS !== 'web') {
-      try {
-        const db = await getPricelistDb();
-        if (db) {
-          await db.runAsync('DELETE FROM pricelist_items');
-          console.log('Cleared pricelist data from SQLite');
-        }
-      } catch (sqliteError) {
-        console.error('Error clearing SQLite pricelist:', sqliteError);
-      }
+    // Clear SQLite pricelist data (works on all platforms now)
+    try {
+      await ensureDbInitialized();
+      await Database.runAsync('DELETE FROM pricelist_items');
+      console.log('Cleared pricelist data from SQLite');
+    } catch (sqliteError) {
+      console.error('Error clearing SQLite pricelist:', sqliteError);
     }
 
     // Reset metadata (but keep pricelist names)
@@ -545,8 +488,8 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
 
     console.log(`Syncing price list: ${priceListName} -> SQLite database (clearAllFirst=${clearAllFirst})`);
 
-    // Get SQLite database
-    const db = await getPricelistDb();
+    // Initialize database
+    await ensureDbInitialized();
 
     // Clear old data for this pricelist (or all if explicitly requested)
     if (onProgress) {
@@ -559,11 +502,11 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
 
     if (clearAllFirst) {
       // Clear ALL pricelist data from SQLite (only when explicitly requested)
-      await db.runAsync('DELETE FROM pricelist_items');
+      await Database.runAsync('DELETE FROM pricelist_items');
       console.log('Cleared ALL pricelist data from SQLite');
     } else {
       // Just clear this specific pricelist (default behavior - preserves other price lists)
-      await db.runAsync('DELETE FROM pricelist_items WHERE list_name = ?', [priceListName]);
+      await Database.runAsync('DELETE FROM pricelist_items WHERE list_name = ?', [priceListName]);
       console.log(`Cleared only ${priceListName} from SQLite (other price lists preserved)`);
     }
 
@@ -619,7 +562,7 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
           }
 
           // Insert batch into SQLite
-          await insertPricelistBatch(db, batch);
+          await insertPricelistBatch(batch);
         }
 
         startRow = endRow + 1;
@@ -639,7 +582,7 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
           priceListName,
         });
       }
-      await insertPricelistBatch(db, pendingItems);
+      await insertPricelistBatch(pendingItems);
     }
 
     // Update sync status for this price list (use direct AsyncStorage for object storage)
@@ -673,7 +616,7 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
 };
 
 // Helper function to insert a batch of pricelist items into SQLite
-const insertPricelistBatch = async (db, items) => {
+const insertPricelistBatch = async (items) => {
   // Use a transaction for better performance
   const placeholders = items.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
   const values = items.flatMap(item => [
@@ -693,7 +636,7 @@ const insertPricelistBatch = async (db, items) => {
 
   const sql = `INSERT INTO pricelist_items (list_name, item_desc, barcode, item_number, currency_code, pricing_uom_code, tax_code, tax_rate, base_price, allow_discount, alcoholic_flag, inventory_item_id) VALUES ${placeholders}`;
 
-  await db.runAsync(sql, values);
+  await Database.runAsync(sql, values);
 };
 
 // Get price list sync status (direct AsyncStorage, not chunked storage)
@@ -763,12 +706,9 @@ export const getPriceListNames = async () => loadFromStorage(STORAGE_KEYS.PRICE_
 
 // Get total item count from SQLite
 const getTotalPriceListItemCount = async () => {
-  // SQLite not available on web
-  if (Platform.OS === 'web') return 0;
   try {
-    const db = await getPricelistDb();
-    if (!db) return 0;
-    const result = await db.getFirstAsync('SELECT COUNT(*) as count FROM pricelist_items');
+    await ensureDbInitialized();
+    const result = await Database.getFirstAsync('SELECT COUNT(*) as count FROM pricelist_items');
     return result?.count || 0;
   } catch (error) {
     console.error('Error getting pricelist count from SQLite:', error);
@@ -784,12 +724,9 @@ const getTotalPriceListItemCount = async () => {
 
 // Search pricelist items by barcode or item number (fast with SQLite indexes)
 export const searchPriceListItems = async (query, limit = 50) => {
-  // SQLite not available on web
-  if (Platform.OS === 'web') return [];
   try {
-    const db = await getPricelistDb();
-    if (!db) return [];
-    const items = await db.getAllAsync(
+    await ensureDbInitialized();
+    const items = await Database.getAllAsync(
       `SELECT * FROM pricelist_items
        WHERE barcode LIKE ? OR item_number LIKE ? OR item_desc LIKE ?
        LIMIT ?`,
@@ -804,12 +741,9 @@ export const searchPriceListItems = async (query, limit = 50) => {
 
 // Get pricelist item by exact barcode (fast lookup)
 export const getPriceListItemByBarcode = async (barcode) => {
-  // SQLite not available on web
-  if (Platform.OS === 'web') return null;
   try {
-    const db = await getPricelistDb();
-    if (!db) return null;
-    const item = await db.getFirstAsync(
+    await ensureDbInitialized();
+    const item = await Database.getFirstAsync(
       'SELECT * FROM pricelist_items WHERE barcode = ?',
       [barcode]
     );
@@ -822,17 +756,14 @@ export const getPriceListItemByBarcode = async (barcode) => {
 
 // Get price list items (all items from all price lists - from SQLite)
 export const getPriceListItems = async () => {
-  // SQLite not available on web
-  if (Platform.OS === 'web') return [];
   try {
-    const db = await getPricelistDb();
-    if (!db) return [];
-    const items = await db.getAllAsync('SELECT * FROM pricelist_items');
+    await ensureDbInitialized();
+    const items = await Database.getAllAsync('SELECT * FROM pricelist_items');
     console.log(`=== getPriceListItems Debug ===`);
     console.log(`Loaded ${items.length} total pricelist items from SQLite`);
 
     // Log unique list_name values in the database
-    const uniqueLists = await db.getAllAsync('SELECT DISTINCT list_name FROM pricelist_items');
+    const uniqueLists = await Database.getAllAsync('SELECT DISTINCT list_name FROM pricelist_items');
     console.log('Unique price lists in SQLite:', uniqueLists.map(l => l.list_name).join(', '));
 
     return items;
@@ -844,19 +775,16 @@ export const getPriceListItems = async () => {
 
 // Get price list items with pagination (for large datasets - 10,000 per page)
 export const getPriceListItemsPaginated = async (page = 1, pageSize = 10000) => {
-  // SQLite not available on web
-  if (Platform.OS === 'web') return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false };
   try {
-    const db = await getPricelistDb();
-    if (!db) return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false };
+    await ensureDbInitialized();
     const offset = (page - 1) * pageSize;
 
     // Get total count
-    const countResult = await db.getFirstAsync('SELECT COUNT(*) as total FROM pricelist_items');
+    const countResult = await Database.getFirstAsync('SELECT COUNT(*) as total FROM pricelist_items');
     const total = countResult?.total || 0;
 
     // Get page of items
-    const items = await db.getAllAsync(
+    const items = await Database.getAllAsync(
       'SELECT * FROM pricelist_items LIMIT ? OFFSET ?',
       [pageSize, offset]
     );
@@ -881,22 +809,19 @@ export const getPriceListItemsPaginated = async (page = 1, pageSize = 10000) => 
 
 // Get items for a specific price list with pagination
 export const getItemsForPriceListPaginated = async (priceListName, page = 1, pageSize = 10000) => {
-  // SQLite not available on web
-  if (Platform.OS === 'web') return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false, priceListName };
   try {
-    const db = await getPricelistDb();
-    if (!db) return { items: [], page: 1, pageSize, total: 0, totalPages: 0, hasMore: false, priceListName };
+    await ensureDbInitialized();
     const offset = (page - 1) * pageSize;
 
     // Get total count for this pricelist
-    const countResult = await db.getFirstAsync(
+    const countResult = await Database.getFirstAsync(
       'SELECT COUNT(*) as total FROM pricelist_items WHERE list_name = ?',
       [priceListName]
     );
     const total = countResult?.total || 0;
 
     // Get page of items
-    const items = await db.getAllAsync(
+    const items = await Database.getAllAsync(
       'SELECT * FROM pricelist_items WHERE list_name = ? LIMIT ? OFFSET ?',
       [priceListName, pageSize, offset]
     );
@@ -922,21 +847,18 @@ export const getItemsForPriceListPaginated = async (priceListName, page = 1, pag
 
 // Get items for a specific price list (from SQLite)
 export const getItemsForPriceList = async (priceListName) => {
-  // SQLite not available on web
-  if (Platform.OS === 'web') return [];
   try {
     console.log(`=== getItemsForPriceList Debug ===`);
     console.log(`Looking for price list: "${priceListName}"`);
 
-    const db = await getPricelistDb();
-    if (!db) return [];
+    await ensureDbInitialized();
 
     // First, show what price lists are actually in the database
-    const uniqueLists = await db.getAllAsync('SELECT DISTINCT list_name FROM pricelist_items');
+    const uniqueLists = await Database.getAllAsync('SELECT DISTINCT list_name FROM pricelist_items');
     console.log('Available price lists in SQLite:', uniqueLists.map(l => `"${l.list_name}"`).join(', '));
 
     // Query for the specific price list
-    const items = await db.getAllAsync(
+    const items = await Database.getAllAsync(
       'SELECT * FROM pricelist_items WHERE list_name = ?',
       [priceListName]
     );
@@ -945,7 +867,7 @@ export const getItemsForPriceList = async (priceListName) => {
     // If no exact match, try case-insensitive search
     if (items.length === 0) {
       console.log('Trying case-insensitive search...');
-      const itemsCI = await db.getAllAsync(
+      const itemsCI = await Database.getAllAsync(
         'SELECT * FROM pricelist_items WHERE UPPER(list_name) = UPPER(?)',
         [priceListName]
       );
@@ -1119,17 +1041,13 @@ export const clearAllSyncData = async () => {
     await clearFromStorage(STORAGE_KEYS.PAYMENT_METHODS);
     await AsyncStorage.removeItem(STORAGE_KEYS.SYNC_META);
 
-    // Clear SQLite pricelist data (native only)
-    if (Platform.OS !== 'web') {
-      try {
-        const db = await getPricelistDb();
-        if (db) {
-          await db.runAsync('DELETE FROM pricelist_items');
-          console.log('Cleared pricelist data from SQLite');
-        }
-      } catch (sqliteError) {
-        console.error('Error clearing SQLite pricelist:', sqliteError);
-      }
+    // Clear SQLite pricelist data (works on all platforms now)
+    try {
+      await ensureDbInitialized();
+      await Database.runAsync('DELETE FROM pricelist_items');
+      console.log('Cleared pricelist data from SQLite');
+    } catch (sqliteError) {
+      console.error('Error clearing SQLite pricelist:', sqliteError);
     }
 
     return { success: true };
@@ -1186,21 +1104,15 @@ const extractBogoFields = (item) => ({
 // Sync BOGO promotions
 export const syncBogo = async (onProgress) => {
   console.log('=== BOGO SYNC START ===');
-  // SQLite not available on web
-  if (Platform.OS === 'web') {
-    console.log('[syncBogo] Skipping on web - SQLite not available');
-    return { success: true, message: 'BOGO sync skipped on web' };
-  }
   try {
-    const db = await getPricelistDb();
-    if (!db) return { success: false, message: 'Database not available' };
+    await ensureDbInitialized();
 
     if (onProgress) {
       onProgress({ status: 'Clearing old BOGO data...', fetched: 0 });
     }
 
     // Clear existing BOGO data
-    await db.runAsync('DELETE FROM bogo_promotions');
+    await Database.runAsync('DELETE FROM bogo_promotions');
     console.log('[syncBogo] Cleared old BOGO data');
 
     if (onProgress) {
@@ -1251,7 +1163,7 @@ export const syncBogo = async (onProgress) => {
       // Insert all BOGO items
       let insertedCount = 0;
       for (const item of extractedItems) {
-        await db.runAsync(
+        await Database.runAsync(
           `INSERT INTO bogo_promotions (
             line_id, promo_name, promo_number, promo_type,
             main_item_code, main_item_desc, promo_item_code, promo_item_desc,
@@ -1270,11 +1182,11 @@ export const syncBogo = async (onProgress) => {
       console.log(`[syncBogo] Inserted ${insertedCount} BOGO records into SQLite`);
 
       // Verify insertion
-      const verifyCount = await db.getFirstAsync('SELECT COUNT(*) as count FROM bogo_promotions');
+      const verifyCount = await Database.getFirstAsync('SELECT COUNT(*) as count FROM bogo_promotions');
       console.log(`[syncBogo] Verification - records in DB: ${verifyCount?.count || 0}`);
 
       // Show all main_item_codes in the DB
-      const mainCodes = await db.getAllAsync('SELECT DISTINCT main_item_code FROM bogo_promotions');
+      const mainCodes = await Database.getAllAsync('SELECT DISTINCT main_item_code FROM bogo_promotions');
       console.log(`[syncBogo] Main item codes in DB:`, mainCodes.map(r => r.main_item_code).join(', '));
     }
 
@@ -1298,22 +1210,19 @@ export const syncBogo = async (onProgress) => {
 // Get BOGO promotions for a specific main item code
 export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
   console.log(`[getBogoForItem] Looking up BOGO for item: ${mainItemCode}, customer: ${customerNumber}`);
-  // SQLite not available on web
-  if (Platform.OS === 'web') return [];
   try {
-    const db = await getPricelistDb();
-    if (!db) return [];
+    await ensureDbInitialized();
 
     // First, check how many BOGO records exist in total
-    const totalCount = await db.getFirstAsync('SELECT COUNT(*) as count FROM bogo_promotions');
+    const totalCount = await Database.getFirstAsync('SELECT COUNT(*) as count FROM bogo_promotions');
     console.log(`[getBogoForItem] Total BOGO records in database: ${totalCount?.count || 0}`);
 
     // Show ALL main_item_codes in database for debugging
-    const allMainCodes = await db.getAllAsync('SELECT DISTINCT main_item_code FROM bogo_promotions LIMIT 20');
+    const allMainCodes = await Database.getAllAsync('SELECT DISTINCT main_item_code FROM bogo_promotions LIMIT 20');
     console.log(`[getBogoForItem] Main item codes in DB (first 20):`, allMainCodes.map(r => r.main_item_code).join(', '));
 
     // Check if any BOGO exists for this main item (without any filters)
-    const itemBogos = await db.getAllAsync(
+    const itemBogos = await Database.getAllAsync(
       'SELECT * FROM bogo_promotions WHERE main_item_code = ?',
       [mainItemCode]
     );
@@ -1332,7 +1241,7 @@ export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
     }
 
     // Try case-insensitive match
-    const itemBogosCaseInsensitive = await db.getAllAsync(
+    const itemBogosCaseInsensitive = await Database.getAllAsync(
       'SELECT * FROM bogo_promotions WHERE UPPER(main_item_code) = UPPER(?)',
       [mainItemCode]
     );
@@ -1355,12 +1264,9 @@ export const getBogoForItem = async (mainItemCode, customerNumber = 'ALL') => {
 
 // Get all BOGO promotions
 export const getAllBogo = async () => {
-  // SQLite not available on web
-  if (Platform.OS === 'web') return [];
   try {
-    const db = await getPricelistDb();
-    if (!db) return [];
-    const bogos = await db.getAllAsync('SELECT * FROM bogo_promotions');
+    await ensureDbInitialized();
+    const bogos = await Database.getAllAsync('SELECT * FROM bogo_promotions');
     return bogos;
   } catch (error) {
     console.error('Error getting all BOGO:', error);
@@ -1379,8 +1285,8 @@ export const calculateBogoQty = (mainQty, buyQty, getQty) => {
 // Returns array of BOGO items to add based on cart contents
 export const buildBogoItemsForCart = async (cart, customerNumber = 'ALL') => {
   try {
+    await ensureDbInitialized();
     const bogoItems = [];
-    const db = await getPricelistDb();
     const now = new Date().toISOString();
 
     for (const cartItem of cart) {
@@ -1388,7 +1294,7 @@ export const buildBogoItemsForCart = async (cart, customerNumber = 'ALL') => {
       if (!mainItemCode) continue;
 
       // Get BOGO rules for this item
-      const bogos = await db.getAllAsync(
+      const bogos = await Database.getAllAsync(
         `SELECT * FROM bogo_promotions
          WHERE main_item_code = ?
          AND (customer_number = ? OR customer_number = 'ALL')
