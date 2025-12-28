@@ -5,6 +5,42 @@ import * as Database from './database';
 
 const BASE_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP';
 
+/**
+ * Cross-platform Base64 encoding (works on both React Native and Web)
+ * btoa() is not available in React Native, so we provide a fallback
+ */
+const base64Encode = (str) => {
+  // On web/Electron, use btoa if available
+  if (typeof btoa === 'function') {
+    return btoa(str);
+  }
+
+  // React Native fallback - manual base64 encoding
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let output = '';
+
+  for (let i = 0; i < str.length; i += 3) {
+    const byte1 = str.charCodeAt(i);
+    const byte2 = i + 1 < str.length ? str.charCodeAt(i + 1) : 0;
+    const byte3 = i + 2 < str.length ? str.charCodeAt(i + 2) : 0;
+
+    const enc1 = byte1 >> 2;
+    const enc2 = ((byte1 & 3) << 4) | (byte2 >> 4);
+    const enc3 = ((byte2 & 15) << 2) | (byte3 >> 6);
+    const enc4 = byte3 & 63;
+
+    if (i + 1 >= str.length) {
+      output += chars.charAt(enc1) + chars.charAt(enc2) + '==';
+    } else if (i + 2 >= str.length) {
+      output += chars.charAt(enc1) + chars.charAt(enc2) + chars.charAt(enc3) + '=';
+    } else {
+      output += chars.charAt(enc1) + chars.charAt(enc2) + chars.charAt(enc3) + chars.charAt(enc4);
+    }
+  }
+
+  return output;
+};
+
 // Initialize database on first use
 let dbInitialized = false;
 
@@ -901,8 +937,9 @@ export const syncOnhand = async (onProgress, userWarehouse, userSubinventory) =>
     const queryUrl = `${FUSION_BASE_URL}/inventoryOnhandBalances?q=OrganizationCode=${organizationCode};SubinventoryCode=${subinventoryCode}&limit=500`;
     console.log('Fetching onhand from:', queryUrl);
 
-    // Create Basic Auth header
-    const authHeader = 'Basic ' + btoa(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+    // Create Basic Auth header (using cross-platform base64 encoding)
+    const authHeader = 'Basic ' + base64Encode(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+    console.log('[syncOnhand] Auth header created successfully');
 
     let allItems = [];
     let hasMore = true;
@@ -950,8 +987,27 @@ export const syncOnhand = async (onProgress, userWarehouse, userSubinventory) =>
 
     return { success: true, count: allItems.length };
   } catch (error) {
+    console.error('=== ONHAND SYNC ERROR ===');
     console.error('Sync onhand error:', error);
-    return { success: false, error: error.message };
+    console.error('Error message:', error.message);
+    console.error('Error response:', error.response?.data);
+    console.error('Error status:', error.response?.status);
+
+    // Return more descriptive error message
+    let errorMessage = error.message;
+    if (error.response?.status === 401) {
+      errorMessage = 'Authentication failed - invalid credentials';
+    } else if (error.response?.status === 403) {
+      errorMessage = 'Access forbidden - check permissions';
+    } else if (error.response?.status === 404) {
+      errorMessage = 'API endpoint not found';
+    } else if (error.code === 'ECONNABORTED') {
+      errorMessage = 'Connection timeout - server not responding';
+    } else if (error.code === 'ERR_NETWORK') {
+      errorMessage = 'Network error - check internet connection';
+    }
+
+    return { success: false, error: errorMessage };
   }
 };
 
@@ -965,7 +1021,7 @@ export const fetchLotDetails = async (lotsHref) => {
       return { success: false, error: 'No lots URL provided' };
     }
 
-    const authHeader = 'Basic ' + btoa(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+    const authHeader = 'Basic ' + base64Encode(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
 
     const response = await axios.get(lotsHref, {
       headers: {
