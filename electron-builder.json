@@ -8,12 +8,7 @@
     "dist/**/*",
     "electron/**/*",
     "assets/**/*",
-    "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
-    "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
-    "!**/node_modules/.bin",
-    "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
-    "!**/node_modules/fsevents/**",
-    "!**/fsevents/**"
+    "package.json"
   ],
   "extraResources": [
     {
@@ -23,6 +18,8 @@
     }
   ],
   "npmRebuild": false,
+  "nodeGypRebuild": false,
+  "buildDependenciesFromSource": false,
   "asar": true,
   "asarUnpack": [
     "**/*.node"
