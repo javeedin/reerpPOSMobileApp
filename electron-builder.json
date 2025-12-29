@@ -1,6 +1,10 @@
 {
   "appId": "com.fcpos.desktop",
   "productName": "FCPos Desktop",
+  "electronVersion": "33.0.0",
+  "extraMetadata": {
+    "main": "electron/main.js"
+  },
   "directories": {
     "output": "electron-dist"
   },
