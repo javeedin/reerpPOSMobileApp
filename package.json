@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "FCPos Desktop - Point of Sale Application",
   "author": "Grays Inc",
-  "main": "expo/AppEntry.js",
+  "main": "electron/main.js",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
