@@ -100,6 +100,7 @@ const QuickActions = ({ navigation, onNewOrderPress }) => {
   const actions = [
     { icon: 'cart-outline', label: 'New Order', onPress: onNewOrderPress, color: '#2196F3' },
     { icon: 'people-outline', label: 'CRM', onPress: () => navigation.navigate('CRMHome'), color: '#9C27B0' },
+    { icon: 'car-outline', label: 'Trips', onPress: () => navigation.navigate('TripQuery'), color: '#1B5E20' },
     { icon: 'scan-outline', label: 'Scan', onPress: () => navigation.navigate('Scan'), color: '#673AB7' },
     { icon: 'sync-outline', label: 'Sync', onPress: () => navigation.navigate('SyncData'), color: '#4CAF50' },
     { icon: 'cube-outline', label: 'Stock', onPress: () => navigation.navigate('MainTabs', { screen: 'Inventory' }), color: '#FF9800' },

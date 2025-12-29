@@ -29,6 +29,12 @@ import {
   CustomerDetailScreen,
   CustomerSearchScreen,
   CustomerListScreen,
+  // Trip Management screens
+  TripQueryScreen,
+  TripHomeScreen,
+  TripDetailsScreen,
+  OrderVerificationScreen,
+  TripOrderDetailScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -80,6 +86,12 @@ const MainStack = () => {
       <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} />
       <Stack.Screen name="CustomerSearch" component={CustomerSearchScreen} />
       <Stack.Screen name="CustomerList" component={CustomerListScreen} />
+      {/* Trip Management screens */}
+      <Stack.Screen name="TripQuery" component={TripQueryScreen} />
+      <Stack.Screen name="TripHome" component={TripHomeScreen} />
+      <Stack.Screen name="TripDetails" component={TripDetailsScreen} />
+      <Stack.Screen name="OrderVerification" component={OrderVerificationScreen} />
+      <Stack.Screen name="TripOrderDetail" component={TripOrderDetailScreen} />
     </Stack.Navigator>
   );
 };

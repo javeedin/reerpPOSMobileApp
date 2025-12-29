@@ -39,3 +39,9 @@ export { default as CRMHomeScreen } from './CRMHomeScreen';
 export { default as CustomerDetailScreen } from './CustomerDetailScreen';
 export { default as CustomerSearchScreen } from './CustomerSearchScreen';
 export { default as CustomerListScreen } from './CustomerListScreen';
+// Trip Management screens
+export { default as TripQueryScreen } from './TripQueryScreen';
+export { default as TripHomeScreen } from './TripHomeScreen';
+export { default as TripDetailsScreen } from './TripDetailsScreen';
+export { default as OrderVerificationScreen } from './OrderVerificationScreen';
+export { default as TripOrderDetailScreen } from './TripOrderDetailScreen';
