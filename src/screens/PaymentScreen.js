@@ -442,11 +442,21 @@ const PaymentScreen = ({ navigation, route }) => {
   };
 
   const handleDone = () => {
-    navigation.navigate('MainTabs');
+    setShowSuccess(false);
+    // Use reset to clear the navigation stack and go to home
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainTabs' }],
+    });
   };
 
   const handleNewOrder = () => {
-    navigation.navigate('MainTabs');
+    setShowSuccess(false);
+    // Use reset to clear the navigation stack and go to home for a fresh order
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainTabs' }],
+    });
   };
 
   // Handle home navigation with warning
