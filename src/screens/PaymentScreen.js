@@ -22,6 +22,7 @@ import colors from '../theme/colors';
 import { createOrder, ORDER_STATUS } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import { getPaymentMethods } from '../services/syncService';
+import { printReceipt } from '../services/receiptService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -251,6 +252,7 @@ const PaymentScreen = ({ navigation, route }) => {
   const [confirmedOrder, setConfirmedOrder] = useState(null);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [loadingMethods, setLoadingMethods] = useState(true);
+  const [printing, setPrinting] = useState(false);
 
   // Modal state - track enabled methods with their amounts/references
   const [modalPayments, setModalPayments] = useState({});
@@ -473,6 +475,37 @@ const PaymentScreen = ({ navigation, route }) => {
         },
       ]
     );
+  };
+
+  // Handle print receipt
+  const handlePrintReceipt = async () => {
+    if (!confirmedOrder) return;
+
+    setPrinting(true);
+    try {
+      const orderForPrint = {
+        ...confirmedOrder,
+        customer,
+        lines: cart,
+        payments,
+        currency,
+        salesRep: user?.username || user?.name || '',
+        orderType: menuConfig?.name || 'Sale',
+      };
+
+      const result = await printReceipt(orderForPrint, {
+        companyName: 'GRAYS INC',
+        paperWidth: 80, // 80mm thermal paper
+      });
+
+      if (!result.success) {
+        Alert.alert('Print Error', result.error || 'Failed to print receipt');
+      }
+    } catch (error) {
+      Alert.alert('Print Error', error.message);
+    } finally {
+      setPrinting(false);
+    }
   };
 
   // Calculate suggested amount for each method in modal
@@ -733,6 +766,23 @@ const PaymentScreen = ({ navigation, route }) => {
                 <Text style={styles.changeValue}>{currency} {change.toFixed(2)}</Text>
               </View>
             )}
+
+            {/* Print Receipt Button */}
+            <TouchableOpacity
+              style={styles.printReceiptBtn}
+              onPress={handlePrintReceipt}
+              disabled={printing}
+            >
+              {printing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="print-outline" size={22} color="#FFFFFF" />
+              )}
+              <Text style={styles.printReceiptBtnText}>
+                {printing ? 'Printing...' : 'Print Receipt'}
+              </Text>
+            </TouchableOpacity>
+
             <View style={styles.successActions}>
               <TouchableOpacity style={styles.newOrderBtn} onPress={handleNewOrder}>
                 <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
@@ -1254,6 +1304,23 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.accentGreen,
+  },
+  printReceiptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.secondary || '#FF6B6B',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 10,
+    width: '100%',
+    marginBottom: 16,
+  },
+  printReceiptBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   successActions: {
     flexDirection: 'row',
