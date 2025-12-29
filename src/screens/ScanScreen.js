@@ -19,16 +19,19 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-// Camera only available on native platforms
+// Camera and image modules only available on native platforms
 let CameraView = null;
 let useCameraPermissions = null;
+let ImagePicker = null;
+let ImageManipulator = null;
+
 if (Platform.OS !== 'web') {
   const cameraModule = require('expo-camera');
   CameraView = cameraModule.CameraView;
   useCameraPermissions = cameraModule.useCameraPermissions;
+  ImagePicker = require('expo-image-picker');
+  ImageManipulator = require('expo-image-manipulator');
 }
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import { useFocusEffect } from '@react-navigation/native';
 import colors from '../theme/colors';
 import { parseBatchReport, extractTextFromImage } from '../services/ocrService';
