@@ -1,6 +1,13 @@
 import { Platform } from 'react-native';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
+
+// Conditionally import native-only modules
+let Print = null;
+let Sharing = null;
+
+if (Platform.OS !== 'web') {
+  Print = require('expo-print');
+  Sharing = require('expo-sharing');
+}
 
 /**
  * Receipt Service for generating and printing thermal printer receipts
