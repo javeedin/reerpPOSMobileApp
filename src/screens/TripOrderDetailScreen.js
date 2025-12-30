@@ -14,10 +14,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import SignatureCanvas from 'react-native-signature-canvas';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { fetchOrderLineDetails } from '../services/tripService';
+import SignaturePad from '../components/SignaturePad';
 
 // Dark green theme colors
 const THEME = {
@@ -231,18 +231,6 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     if (selectedDate) {
       setDeliveryDate(selectedDate);
     }
-  };
-
-  // Handle signature end
-  const handleSignatureEnd = () => {
-    if (signatureRef.current) {
-      signatureRef.current.readSignature();
-    }
-  };
-
-  // Handle signature data
-  const handleSignatureData = (signatureData) => {
-    setSignature(signatureData);
   };
 
   // Clear signature
@@ -661,25 +649,11 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
           </View>
         ) : !isDeliveryConfirmed ? (
           <View style={styles.signatureContainer}>
-            <SignatureCanvas
+            <SignaturePad
               ref={signatureRef}
-              onEnd={handleSignatureEnd}
-              onOK={handleSignatureData}
-              onEmpty={() => setSignature(null)}
-              descriptionText=""
-              clearText="Clear"
-              confirmText="Save"
-              webStyle={`
-                .m-signature-pad { box-shadow: none; border: 1px solid #E0E0E0; border-radius: 8px; }
-                .m-signature-pad--body { border: none; }
-                .m-signature-pad--footer { display: none; }
-                canvas { border-radius: 8px; }
-              `}
+              onSignatureChange={(sig) => setSignature(sig)}
               style={styles.signaturePad}
             />
-            <Text style={styles.signatureHint}>
-              {signature ? '✓ Signature captured' : 'Draw signature above'}
-            </Text>
           </View>
         ) : (
           <View style={styles.noSignatureContainer}>
