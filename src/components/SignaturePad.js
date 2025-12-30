@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 
 const THEME = {
   primary: '#1B5E20',
@@ -10,8 +10,10 @@ const THEME = {
 // Web/Electron Signature Pad using HTML Canvas
 const WebSignaturePad = forwardRef(({ onSignatureChange, style }, ref) => {
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const lastPos = useRef({ x: 0, y: 0 });
 
   useImperativeHandle(ref, () => ({
@@ -19,7 +21,12 @@ const WebSignaturePad = forwardRef(({ onSignatureChange, style }, ref) => {
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         setHasSignature(false);
         onSignatureChange && onSignatureChange(null);
       }
@@ -34,39 +41,54 @@ const WebSignaturePad = forwardRef(({ onSignatureChange, style }, ref) => {
   }));
 
   useEffect(() => {
+    // Delay initialization to ensure DOM is ready
+    const timer = setTimeout(() => {
+      initCanvas();
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const initCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Set canvas size
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+    // Set fixed dimensions
+    canvas.width = 450;
+    canvas.height = 200;
 
     const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-  }, []);
+
+    setIsReady(true);
+  };
 
   const getPosition = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
 
-    if (e.touches) {
+    if (e.touches && e.touches.length > 0) {
       return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top,
+        x: (e.touches[0].clientX - rect.left) * scaleX,
+        y: (e.touches[0].clientY - rect.top) * scaleY,
       };
     }
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
     };
   };
 
   const startDrawing = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDrawing(true);
     const pos = getPosition(e);
     lastPos.current = pos;
@@ -75,6 +97,7 @@ const WebSignaturePad = forwardRef(({ onSignatureChange, style }, ref) => {
   const draw = (e) => {
     if (!isDrawing) return;
     e.preventDefault();
+    e.stopPropagation();
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -92,7 +115,7 @@ const WebSignaturePad = forwardRef(({ onSignatureChange, style }, ref) => {
     }
   };
 
-  const stopDrawing = (e) => {
+  const stopDrawing = () => {
     if (isDrawing && hasSignature) {
       const canvas = canvasRef.current;
       const signatureData = canvas.toDataURL('image/png');
@@ -102,28 +125,32 @@ const WebSignaturePad = forwardRef(({ onSignatureChange, style }, ref) => {
   };
 
   return (
-    <View style={[styles.container, style]}>
-      <canvas
-        ref={canvasRef}
-        style={{
-          width: '100%',
-          height: 200,
-          backgroundColor: '#FFFFFF',
-          borderRadius: 8,
-          border: '1px solid #E0E0E0',
-          touchAction: 'none',
-          cursor: 'crosshair',
-        }}
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={stopDrawing}
-        onMouseLeave={stopDrawing}
-        onTouchStart={startDrawing}
-        onTouchMove={draw}
-        onTouchEnd={stopDrawing}
-      />
+    <View style={[styles.container, style]} ref={containerRef}>
+      <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: '100%',
+            maxWidth: 450,
+            height: 200,
+            backgroundColor: '#FFFFFF',
+            borderRadius: 8,
+            border: '2px solid #1B5E20',
+            touchAction: 'none',
+            cursor: 'crosshair',
+            display: 'block',
+          }}
+          onMouseDown={startDrawing}
+          onMouseMove={draw}
+          onMouseUp={stopDrawing}
+          onMouseLeave={stopDrawing}
+          onTouchStart={startDrawing}
+          onTouchMove={draw}
+          onTouchEnd={stopDrawing}
+        />
+      </div>
       <Text style={styles.hint}>
-        {hasSignature ? '✓ Signature captured' : 'Draw your signature above'}
+        {!isReady ? 'Initializing...' : hasSignature ? '✓ Signature captured' : 'Draw your signature above'}
       </Text>
     </View>
   );
