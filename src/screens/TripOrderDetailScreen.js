@@ -504,7 +504,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
         </View>
         {lines.map((line, index) => (
           <LineItemCard
-            key={`${line.item}-${line.lot || ''}-${index}`}
+                        key={`line-${index}`}
             line={line}
             index={index}
             onVerify={handleVerifyLine}
