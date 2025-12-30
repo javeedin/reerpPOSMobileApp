@@ -51,6 +51,8 @@
     "babel-preset-expo": "~54.0.9",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
     "wait-on": "^9.0.3"
   },
   "private": true
