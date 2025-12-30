@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { fetchOrderLineDetails } from '../services/tripService';
 
 // Dark green theme colors
 const THEME = {
@@ -27,6 +29,73 @@ const THEME = {
   warning: '#FF9800',
   error: '#F44336',
   info: '#2196F3',
+};
+
+// Tab options
+const TABS = [
+  { id: 'lines', label: 'Lines', icon: 'list-outline' },
+  { id: 'info', label: 'Order Info', icon: 'information-circle-outline' },
+];
+
+// Line Item Card Component
+const LineItemCard = ({ line, index }) => {
+  const isVerified = line.verified_qty > 0;
+  const isPicked = line.pick_confirm_st === 'YES';
+
+  const getStatusColor = () => {
+    if (isVerified) return THEME.success;
+    if (isPicked) return THEME.info;
+    return THEME.warning;
+  };
+
+  const getStatusText = () => {
+    if (isVerified) return 'Verified';
+    if (isPicked) return 'Picked';
+    return 'Pending';
+  };
+
+  return (
+    <View style={styles.lineCard}>
+      <View style={styles.lineHeader}>
+        <View style={styles.lineIndexBadge}>
+          <Text style={styles.lineIndexText}>{index + 1}</Text>
+        </View>
+        <View style={styles.lineInfo}>
+          <Text style={styles.lineItemCode}>{line.item}</Text>
+          <Text style={styles.lineItemDesc} numberOfLines={2}>{line.description}</Text>
+        </View>
+        <View style={[styles.lineStatusBadge, { backgroundColor: getStatusColor() + '15' }]}>
+          <Text style={[styles.lineStatusText, { color: getStatusColor() }]}>{getStatusText()}</Text>
+        </View>
+      </View>
+
+      <View style={styles.lineQuantities}>
+        <View style={styles.qtyItem}>
+          <Text style={styles.qtyLabel}>Requested</Text>
+          <Text style={styles.qtyValue}>{line.requested_quantity || 0}</Text>
+        </View>
+        <View style={styles.qtyDivider} />
+        <View style={styles.qtyItem}>
+          <Text style={styles.qtyLabel}>Picked</Text>
+          <Text style={[styles.qtyValue, { color: THEME.info }]}>{line.picked_qty || 0}</Text>
+        </View>
+        <View style={styles.qtyDivider} />
+        <View style={styles.qtyItem}>
+          <Text style={styles.qtyLabel}>Verified</Text>
+          <Text style={[styles.qtyValue, { color: isVerified ? THEME.success : THEME.textLight }]}>
+            {line.verified_qty || 0}
+          </Text>
+        </View>
+      </View>
+
+      {line.lot && (
+        <View style={styles.lineLotInfo}>
+          <Ionicons name="cube-outline" size={14} color={THEME.textLight} />
+          <Text style={styles.lineLotText}>Lot: {line.lot}</Text>
+        </View>
+      )}
+    </View>
+  );
 };
 
 // Detail Row Component
@@ -46,42 +115,32 @@ const DetailRow = ({ label, value, icon, valueColor }) => (
   </View>
 );
 
-// Status Badge Component
-const StatusBadge = ({ status, text }) => {
-  const getColor = () => {
-    switch (status) {
-      case 'delivered':
-        return THEME.info;
-      case 'verified':
-        return THEME.success;
-      case 'pending':
-      default:
-        return THEME.warning;
-    }
-  };
-
-  return (
-    <View style={[styles.statusBadge, { backgroundColor: getColor() + '15' }]}>
-      <View style={[styles.statusDot, { backgroundColor: getColor() }]} />
-      <Text style={[styles.statusText, { color: getColor() }]}>{text}</Text>
-    </View>
-  );
-};
-
 const TripOrderDetailScreen = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
   const { order, tripId } = route.params;
+  const [activeTab, setActiveTab] = useState('lines');
+  const [lines, setLines] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const isVerified = order.pickConfirmSt === 'YES';
   const isDelivered = order.shipConfirmSt === 'YES';
 
-  const getStatus = () => {
-    if (isDelivered) return { status: 'delivered', text: 'Delivered' };
-    if (isVerified) return { status: 'verified', text: 'Verified' };
-    return { status: 'pending', text: 'Pending' };
-  };
+  useEffect(() => {
+    loadOrderLines();
+  }, []);
 
-  const statusInfo = getStatus();
+  const loadOrderLines = async () => {
+    try {
+      const result = await fetchOrderLineDetails(order.orderNumber);
+      if (result.success && result.data?.items) {
+        setLines(result.data.items);
+      }
+    } catch (error) {
+      console.error('[TripOrderDetail] Error loading lines:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCallCustomer = () => {
     Alert.alert('Call Customer', 'Would you like to call the customer?', [
@@ -97,11 +156,146 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     ]);
   };
 
+  // Render Lines Tab
+  const renderLinesTab = () => {
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={THEME.primary} />
+          <Text style={styles.loadingText}>Loading lines...</Text>
+        </View>
+      );
+    }
+
+    if (lines.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="cube-outline" size={48} color={THEME.textLight} />
+          <Text style={styles.emptyText}>No lines found</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.linesContainer}>
+        <View style={styles.linesSummary}>
+          <Text style={styles.linesSummaryText}>
+            {lines.length} items • {lines.filter(l => l.verified_qty > 0).length} verified
+          </Text>
+        </View>
+        {lines.map((line, index) => (
+          <LineItemCard key={line.transaction_id || index} line={line} index={index} />
+        ))}
+      </View>
+    );
+  };
+
+  // Render Order Info Tab
+  const renderOrderInfoTab = () => (
+    <View style={styles.infoContainer}>
+      {/* Customer Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardIcon}>
+            <Ionicons name="person" size={24} color={THEME.primary} />
+          </View>
+          <View style={styles.cardHeaderText}>
+            <Text style={styles.cardTitle}>Customer</Text>
+          </View>
+        </View>
+        <View style={styles.customerInfo}>
+          <Text style={styles.customerName}>{order.accountName || 'Unknown Customer'}</Text>
+          <Text style={styles.accountNumber}>{order.accountNumber}</Text>
+        </View>
+        <View style={styles.customerActions}>
+          <TouchableOpacity style={styles.customerAction} onPress={handleCallCustomer}>
+            <Ionicons name="call" size={20} color={THEME.success} />
+            <Text style={styles.customerActionText}>Call</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.customerAction} onPress={handleNavigate}>
+            <Ionicons name="navigate" size={20} color={THEME.info} />
+            <Text style={styles.customerActionText}>Navigate</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Order Info Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardIcon}>
+            <Ionicons name="document-text" size={24} color={THEME.primary} />
+          </View>
+          <Text style={styles.cardTitle}>Order Details</Text>
+        </View>
+
+        <DetailRow label="Order Number" value={order.orderNumber} icon="receipt-outline" />
+        <DetailRow label="Order Date" value={order.orderDate} icon="calendar-outline" />
+        <DetailRow label="Order Type" value={order.orderType} icon="pricetag-outline" />
+        <DetailRow label="Customer PO" value={order.customerPo} icon="document-outline" />
+        <DetailRow label="Release Date" value={order.releaseDate} icon="time-outline" />
+      </View>
+
+      {/* Delivery Info Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardIcon}>
+            <MaterialCommunityIcons name="truck-delivery" size={24} color={THEME.primary} />
+          </View>
+          <Text style={styles.cardTitle}>Delivery</Text>
+        </View>
+
+        <DetailRow label="Salesman/Driver" value={order.salesman} icon="person-circle-outline" />
+        <DetailRow label="Lorry" value={order.lorry} icon="car-outline" />
+        <DetailRow label="Loading Bay" value={order.loadingByNum} icon="location-outline" />
+        <DetailRow label="Picker" value={order.picker} icon="hand-left-outline" />
+        <DetailRow label="Pick Slip No" value={order.pickSlipNo} icon="barcode-outline" />
+      </View>
+
+      {/* Order Summary Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardIcon}>
+            <Ionicons name="stats-chart" size={24} color={THEME.primary} />
+          </View>
+          <Text style={styles.cardTitle}>Summary</Text>
+        </View>
+
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryValue}>{order.orderLines || 0}</Text>
+            <Text style={styles.summaryLabel}>Lines</Text>
+          </View>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryValue}>{order.picksCount || 0}</Text>
+            <Text style={styles.summaryLabel}>Picks</Text>
+          </View>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryValue}>{order.lotCount || 0}</Text>
+            <Text style={styles.summaryLabel}>Lots</Text>
+          </View>
+          <View style={styles.summaryItem}>
+            <Text style={[styles.summaryValue, { color: THEME.error }]}>
+              {order.notPicked || 0}
+            </Text>
+            <Text style={styles.summaryLabel}>Not Picked</Text>
+          </View>
+        </View>
+
+        <View style={styles.amountSection}>
+          <Text style={styles.amountLabel}>Order Amount</Text>
+          <Text style={styles.amountValue}>
+            ₹{(order.orderAmount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.primaryDark} />
 
-      {/* Header */}
+      {/* Header with Status Icons */}
       <LinearGradient
         colors={[THEME.primaryDark, THEME.primary, THEME.primaryLight]}
         start={{ x: 0, y: 0 }}
@@ -116,198 +310,105 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Order Details</Text>
-            <Text style={styles.headerSubtitle}>{order.orderNumber}</Text>
-          </View>
-          <StatusBadge {...statusInfo} />
-        </View>
-      </LinearGradient>
-
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Customer Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIcon}>
-              <Ionicons name="person" size={24} color={THEME.primary} />
-            </View>
-            <View style={styles.cardHeaderText}>
-              <Text style={styles.cardTitle}>Customer Information</Text>
-            </View>
-          </View>
-          <View style={styles.customerInfo}>
-            <Text style={styles.customerName}>{order.accountName || 'Unknown Customer'}</Text>
-            <Text style={styles.accountNumber}>{order.accountNumber}</Text>
-          </View>
-          <View style={styles.customerActions}>
-            <TouchableOpacity style={styles.customerAction} onPress={handleCallCustomer}>
-              <Ionicons name="call" size={20} color={THEME.success} />
-              <Text style={styles.customerActionText}>Call</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.customerAction} onPress={handleNavigate}>
-              <Ionicons name="navigate" size={20} color={THEME.info} />
-              <Text style={styles.customerActionText}>Navigate</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Order Info Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIcon}>
-              <Ionicons name="document-text" size={24} color={THEME.primary} />
-            </View>
-            <Text style={styles.cardTitle}>Order Information</Text>
-          </View>
-
-          <DetailRow
-            label="Order Number"
-            value={order.orderNumber}
-            icon="receipt-outline"
-          />
-          <DetailRow
-            label="Order Date"
-            value={order.orderDate}
-            icon="calendar-outline"
-          />
-          <DetailRow
-            label="Order Type"
-            value={order.orderType}
-            icon="pricetag-outline"
-          />
-          <DetailRow
-            label="Customer PO"
-            value={order.customerPo}
-            icon="document-outline"
-          />
-          <DetailRow
-            label="Release Date"
-            value={order.releaseDate}
-            icon="time-outline"
-          />
-        </View>
-
-        {/* Delivery Info Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIcon}>
-              <MaterialCommunityIcons name="truck-delivery" size={24} color={THEME.primary} />
-            </View>
-            <Text style={styles.cardTitle}>Delivery Information</Text>
-          </View>
-
-          <DetailRow
-            label="Salesman/Driver"
-            value={order.salesman}
-            icon="person-circle-outline"
-          />
-          <DetailRow
-            label="Lorry"
-            value={order.lorry}
-            icon="car-outline"
-          />
-          <DetailRow
-            label="Loading Bay"
-            value={order.loadingByNum}
-            icon="location-outline"
-          />
-          <DetailRow
-            label="Picker"
-            value={order.picker}
-            icon="hand-left-outline"
-          />
-          <DetailRow
-            label="Pick Slip No"
-            value={order.pickSlipNo}
-            icon="barcode-outline"
-          />
-        </View>
-
-        {/* Order Summary Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIcon}>
-              <Ionicons name="stats-chart" size={24} color={THEME.primary} />
-            </View>
-            <Text style={styles.cardTitle}>Order Summary</Text>
-          </View>
-
-          <View style={styles.summaryGrid}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{order.orderLines || 0}</Text>
-              <Text style={styles.summaryLabel}>Lines</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{order.picksCount || 0}</Text>
-              <Text style={styles.summaryLabel}>Picks</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{order.lotCount || 0}</Text>
-              <Text style={styles.summaryLabel}>Lots</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: THEME.error }]}>
-                {order.notPicked || 0}
-              </Text>
-              <Text style={styles.summaryLabel}>Not Picked</Text>
-            </View>
-          </View>
-
-          <View style={styles.amountSection}>
-            <Text style={styles.amountLabel}>Order Amount</Text>
-            <Text style={styles.amountValue}>
-              ₹{(order.orderAmount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            <Text style={styles.headerTitle}>{order.orderNumber}</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {order.accountName || 'Unknown Customer'}
             </Text>
           </View>
         </View>
 
-        {/* Status Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIcon}>
-              <Ionicons name="checkmark-circle" size={24} color={THEME.primary} />
+        {/* Status Icons Row */}
+        <View style={styles.statusIconsRow}>
+          <View style={styles.statusIconItem}>
+            <View style={[
+              styles.statusIconCircle,
+              { backgroundColor: isVerified || isDelivered ? THEME.success : 'rgba(255,255,255,0.2)' }
+            ]}>
+              <Ionicons
+                name={isVerified || isDelivered ? 'checkmark' : 'ellipse-outline'}
+                size={16}
+                color="#FFFFFF"
+              />
             </View>
-            <Text style={styles.cardTitle}>Status</Text>
+            <Text style={styles.statusIconLabel}>Pick</Text>
           </View>
 
-          <View style={styles.statusGrid}>
-            <View style={styles.statusItem}>
+          <View style={styles.statusIconConnector} />
+
+          <View style={styles.statusIconItem}>
+            <View style={[
+              styles.statusIconCircle,
+              { backgroundColor: isVerified || isDelivered ? THEME.success : 'rgba(255,255,255,0.2)' }
+            ]}>
               <Ionicons
-                name={order.pickConfirmSt === 'YES' ? 'checkmark-circle' : 'ellipse-outline'}
-                size={28}
-                color={order.pickConfirmSt === 'YES' ? THEME.success : THEME.textLight}
+                name={isVerified || isDelivered ? 'checkmark' : 'ellipse-outline'}
+                size={16}
+                color="#FFFFFF"
               />
-              <Text style={styles.statusItemLabel}>Pick Confirmed</Text>
-              <Text style={[
-                styles.statusItemValue,
-                { color: order.pickConfirmSt === 'YES' ? THEME.success : THEME.textLight }
-              ]}>
-                {order.pickConfirmSt || 'NO'}
-              </Text>
             </View>
-            <View style={styles.statusItem}>
-              <Ionicons
-                name={order.shipConfirmSt === 'YES' ? 'checkmark-circle' : 'ellipse-outline'}
-                size={28}
-                color={order.shipConfirmSt === 'YES' ? THEME.success : THEME.textLight}
-              />
-              <Text style={styles.statusItemLabel}>Ship Confirmed</Text>
-              <Text style={[
-                styles.statusItemValue,
-                { color: order.shipConfirmSt === 'YES' ? THEME.success : THEME.textLight }
-              ]}>
-                {order.shipConfirmSt || 'NO'}
-              </Text>
-            </View>
+            <Text style={styles.statusIconLabel}>Verify</Text>
           </View>
 
-          <View style={styles.lineStatusSection}>
-            <Text style={styles.lineStatusLabel}>Line Status</Text>
-            <Text style={styles.lineStatusValue}>{order.lineStatus || 'N/A'}</Text>
+          <View style={styles.statusIconConnector} />
+
+          <View style={styles.statusIconItem}>
+            <View style={[
+              styles.statusIconCircle,
+              { backgroundColor: isDelivered ? THEME.success : 'rgba(255,255,255,0.2)' }
+            ]}>
+              <Ionicons
+                name={isDelivered ? 'checkmark' : 'ellipse-outline'}
+                size={16}
+                color="#FFFFFF"
+              />
+            </View>
+            <Text style={styles.statusIconLabel}>Ship</Text>
+          </View>
+
+          <View style={styles.statusIconConnector} />
+
+          <View style={styles.statusIconItem}>
+            <View style={[
+              styles.statusIconCircle,
+              { backgroundColor: isDelivered ? THEME.success : 'rgba(255,255,255,0.2)' }
+            ]}>
+              <Ionicons
+                name={isDelivered ? 'checkmark' : 'ellipse-outline'}
+                size={16}
+                color="#FFFFFF"
+              />
+            </View>
+            <Text style={styles.statusIconLabel}>Deliver</Text>
           </View>
         </View>
+      </LinearGradient>
+
+      {/* Tabs */}
+      <View style={styles.tabContainer}>
+        {TABS.map((tab) => (
+          <TouchableOpacity
+            key={tab.id}
+            style={[styles.tab, activeTab === tab.id && styles.tabActive]}
+            onPress={() => setActiveTab(tab.id)}
+          >
+            <Ionicons
+              name={tab.icon}
+              size={20}
+              color={activeTab === tab.id ? THEME.primary : THEME.textLight}
+            />
+            <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Tab Content */}
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {activeTab === 'lines' ? renderLinesTab() : renderOrderInfoTab()}
 
         {/* Action Buttons */}
         {!isDelivered && (
@@ -315,10 +416,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
             {!isVerified ? (
               <TouchableOpacity
                 style={styles.primaryButton}
-                onPress={() => navigation.navigate('OrderVerification', {
-                  order,
-                  tripId,
-                })}
+                onPress={() => navigation.navigate('OrderVerification', { order, tripId })}
               >
                 <LinearGradient
                   colors={[THEME.success, THEME.accentLight]}
@@ -334,14 +432,10 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
               <TouchableOpacity
                 style={styles.primaryButton}
                 onPress={() => {
-                  Alert.alert(
-                    'Confirm Delivery',
-                    'Mark this order as delivered?',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Confirm', onPress: () => navigation.goBack() },
-                    ]
-                  );
+                  Alert.alert('Confirm Delivery', 'Mark this order as delivered?', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Confirm', onPress: () => navigation.goBack() },
+                  ]);
                 }}
               >
                 <LinearGradient
@@ -358,7 +452,6 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Bottom Padding */}
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
@@ -374,12 +467,13 @@ const styles = StyleSheet.create({
   // Header
   header: {
     paddingTop: 10,
-    paddingBottom: 20,
+    paddingBottom: 16,
     paddingHorizontal: 16,
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 16,
   },
   backButton: {
     width: 40,
@@ -394,7 +488,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -404,22 +498,69 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Status Badge
-  statusBadge: {
+  // Status Icons Row
+  statusIconsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  statusIconItem: {
+    alignItems: 'center',
+  },
+  statusIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusIconLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+  },
+  statusIconConnector: {
+    width: 30,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginHorizontal: 4,
+    marginBottom: 14,
+  },
+
+  // Tabs
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: THEME.surface,
+    marginHorizontal: 16,
+    marginTop: -10,
     borderRadius: 12,
+    padding: 4,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
   },
-  statusText: {
-    fontSize: 12,
+  tabActive: {
+    backgroundColor: THEME.primary + '15',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: THEME.textLight,
+    marginLeft: 6,
+  },
+  tabTextActive: {
+    color: THEME.primary,
     fontWeight: '600',
   },
 
@@ -427,13 +568,141 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // Loading
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: THEME.textLight,
+  },
+
+  // Empty
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: THEME.textLight,
+  },
+
+  // Lines Tab
+  linesContainer: {
+    padding: 16,
+  },
+  linesSummary: {
+    marginBottom: 12,
+  },
+  linesSummaryText: {
+    fontSize: 13,
+    color: THEME.textLight,
+  },
+  lineCard: {
+    backgroundColor: THEME.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  lineHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  lineIndexBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: THEME.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  lineIndexText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  lineInfo: {
+    flex: 1,
+  },
+  lineItemCode: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: THEME.primary,
+  },
+  lineItemDesc: {
+    fontSize: 14,
+    color: THEME.text,
+    marginTop: 2,
+  },
+  lineStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  lineStatusText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  lineQuantities: {
+    flexDirection: 'row',
+    backgroundColor: THEME.background,
+    borderRadius: 8,
+    padding: 10,
+  },
+  qtyItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  qtyLabel: {
+    fontSize: 10,
+    color: THEME.textLight,
+    marginBottom: 4,
+  },
+  qtyValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: THEME.text,
+  },
+  qtyDivider: {
+    width: 1,
+    backgroundColor: '#E0E0E0',
+  },
+  lineLotInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  lineLotText: {
+    fontSize: 12,
+    color: THEME.textLight,
+    marginLeft: 6,
+  },
+
+  // Info Tab
+  infoContainer: {
+    padding: 16,
+    paddingTop: 8,
+  },
+
   // Card
   card: {
     backgroundColor: THEME.surface,
-    marginHorizontal: 16,
-    marginTop: 16,
     borderRadius: 16,
     padding: 16,
+    marginBottom: 12,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -443,56 +712,56 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   cardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: THEME.primary + '15',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   cardHeaderText: {
     flex: 1,
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: THEME.text,
   },
 
   // Customer Info
   customerInfo: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   customerName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: THEME.text,
   },
   accountNumber: {
-    fontSize: 13,
+    fontSize: 12,
     color: THEME.textLight,
-    marginTop: 4,
+    marginTop: 2,
   },
   customerActions: {
     flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
-    paddingTop: 16,
+    paddingTop: 14,
   },
   customerAction: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   customerActionText: {
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: 6,
+    fontSize: 13,
     fontWeight: '500',
     color: THEME.text,
   },
@@ -501,117 +770,78 @@ const styles = StyleSheet.create({
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
   detailIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 7,
     backgroundColor: THEME.background,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   detailContent: {
     flex: 1,
   },
   detailLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: THEME.textLight,
   },
   detailValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: THEME.text,
-    marginTop: 2,
+    marginTop: 1,
   },
 
   // Summary Grid
   summaryGrid: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   summaryItem: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     backgroundColor: THEME.background,
-    marginHorizontal: 4,
-    borderRadius: 10,
+    marginHorizontal: 3,
+    borderRadius: 8,
   },
   summaryValue: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '700',
     color: THEME.primary,
   },
   summaryLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: THEME.textLight,
-    marginTop: 4,
+    marginTop: 2,
   },
   amountSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 16,
+    paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
   },
   amountLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: THEME.textLight,
   },
   amountValue: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: THEME.primary,
-  },
-
-  // Status Grid
-  statusGrid: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  statusItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 16,
-    backgroundColor: THEME.background,
-    marginHorizontal: 4,
-    borderRadius: 12,
-  },
-  statusItemLabel: {
-    fontSize: 11,
-    color: THEME.textLight,
-    marginTop: 8,
-  },
-  statusItemValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  lineStatusSection: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-  },
-  lineStatusLabel: {
-    fontSize: 11,
-    color: THEME.textLight,
-  },
-  lineStatusValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: THEME.text,
-    marginTop: 4,
   },
 
   // Action Buttons
   actionButtons: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 8,
   },
   primaryButton: {
     borderRadius: 12,
