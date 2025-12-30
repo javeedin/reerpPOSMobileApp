@@ -199,31 +199,41 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     ]);
   };
 
-  // Handle line verification
+  // Handle line verification - with web/Electron support
   const handleVerifyLine = (line) => {
     const qtyToVerify = line.requested_quantity || line.picked_qty || 0;
+    const confirmMessage = `Confirm verification of:\n\n${line.item}\n${line.description}\n\nQuantity: ${qtyToVerify}`;
 
-    Alert.alert(
-      'Verify Line Item',
-      `Confirm verification of:\n\n${line.item}\n${line.description}\n\nQuantity: ${qtyToVerify}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: () => {
-            // Update the line's verified_qty in state
-            setLines(prevLines =>
-              prevLines.map(l =>
-                l.transaction_id === line.transaction_id || l.item === line.item
-                  ? { ...l, verified_qty: qtyToVerify }
-                  : l
-              )
-            );
-            Alert.alert('Success', `Item ${line.item} verified with qty ${qtyToVerify}`);
-          },
-        },
-      ]
-    );
+    const doVerify = () => {
+      // Update the line's verified_qty in state
+      setLines(prevLines =>
+        prevLines.map(l =>
+          l.transaction_id === line.transaction_id || l.item === line.item
+            ? { ...l, verified_qty: qtyToVerify }
+            : l
+        )
+      );
+      if (Platform.OS === 'web') {
+        window.alert(`Item ${line.item} verified with qty ${qtyToVerify}`);
+      } else {
+        Alert.alert('Success', `Item ${line.item} verified with qty ${qtyToVerify}`);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(confirmMessage)) {
+        doVerify();
+      }
+    } else {
+      Alert.alert(
+        'Verify Line Item',
+        confirmMessage,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Confirm', onPress: doVerify },
+        ]
+      );
+    }
   };
 
   // Handle date change
@@ -244,27 +254,41 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     setSignature(null);
   };
 
-  // Confirm delivery
+  // Confirm delivery - with web/Electron support
   const handleConfirmDelivery = () => {
     if (!signature) {
-      Alert.alert('Signature Required', 'Please capture customer signature before confirming delivery.');
+      if (Platform.OS === 'web') {
+        window.alert('Signature Required: Please capture customer signature before confirming delivery.');
+      } else {
+        Alert.alert('Signature Required', 'Please capture customer signature before confirming delivery.');
+      }
       return;
     }
 
-    Alert.alert(
-      'Confirm Delivery',
-      `Confirm delivery of order ${order.orderNumber}?\n\nDelivery Date: ${deliveryDate.toLocaleDateString()}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: () => {
-            setIsDeliveryConfirmed(true);
-            Alert.alert('Success', 'Order delivery confirmed!');
+    const confirmMessage = `Confirm delivery of order ${order.orderNumber}?\n\nDelivery Date: ${deliveryDate.toLocaleDateString()}`;
+
+    if (Platform.OS === 'web') {
+      // Use window.confirm for web/Electron
+      if (window.confirm(confirmMessage)) {
+        setIsDeliveryConfirmed(true);
+        window.alert('Order delivery confirmed!');
+      }
+    } else {
+      Alert.alert(
+        'Confirm Delivery',
+        confirmMessage,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Confirm',
+            onPress: () => {
+              setIsDeliveryConfirmed(true);
+              Alert.alert('Success', 'Order delivery confirmed!');
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   // Generate delivery PDF
@@ -372,6 +396,15 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     return html;
   };
 
+  // Helper for cross-platform alerts
+  const showAlert = (title, message) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}: ${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   // Handle print/PDF
   const handlePrintOrder = async () => {
     try {
@@ -380,7 +413,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
       await Print.printAsync({ html });
     } catch (error) {
       console.error('[TripOrderDetail] Print error:', error);
-      Alert.alert('Error', 'Failed to print order');
+      showAlert('Error', 'Failed to print order');
     } finally {
       setGeneratingPdf(false);
     }
@@ -400,11 +433,11 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        Alert.alert('Sharing not available', 'Sharing is not available on this device');
+        showAlert('Sharing not available', 'Sharing is not available on this device');
       }
     } catch (error) {
       console.error('[TripOrderDetail] Share error:', error);
-      Alert.alert('Error', 'Failed to share PDF');
+      showAlert('Error', 'Failed to share PDF');
     } finally {
       setGeneratingPdf(false);
     }
@@ -968,7 +1001,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
                   if (signature) {
                     setShowSignatureModal(false);
                   } else {
-                    Alert.alert('Please Sign', 'Draw your signature before confirming');
+                    showAlert('Please Sign', 'Draw your signature before confirming');
                   }
                 }}
               >
