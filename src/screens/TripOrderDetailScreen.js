@@ -96,31 +96,33 @@ const LineItemCard = ({ line, index, onVerify }) => {
         </View>
       </View>
 
-      {line.lot && (
-        <View style={styles.lineLotInfo}>
-          <Ionicons name="cube-outline" size={14} color={THEME.textLight} />
-          <Text style={styles.lineLotText}>Lot: {line.lot}</Text>
-        </View>
-      )}
+      {/* Bottom row with Lot info and Verify button */}
+      <View style={styles.lineBottomRow}>
+        {line.lot ? (
+          <View style={styles.lineLotInfo}>
+            <Ionicons name="cube-outline" size={14} color={THEME.textLight} />
+            <Text style={styles.lineLotText}>Lot: {line.lot}</Text>
+          </View>
+        ) : (
+          <View style={styles.lineLotInfo} />
+        )}
 
-      {/* Verify Button - only show if not verified */}
-      {!isVerified && (
-        <TouchableOpacity
-          style={styles.verifyLineButton}
-          onPress={() => onVerify(line)}
-        >
-          <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
-          <Text style={styles.verifyLineButtonText}>Verify</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Already Verified indicator */}
-      {isVerified && (
-        <View style={styles.verifiedIndicator}>
-          <Ionicons name="checkmark-circle" size={18} color={THEME.success} />
-          <Text style={styles.verifiedIndicatorText}>Verified</Text>
-        </View>
-      )}
+        {/* Small Verify button - only show if not verified */}
+        {!isVerified ? (
+          <TouchableOpacity
+            style={styles.verifySmallButton}
+            onPress={() => onVerify(line)}
+          >
+            <Ionicons name="checkmark-circle-outline" size={14} color="#FFFFFF" />
+            <Text style={styles.verifySmallButtonText}>Verify</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.verifiedSmallBadge}>
+            <Ionicons name="checkmark-circle" size={14} color={THEME.success} />
+            <Text style={styles.verifiedSmallText}>Verified</Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 };
@@ -1267,48 +1269,52 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: '#E0E0E0',
   },
-  lineLotInfo: {
+  lineBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#F0F0F0',
+  },
+  lineLotInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   lineLotText: {
     fontSize: 12,
     color: THEME.textLight,
     marginLeft: 6,
   },
-  verifyLineButton: {
+  verifySmallButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: THEME.primary,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    gap: 4,
   },
-  verifyLineButtonText: {
+  verifySmallButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    marginLeft: 6,
   },
-  verifiedIndicator: {
+  verifiedSmallBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: THEME.success + '15',
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    gap: 4,
   },
-  verifiedIndicatorText: {
+  verifiedSmallText: {
     color: THEME.success,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    marginLeft: 6,
   },
 
   // Info Tab
