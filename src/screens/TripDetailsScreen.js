@@ -326,7 +326,7 @@ const TripDetailsScreen = ({ navigation, route }) => {
           <Text style={styles.sectionTitle}>Orders ({orders.length})</Text>
           {orders.map((order, index) => (
             <OrderCard
-              key={order.orderNumber || index}
+              key={`order-${index}`}
               order={order}
               onVerify={() => handleVerifyOrder(order)}
               onDeliver={() => handleDeliverOrder(order)}

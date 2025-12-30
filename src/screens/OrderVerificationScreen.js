@@ -351,7 +351,7 @@ const OrderVerificationScreen = ({ navigation, route }) => {
         <View style={styles.linesContainer}>
           {lines.map((line, index) => (
             <LineItemCard
-              key={line.lineId}
+              key={`verify-line-${index}`}
               line={line}
               onVerify={handleVerifyLine}
             />
