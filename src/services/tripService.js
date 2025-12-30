@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TRIP_CACHE_KEY = 'trip_data_cache';
 const TRIP_API_BASE = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT';
+const TRIP_MGMT_API_BASE = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT';
 
 /**
  * Trip Management Service
@@ -56,6 +57,37 @@ export const fetchTrips = async (fromDate, toDate) => {
     return { success: true, data };
   } catch (error) {
     console.error('[TripService] Error fetching trips:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Fetch order line/lot details from API
+ * @param {string} orderNumber - Order number
+ * @returns {Promise<Object>} Order line details
+ */
+export const fetchOrderLineDetails = async (orderNumber) => {
+  try {
+    const url = `${TRIP_MGMT_API_BASE}/trips/orders/getlotdetails/${orderNumber}`;
+    console.log('[TripService] Fetching order lines:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[TripService] Fetched order lines:', data?.items?.length || 0);
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('[TripService] Error fetching order lines:', error);
     return { success: false, error: error.message };
   }
 };
@@ -298,6 +330,7 @@ export const getOrderDelivery = async (tripId, orderId) => {
 
 export default {
   fetchTrips,
+  fetchOrderLineDetails,
   getCachedTrips,
   clearTripCache,
   calculateTripStats,

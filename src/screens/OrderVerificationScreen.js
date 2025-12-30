@@ -14,7 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { updateOrderVerification } from '../services/tripService';
+import { updateOrderVerification, fetchOrderLineDetails } from '../services/tripService';
 
 // Dark green theme colors
 const THEME = {
@@ -31,33 +31,6 @@ const THEME = {
   warning: '#FF9800',
   error: '#F44336',
   info: '#2196F3',
-};
-
-// Sample line items (in real app, this would come from an API)
-const generateSampleLines = (orderLines) => {
-  const items = [
-    { itemNumber: 'ITM001', itemDesc: 'Coca Cola 1.5L', unit: 'CASE' },
-    { itemNumber: 'ITM002', itemDesc: 'Pepsi 500ml', unit: 'CASE' },
-    { itemNumber: 'ITM003', itemDesc: 'Sprite 2L', unit: 'CASE' },
-    { itemNumber: 'ITM004', itemDesc: 'Fanta Orange 1L', unit: 'CASE' },
-    { itemNumber: 'ITM005', itemDesc: 'Water 500ml Pack', unit: 'PACK' },
-  ];
-
-  const lines = [];
-  for (let i = 0; i < (orderLines || 3); i++) {
-    const item = items[i % items.length];
-    const shippedQty = Math.floor(Math.random() * 10) + 5;
-    lines.push({
-      lineId: i + 1,
-      itemNumber: item.itemNumber,
-      itemDesc: item.itemDesc,
-      unit: item.unit,
-      shippedQty,
-      verifiedQty: null,
-      isVerified: false,
-    });
-  }
-  return lines;
 };
 
 // Line Item Card Component
@@ -193,12 +166,40 @@ const OrderVerificationScreen = ({ navigation, route }) => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
-    // Simulate loading line items
-    setTimeout(() => {
-      setLines(generateSampleLines(order.orderLines));
-      setLoading(false);
-    }, 500);
+    loadOrderLines();
   }, []);
+
+  const loadOrderLines = async () => {
+    try {
+      const result = await fetchOrderLineDetails(order.orderNumber);
+
+      if (result.success && result.data?.items) {
+        // Map API response to our line structure
+        const mappedLines = result.data.items.map((item, index) => ({
+          lineId: item.transaction_id || index + 1,
+          itemNumber: item.item,
+          itemDesc: item.description,
+          unit: 'EA', // Default unit
+          shippedQty: parseInt(item.picked_qty, 10) || parseInt(item.requested_quantity, 10) || 0,
+          verifiedQty: item.verified_qty > 0 ? item.verified_qty : null,
+          isVerified: item.verified_qty > 0,
+          // Additional fields from API
+          lot: item.lot,
+          pickSlip: item.pick_slip,
+          pickConfirmSt: item.pick_confirm_st,
+        }));
+
+        setLines(mappedLines);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to load order items');
+      }
+    } catch (error) {
+      console.error('[OrderVerification] Error loading lines:', error);
+      Alert.alert('Error', 'Failed to load order items. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleVerifyLine = (lineId, verifiedQty) => {
     setLines(prev =>
