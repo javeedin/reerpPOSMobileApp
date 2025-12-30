@@ -38,9 +38,9 @@ const TABS = [
 ];
 
 // Line Item Card Component
-const LineItemCard = ({ line, index }) => {
+const LineItemCard = ({ line, index, onVerify }) => {
   const isVerified = line.verified_qty > 0;
-  const isPicked = line.pick_confirm_st === 'YES';
+  const isPicked = line.pick_confirm_st === 'YES' || line.picked_qty > 0;
 
   const getStatusColor = () => {
     if (isVerified) return THEME.success;
@@ -94,6 +94,25 @@ const LineItemCard = ({ line, index }) => {
           <Text style={styles.lineLotText}>Lot: {line.lot}</Text>
         </View>
       )}
+
+      {/* Verify Button - only show if not verified */}
+      {!isVerified && (
+        <TouchableOpacity
+          style={styles.verifyLineButton}
+          onPress={() => onVerify(line)}
+        >
+          <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.verifyLineButtonText}>Verify</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Already Verified indicator */}
+      {isVerified && (
+        <View style={styles.verifiedIndicator}>
+          <Ionicons name="checkmark-circle" size={18} color={THEME.success} />
+          <Text style={styles.verifiedIndicatorText}>Verified</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -121,9 +140,16 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
   const [activeTab, setActiveTab] = useState('lines');
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [verifyingLineId, setVerifyingLineId] = useState(null);
 
-  const isVerified = order.pickConfirmSt === 'YES';
-  const isDelivered = order.shipConfirmSt === 'YES';
+  // Calculate verification status from actual line data
+  const totalLines = lines.length;
+  const verifiedLines = lines.filter(l => l.verified_qty > 0).length;
+  const isFullyVerified = totalLines > 0 && verifiedLines === totalLines;
+  const isPartiallyVerified = verifiedLines > 0 && verifiedLines < totalLines;
+
+  // Delivery status - for now we don't have this from API
+  const isDelivered = false;
 
   useEffect(() => {
     loadOrderLines();
@@ -156,6 +182,33 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     ]);
   };
 
+  // Handle line verification
+  const handleVerifyLine = (line) => {
+    const qtyToVerify = line.requested_quantity || line.picked_qty || 0;
+
+    Alert.alert(
+      'Verify Line Item',
+      `Confirm verification of:\n\n${line.item}\n${line.description}\n\nQuantity: ${qtyToVerify}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: () => {
+            // Update the line's verified_qty in state
+            setLines(prevLines =>
+              prevLines.map(l =>
+                l.transaction_id === line.transaction_id || l.item === line.item
+                  ? { ...l, verified_qty: qtyToVerify }
+                  : l
+              )
+            );
+            Alert.alert('Success', `Item ${line.item} verified with qty ${qtyToVerify}`);
+          },
+        },
+      ]
+    );
+  };
+
   // Render Lines Tab
   const renderLinesTab = () => {
     if (loading) {
@@ -184,7 +237,12 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
           </Text>
         </View>
         {lines.map((line, index) => (
-          <LineItemCard key={line.transaction_id || index} line={line} index={index} />
+          <LineItemCard
+            key={line.transaction_id || index}
+            line={line}
+            index={index}
+            onVerify={handleVerifyLine}
+          />
         ))}
       </View>
     );
@@ -319,13 +377,14 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
 
         {/* Status Icons Row */}
         <View style={styles.statusIconsRow}>
+          {/* Pick Status - based on picked_qty in lines */}
           <View style={styles.statusIconItem}>
             <View style={[
               styles.statusIconCircle,
-              { backgroundColor: isVerified || isDelivered ? THEME.success : 'rgba(255,255,255,0.2)' }
+              { backgroundColor: lines.some(l => l.picked_qty > 0) ? THEME.success : 'rgba(255,255,255,0.2)' }
             ]}>
               <Ionicons
-                name={isVerified || isDelivered ? 'checkmark' : 'ellipse-outline'}
+                name={lines.some(l => l.picked_qty > 0) ? 'checkmark' : 'ellipse-outline'}
                 size={16}
                 color="#FFFFFF"
               />
@@ -335,13 +394,14 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
 
           <View style={styles.statusIconConnector} />
 
+          {/* Verify Status - based on verified_qty > 0 */}
           <View style={styles.statusIconItem}>
             <View style={[
               styles.statusIconCircle,
-              { backgroundColor: isVerified || isDelivered ? THEME.success : 'rgba(255,255,255,0.2)' }
+              { backgroundColor: isFullyVerified ? THEME.success : isPartiallyVerified ? THEME.warning : 'rgba(255,255,255,0.2)' }
             ]}>
               <Ionicons
-                name={isVerified || isDelivered ? 'checkmark' : 'ellipse-outline'}
+                name={isFullyVerified ? 'checkmark' : isPartiallyVerified ? 'ellipsis-horizontal' : 'ellipse-outline'}
                 size={16}
                 color="#FFFFFF"
               />
@@ -351,6 +411,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
 
           <View style={styles.statusIconConnector} />
 
+          {/* Ship Status */}
           <View style={styles.statusIconItem}>
             <View style={[
               styles.statusIconCircle,
@@ -367,6 +428,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
 
           <View style={styles.statusIconConnector} />
 
+          {/* Deliver Status */}
           <View style={styles.statusIconItem}>
             <View style={[
               styles.statusIconCircle,
@@ -413,7 +475,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
         {/* Action Buttons */}
         {!isDelivered && (
           <View style={styles.actionButtons}>
-            {!isVerified ? (
+            {!isFullyVerified ? (
               <TouchableOpacity
                 style={styles.primaryButton}
                 onPress={() => navigation.navigate('OrderVerification', { order, tripId })}
@@ -425,7 +487,9 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
                   style={styles.buttonGradient}
                 >
                   <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
-                  <Text style={styles.buttonText}>Verify Order</Text>
+                  <Text style={styles.buttonText}>
+                    {isPartiallyVerified ? `Verify Remaining (${totalLines - verifiedLines})` : 'Verify All Lines'}
+                  </Text>
                 </LinearGradient>
               </TouchableOpacity>
             ) : (
@@ -688,6 +752,36 @@ const styles = StyleSheet.create({
   lineLotText: {
     fontSize: 12,
     color: THEME.textLight,
+    marginLeft: 6,
+  },
+  verifyLineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: THEME.primary,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  verifyLineButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  verifiedIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: THEME.success + '15',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  verifiedIndicatorText: {
+    color: THEME.success,
+    fontSize: 14,
+    fontWeight: '600',
     marginLeft: 6,
   },
 
