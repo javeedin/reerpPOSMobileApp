@@ -6,6 +6,9 @@ let mainWindow;
 // Determine if we're in development
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+console.log('[Electron] Starting app, isDev:', isDev);
+console.log('[Electron] NODE_ENV:', process.env.NODE_ENV);
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -25,10 +28,30 @@ function createWindow() {
 
   // Show window when ready to prevent white flash
   mainWindow.once('ready-to-show', () => {
+    console.log('[Electron] Window ready to show');
     mainWindow.show();
   });
 
+  // Handle load errors
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error('[Electron] Failed to load:', errorDescription, 'URL:', validatedURL);
+    // Retry loading after 2 seconds if it's a connection error
+    if (errorCode === -102 || errorCode === -106) {
+      console.log('[Electron] Retrying in 2 seconds...');
+      setTimeout(() => {
+        mainWindow.loadURL('http://localhost:8081');
+      }, 2000);
+    }
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('[Electron] Page loaded successfully');
+  });
+
   // Load the app
+  const loadURL = isDev ? 'http://localhost:8081' : `file://${path.join(__dirname, '../dist/index.html')}`;
+  console.log('[Electron] Loading URL:', loadURL);
+
   if (isDev) {
     // Development: Load from Expo web server
     mainWindow.loadURL('http://localhost:8081');
