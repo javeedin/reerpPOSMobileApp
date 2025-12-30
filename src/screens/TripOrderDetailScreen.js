@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -154,6 +155,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
   const [signature, setSignature] = useState(null);
   const [isDeliveryConfirmed, setIsDeliveryConfirmed] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
   const signatureRef = useRef(null);
 
   // Calculate verification status from actual line data
@@ -436,7 +438,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
         </View>
         {lines.map((line, index) => (
           <LineItemCard
-            key={line.transaction_id || index}
+            key={`${line.item}-${line.lot || ''}-${index}`}
             line={line}
             index={index}
             onVerify={handleVerifyLine}
@@ -630,31 +632,41 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
             <MaterialCommunityIcons name="signature-freehand" size={24} color={THEME.primary} />
           </View>
           <Text style={styles.cardTitle}>Customer Signature</Text>
-          {!isDeliveryConfirmed && signature && (
-            <TouchableOpacity
-              style={styles.clearSignatureButton}
-              onPress={handleClearSignature}
-            >
-              <Text style={styles.clearSignatureText}>Clear</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
-        {isDeliveryConfirmed && signature ? (
+        {signature ? (
           <View style={styles.signaturePreview}>
             <View style={styles.signatureImageContainer}>
-              <Text style={styles.signatureLabel}>Signature captured</Text>
               <Ionicons name="checkmark-circle" size={24} color={THEME.success} />
+              <Text style={styles.signatureLabel}>Signature captured</Text>
             </View>
+            {!isDeliveryConfirmed && (
+              <View style={styles.signatureActions}>
+                <TouchableOpacity
+                  style={styles.signatureActionButton}
+                  onPress={() => setShowSignatureModal(true)}
+                >
+                  <Ionicons name="create-outline" size={18} color={THEME.primary} />
+                  <Text style={styles.signatureActionText}>Re-sign</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.signatureActionButton, { backgroundColor: THEME.error + '15' }]}
+                  onPress={handleClearSignature}
+                >
+                  <Ionicons name="trash-outline" size={18} color={THEME.error} />
+                  <Text style={[styles.signatureActionText, { color: THEME.error }]}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         ) : !isDeliveryConfirmed ? (
-          <View style={styles.signatureContainer}>
-            <SignaturePad
-              ref={signatureRef}
-              onSignatureChange={(sig) => setSignature(sig)}
-              style={styles.signaturePad}
-            />
-          </View>
+          <TouchableOpacity
+            style={styles.captureSignatureButton}
+            onPress={() => setShowSignatureModal(true)}
+          >
+            <MaterialCommunityIcons name="signature-freehand" size={32} color={THEME.primary} />
+            <Text style={styles.captureSignatureText}>Tap to capture signature</Text>
+          </TouchableOpacity>
         ) : (
           <View style={styles.noSignatureContainer}>
             <Ionicons name="alert-circle-outline" size={24} color={THEME.warning} />
@@ -897,6 +909,67 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Signature Modal */}
+      <Modal
+        visible={showSignatureModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSignatureModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.signatureModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Customer Signature</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowSignatureModal(false)}
+              >
+                <Ionicons name="close" size={24} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Please sign in the area below
+            </Text>
+
+            <View style={styles.signatureArea}>
+              <SignaturePad
+                ref={signatureRef}
+                onSignatureChange={(sig) => setSignature(sig)}
+                style={styles.modalSignaturePad}
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalClearButton}
+                onPress={handleClearSignature}
+              >
+                <Ionicons name="refresh-outline" size={20} color={THEME.error} />
+                <Text style={styles.modalClearText}>Clear</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalConfirmButton,
+                  !signature && styles.modalConfirmButtonDisabled
+                ]}
+                onPress={() => {
+                  if (signature) {
+                    setShowSignatureModal(false);
+                  } else {
+                    Alert.alert('Please Sign', 'Draw your signature before confirming');
+                  }
+                }}
+              >
+                <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+                <Text style={styles.modalConfirmText}>Confirm Signature</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1439,6 +1512,130 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: THEME.primary,
     borderRadius: 12,
+  },
+
+  // Signature Capture Button
+  captureSignatureButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: THEME.primary + '10',
+    borderWidth: 2,
+    borderColor: THEME.primary,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 30,
+  },
+  captureSignatureText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: THEME.primary,
+    fontWeight: '500',
+  },
+  signatureActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 12,
+  },
+  signatureActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: THEME.primary + '15',
+    borderRadius: 8,
+    gap: 6,
+  },
+  signatureActionText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: THEME.primary,
+  },
+
+  // Signature Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  signatureModal: {
+    backgroundColor: THEME.surface,
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: THEME.text,
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: THEME.textLight,
+    marginBottom: 16,
+  },
+  signatureArea: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  modalSignaturePad: {
+    height: 250,
+    backgroundColor: '#FFFFFF',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    gap: 12,
+  },
+  modalClearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: THEME.error,
+    borderRadius: 10,
+    gap: 6,
+  },
+  modalClearText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: THEME.error,
+  },
+  modalConfirmButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    backgroundColor: THEME.primary,
+    borderRadius: 10,
+    gap: 6,
+  },
+  modalConfirmButtonDisabled: {
+    backgroundColor: THEME.textLight,
+  },
+  modalConfirmText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
 
