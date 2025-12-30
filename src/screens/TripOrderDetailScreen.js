@@ -405,12 +405,29 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     }
   };
 
-  // Handle print/PDF
+  // Handle print/PDF - with web/Electron support
   const handlePrintOrder = async () => {
     try {
       setGeneratingPdf(true);
       const html = await generateDeliveryPdf();
-      await Print.printAsync({ html });
+
+      if (Platform.OS === 'web') {
+        // For web/Electron: open in new window and print
+        const printWindow = window.open('', '_blank', 'width=800,height=600');
+        if (printWindow) {
+          printWindow.document.write(html);
+          printWindow.document.close();
+          printWindow.focus();
+          // Wait for content to load then print
+          setTimeout(() => {
+            printWindow.print();
+          }, 500);
+        } else {
+          showAlert('Error', 'Please allow popups for printing');
+        }
+      } else {
+        await Print.printAsync({ html });
+      }
     } catch (error) {
       console.error('[TripOrderDetail] Print error:', error);
       showAlert('Error', 'Failed to print order');
@@ -419,21 +436,36 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     }
   };
 
-  // Handle share PDF
+  // Handle share PDF - with web/Electron support
   const handleSharePdf = async () => {
     try {
       setGeneratingPdf(true);
       const html = await generateDeliveryPdf();
-      const { uri } = await Print.printToFileAsync({ html });
 
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/pdf',
-          dialogTitle: `Delivery Confirmation - ${order.orderNumber}`,
-          UTI: 'com.adobe.pdf',
-        });
+      if (Platform.OS === 'web') {
+        // For web/Electron: create a downloadable HTML file or use Web Share API
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Delivery_${order.orderNumber}_${deliveryDate.toISOString().split('T')[0]}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showAlert('Downloaded', 'Delivery confirmation saved. Open in browser and print to PDF.');
       } else {
-        showAlert('Sharing not available', 'Sharing is not available on this device');
+        const { uri } = await Print.printToFileAsync({ html });
+
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: `Delivery Confirmation - ${order.orderNumber}`,
+            UTI: 'com.adobe.pdf',
+          });
+        } else {
+          showAlert('Sharing not available', 'Sharing is not available on this device');
+        }
       }
     } catch (error) {
       console.error('[TripOrderDetail] Share error:', error);
