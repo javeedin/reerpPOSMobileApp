@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Platform,
   Modal,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -636,8 +637,16 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
 
         {signature ? (
           <View style={styles.signaturePreview}>
+            {/* Show actual signature image */}
+            <View style={styles.signatureImageWrapper}>
+              <Image
+                source={{ uri: signature }}
+                style={styles.signatureImage}
+                resizeMode="contain"
+              />
+            </View>
             <View style={styles.signatureImageContainer}>
-              <Ionicons name="checkmark-circle" size={24} color={THEME.success} />
+              <Ionicons name="checkmark-circle" size={18} color={THEME.success} />
               <Text style={styles.signatureLabel}>Signature captured</Text>
             </View>
             {!isDeliveryConfirmed && (
@@ -1457,6 +1466,20 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.background,
     borderRadius: 10,
     alignItems: 'center',
+  },
+  signatureImageWrapper: {
+    width: '100%',
+    height: 120,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  signatureImage: {
+    width: '100%',
+    height: '100%',
   },
   signatureImageContainer: {
     flexDirection: 'row',
