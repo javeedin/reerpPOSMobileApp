@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,15 @@ import {
   StatusBar,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import SignatureCanvas from 'react-native-signature-canvas';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { fetchOrderLineDetails } from '../services/tripService';
 
 // Dark green theme colors
@@ -35,6 +40,7 @@ const THEME = {
 const TABS = [
   { id: 'lines', label: 'Lines', icon: 'list-outline' },
   { id: 'info', label: 'Order Info', icon: 'information-circle-outline' },
+  { id: 'delivery', label: 'Delivery', icon: 'checkmark-done-outline' },
 ];
 
 // Line Item Card Component
@@ -142,14 +148,22 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
   const [loading, setLoading] = useState(true);
   const [verifyingLineId, setVerifyingLineId] = useState(null);
 
+  // Delivery tab state
+  const [deliveryDate, setDeliveryDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [signature, setSignature] = useState(null);
+  const [isDeliveryConfirmed, setIsDeliveryConfirmed] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const signatureRef = useRef(null);
+
   // Calculate verification status from actual line data
   const totalLines = lines.length;
   const verifiedLines = lines.filter(l => l.verified_qty > 0).length;
   const isFullyVerified = totalLines > 0 && verifiedLines === totalLines;
   const isPartiallyVerified = verifiedLines > 0 && verifiedLines < totalLines;
 
-  // Delivery status - for now we don't have this from API
-  const isDelivered = false;
+  // Delivery status
+  const isDelivered = isDeliveryConfirmed;
 
   useEffect(() => {
     loadOrderLines();
@@ -207,6 +221,202 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
         },
       ]
     );
+  };
+
+  // Handle date change
+  const handleDateChange = (event, selectedDate) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (selectedDate) {
+      setDeliveryDate(selectedDate);
+    }
+  };
+
+  // Handle signature end
+  const handleSignatureEnd = () => {
+    if (signatureRef.current) {
+      signatureRef.current.readSignature();
+    }
+  };
+
+  // Handle signature data
+  const handleSignatureData = (signatureData) => {
+    setSignature(signatureData);
+  };
+
+  // Clear signature
+  const handleClearSignature = () => {
+    if (signatureRef.current) {
+      signatureRef.current.clearSignature();
+    }
+    setSignature(null);
+  };
+
+  // Confirm delivery
+  const handleConfirmDelivery = () => {
+    if (!signature) {
+      Alert.alert('Signature Required', 'Please capture customer signature before confirming delivery.');
+      return;
+    }
+
+    Alert.alert(
+      'Confirm Delivery',
+      `Confirm delivery of order ${order.orderNumber}?\n\nDelivery Date: ${deliveryDate.toLocaleDateString()}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: () => {
+            setIsDeliveryConfirmed(true);
+            Alert.alert('Success', 'Order delivery confirmed!');
+          },
+        },
+      ]
+    );
+  };
+
+  // Generate delivery PDF
+  const generateDeliveryPdf = async () => {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Delivery Confirmation</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; margin: 0; }
+          .header { text-align: center; border-bottom: 2px solid #1B5E20; padding-bottom: 15px; margin-bottom: 20px; }
+          .header h1 { color: #1B5E20; margin: 0; font-size: 24px; }
+          .header p { margin: 5px 0 0; color: #666; }
+          .section { margin-bottom: 20px; }
+          .section-title { font-weight: bold; color: #1B5E20; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-bottom: 10px; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+          .label { color: #666; }
+          .value { font-weight: 500; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+          th { background-color: #1B5E20; color: white; }
+          tr:nth-child(even) { background-color: #f9f9f9; }
+          .signature-section { margin-top: 30px; border-top: 2px solid #1B5E20; padding-top: 20px; }
+          .signature-box { text-align: center; }
+          .signature-img { max-width: 300px; max-height: 150px; border: 1px solid #ddd; }
+          .signature-label { margin-top: 5px; color: #666; font-size: 12px; }
+          .footer { margin-top: 30px; text-align: center; font-size: 11px; color: #999; }
+          .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+          .status-delivered { background-color: #E8F5E9; color: #1B5E20; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Delivery Confirmation</h1>
+          <p>Order #${order.orderNumber}</p>
+          <span class="status-badge status-delivered">DELIVERED</span>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Customer Information</div>
+          <div class="row"><span class="label">Customer:</span> <span class="value">${order.accountName || 'N/A'}</span></div>
+          <div class="row"><span class="label">Account #:</span> <span class="value">${order.accountNumber || 'N/A'}</span></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Order Details</div>
+          <div class="row"><span class="label">Order Date:</span> <span class="value">${order.orderDate || 'N/A'}</span></div>
+          <div class="row"><span class="label">Order Type:</span> <span class="value">${order.orderType || 'N/A'}</span></div>
+          <div class="row"><span class="label">Customer PO:</span> <span class="value">${order.customerPo || 'N/A'}</span></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Delivery Information</div>
+          <div class="row"><span class="label">Delivery Date:</span> <span class="value">${deliveryDate.toLocaleDateString()}</span></div>
+          <div class="row"><span class="label">Driver/Salesman:</span> <span class="value">${order.salesman || 'N/A'}</span></div>
+          <div class="row"><span class="label">Lorry:</span> <span class="value">${order.lorry || 'N/A'}</span></div>
+          <div class="row"><span class="label">Trip ID:</span> <span class="value">${tripId || 'N/A'}</span></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Order Lines (${lines.length} items)</div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Item</th>
+                <th>Description</th>
+                <th>Qty</th>
+                <th>Verified</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lines.map((line, index) => `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td>${line.item || 'N/A'}</td>
+                  <td>${line.description || 'N/A'}</td>
+                  <td>${line.requested_quantity || 0}</td>
+                  <td>${line.verified_qty || 0}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="signature-section">
+          <div class="signature-box">
+            <div class="section-title">Customer Signature</div>
+            ${signature ? `<img src="${signature}" class="signature-img" />` : '<p>No signature captured</p>'}
+            <div class="signature-label">
+              Signed on: ${deliveryDate.toLocaleDateString()} at ${new Date().toLocaleTimeString()}
+            </div>
+          </div>
+        </div>
+
+        <div class="footer">
+          <p>This document confirms the successful delivery of the above order.</p>
+          <p>Generated on ${new Date().toLocaleString()}</p>
+        </div>
+      </body>
+      </html>
+    `;
+    return html;
+  };
+
+  // Handle print/PDF
+  const handlePrintOrder = async () => {
+    try {
+      setGeneratingPdf(true);
+      const html = await generateDeliveryPdf();
+      await Print.printAsync({ html });
+    } catch (error) {
+      console.error('[TripOrderDetail] Print error:', error);
+      Alert.alert('Error', 'Failed to print order');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  // Handle share PDF
+  const handleSharePdf = async () => {
+    try {
+      setGeneratingPdf(true);
+      const html = await generateDeliveryPdf();
+      const { uri } = await Print.printToFileAsync({ html });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: `Delivery Confirmation - ${order.orderNumber}`,
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('Sharing not available', 'Sharing is not available on this device');
+      }
+    } catch (error) {
+      console.error('[TripOrderDetail] Share error:', error);
+      Alert.alert('Error', 'Failed to share PDF');
+    } finally {
+      setGeneratingPdf(false);
+    }
   };
 
   // Render Lines Tab
@@ -349,6 +559,199 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
     </View>
   );
 
+  // Render Delivery Tab
+  const renderDeliveryTab = () => (
+    <View style={styles.deliveryContainer}>
+      {/* Delivery Status Card */}
+      {isDeliveryConfirmed && (
+        <View style={[styles.card, { backgroundColor: THEME.success + '15', borderColor: THEME.success, borderWidth: 1 }]}>
+          <View style={styles.deliveryConfirmedBanner}>
+            <Ionicons name="checkmark-circle" size={32} color={THEME.success} />
+            <View style={{ marginLeft: 12 }}>
+              <Text style={[styles.cardTitle, { color: THEME.success }]}>Delivery Confirmed</Text>
+              <Text style={styles.deliveryConfirmedDate}>
+                {deliveryDate.toLocaleDateString()} at {new Date().toLocaleTimeString()}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Delivery Date Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardIcon}>
+            <Ionicons name="calendar" size={24} color={THEME.primary} />
+          </View>
+          <Text style={styles.cardTitle}>Delivery Date</Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.datePickerButton}
+          onPress={() => setShowDatePicker(true)}
+          disabled={isDeliveryConfirmed}
+        >
+          <Text style={styles.datePickerText}>
+            {deliveryDate.toLocaleDateString('en-GB', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </Text>
+          {!isDeliveryConfirmed && (
+            <Ionicons name="chevron-forward" size={20} color={THEME.textLight} />
+          )}
+        </TouchableOpacity>
+
+        {showDatePicker && (
+          Platform.OS === 'web' ? (
+            <View style={styles.webDatePicker}>
+              <input
+                type="date"
+                value={deliveryDate.toISOString().split('T')[0]}
+                onChange={(e) => {
+                  setDeliveryDate(new Date(e.target.value));
+                  setShowDatePicker(false);
+                }}
+                style={{
+                  padding: 12,
+                  fontSize: 16,
+                  borderRadius: 8,
+                  border: `1px solid ${THEME.primary}`,
+                  width: '100%',
+                }}
+              />
+            </View>
+          ) : (
+            <DateTimePicker
+              value={deliveryDate}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleDateChange}
+              minimumDate={new Date()}
+            />
+          )
+        )}
+      </View>
+
+      {/* Signature Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardIcon}>
+            <MaterialCommunityIcons name="signature-freehand" size={24} color={THEME.primary} />
+          </View>
+          <Text style={styles.cardTitle}>Customer Signature</Text>
+          {!isDeliveryConfirmed && signature && (
+            <TouchableOpacity
+              style={styles.clearSignatureButton}
+              onPress={handleClearSignature}
+            >
+              <Text style={styles.clearSignatureText}>Clear</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {isDeliveryConfirmed && signature ? (
+          <View style={styles.signaturePreview}>
+            <View style={styles.signatureImageContainer}>
+              <Text style={styles.signatureLabel}>Signature captured</Text>
+              <Ionicons name="checkmark-circle" size={24} color={THEME.success} />
+            </View>
+          </View>
+        ) : !isDeliveryConfirmed ? (
+          <View style={styles.signatureContainer}>
+            <SignatureCanvas
+              ref={signatureRef}
+              onEnd={handleSignatureEnd}
+              onOK={handleSignatureData}
+              onEmpty={() => setSignature(null)}
+              descriptionText=""
+              clearText="Clear"
+              confirmText="Save"
+              webStyle={`
+                .m-signature-pad { box-shadow: none; border: 1px solid #E0E0E0; border-radius: 8px; }
+                .m-signature-pad--body { border: none; }
+                .m-signature-pad--footer { display: none; }
+                canvas { border-radius: 8px; }
+              `}
+              style={styles.signaturePad}
+            />
+            <Text style={styles.signatureHint}>
+              {signature ? '✓ Signature captured' : 'Draw signature above'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.noSignatureContainer}>
+            <Ionicons name="alert-circle-outline" size={24} color={THEME.warning} />
+            <Text style={styles.noSignatureText}>No signature captured</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Action Buttons */}
+      <View style={styles.deliveryActions}>
+        {!isDeliveryConfirmed ? (
+          <TouchableOpacity
+            style={[styles.deliveryButton, styles.confirmButton]}
+            onPress={handleConfirmDelivery}
+          >
+            <LinearGradient
+              colors={[THEME.success, THEME.accentLight]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.buttonGradient}
+            >
+              <Ionicons name="checkmark-done" size={22} color="#FFFFFF" />
+              <Text style={styles.buttonText}>Confirm Delivery</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.deliveryButton, styles.printButton]}
+              onPress={handlePrintOrder}
+              disabled={generatingPdf}
+            >
+              <View style={styles.outlineButton}>
+                {generatingPdf ? (
+                  <ActivityIndicator size="small" color={THEME.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="print-outline" size={22} color={THEME.primary} />
+                    <Text style={[styles.buttonText, { color: THEME.primary }]}>Print Order</Text>
+                  </>
+                )}
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.deliveryButton, styles.shareButton]}
+              onPress={handleSharePdf}
+              disabled={generatingPdf}
+            >
+              <LinearGradient
+                colors={[THEME.info, '#42A5F5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.buttonGradient}
+              >
+                {generatingPdf ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="share-outline" size={22} color="#FFFFFF" />
+                    <Text style={styles.buttonText}>Share PDF</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    </View>
+  );
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.primaryDark} />
@@ -470,7 +873,9 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
       >
-        {activeTab === 'lines' ? renderLinesTab() : renderOrderInfoTab()}
+        {activeTab === 'lines' && renderLinesTab()}
+        {activeTab === 'info' && renderOrderInfoTab()}
+        {activeTab === 'delivery' && renderDeliveryTab()}
 
         {/* Action Buttons */}
         {!isDelivered && (
@@ -952,6 +1357,114 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+
+  // Delivery Tab
+  deliveryContainer: {
+    padding: 16,
+    paddingTop: 8,
+  },
+  deliveryConfirmedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 4,
+  },
+  deliveryConfirmedDate: {
+    fontSize: 12,
+    color: THEME.textLight,
+    marginTop: 2,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: THEME.background,
+    padding: 14,
+    borderRadius: 10,
+  },
+  datePickerText: {
+    fontSize: 15,
+    color: THEME.text,
+    fontWeight: '500',
+  },
+  webDatePicker: {
+    marginTop: 12,
+  },
+  signatureContainer: {
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  signaturePad: {
+    height: 200,
+    backgroundColor: '#FFFFFF',
+  },
+  signatureHint: {
+    textAlign: 'center',
+    color: THEME.textLight,
+    fontSize: 12,
+    marginTop: 8,
+    paddingBottom: 8,
+  },
+  signaturePreview: {
+    padding: 16,
+    backgroundColor: THEME.background,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  signatureImageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  signatureLabel: {
+    fontSize: 14,
+    color: THEME.success,
+    fontWeight: '500',
+  },
+  noSignatureContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: THEME.warning + '15',
+    borderRadius: 10,
+    gap: 8,
+  },
+  noSignatureText: {
+    fontSize: 14,
+    color: THEME.warning,
+  },
+  clearSignatureButton: {
+    marginLeft: 'auto',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: THEME.error + '15',
+    borderRadius: 6,
+  },
+  clearSignatureText: {
+    fontSize: 12,
+    color: THEME.error,
+    fontWeight: '600',
+  },
+  deliveryActions: {
+    marginTop: 16,
+    gap: 12,
+  },
+  deliveryButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  confirmButton: {},
+  printButton: {},
+  shareButton: {},
+  outlineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderWidth: 2,
+    borderColor: THEME.primary,
+    borderRadius: 12,
   },
 });
 
