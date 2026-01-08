@@ -344,7 +344,7 @@ const DateRow = ({ dateData, isExpanded, onToggle, onOrderPress }) => {
           <View style={styles.ordersListContainer}>
             <Text style={styles.ordersListTitle}>Orders ({dateData.orders.length})</Text>
             {dateData.orders.map((order, idx) => (
-              <OrderCard key={idx} order={order} onPress={onOrderPress} />
+              <OrderCard key={`${order.delivery_detail_id || order.source_order_number}-${idx}`} order={order} onPress={onOrderPress} />
             ))}
           </View>
         </View>
