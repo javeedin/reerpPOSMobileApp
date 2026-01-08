@@ -360,8 +360,13 @@ const QueryModal = ({ visible, onClose, onQuery, initialFromDate, initialToDate 
 };
 
 // Bottom Toolbar Component
-const BottomToolbar = ({ onRefresh, onReports, onPerformance, onQuery, isRefreshing }) => (
+const BottomToolbar = ({ onHome, onRefresh, onReports, onPerformance, onQuery, isRefreshing }) => (
   <View style={styles.bottomToolbar}>
+    <TouchableOpacity style={styles.toolbarButton} onPress={onHome}>
+      <Ionicons name="home" size={24} color="#1565C0" />
+      <Text style={styles.toolbarButtonText}>Home</Text>
+    </TouchableOpacity>
+
     <TouchableOpacity style={styles.toolbarButton} onPress={onRefresh} disabled={isRefreshing}>
       {isRefreshing ? (
         <ActivityIndicator size="small" color="#1565C0" />
@@ -645,8 +650,7 @@ const WMSHomeScreen = ({ navigation }) => {
   };
 
   const handleOrderPress = (order) => {
-    console.log('Order pressed:', order.source_order_number);
-    // navigation.navigate('WMSOrderDetail', { order });
+    navigation.navigate('WMSOrderDetails', { order });
   };
 
   // Filter shipments
@@ -909,6 +913,7 @@ const WMSHomeScreen = ({ navigation }) => {
 
       {/* Bottom Toolbar */}
       <BottomToolbar
+        onHome={() => navigation.navigate('MainTabs')}
         onRefresh={onRefresh}
         onReports={() => navigation.navigate('WMSReports')}
         onPerformance={() => setShowPerformanceModal(true)}
