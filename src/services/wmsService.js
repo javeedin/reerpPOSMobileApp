@@ -379,8 +379,83 @@ export const getWMSDateRange = () => {
   return { fromDate, toDate };
 };
 
+/**
+ * Fetch shipment lines for a specific order
+ * @param {string} orderNumber - Source order number
+ * @returns {Promise<Object>} Shipment lines data
+ */
+export const fetchShipmentLines = async (orderNumber) => {
+  try {
+    const url = `${WMS_API_BASE}/SHIPMENTLINESFORAPP?p_SOURCE_ORDER_NUMBER=${encodeURIComponent(orderNumber)}`;
+
+    console.log('[WMSService] Fetching shipment lines:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[WMSService] Fetched shipment lines:', data?.items?.length || 0);
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('[WMSService] Error fetching shipment lines:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Confirm pick for a shipment line
+ * @param {string} deliveryDetailId - Delivery detail ID
+ * @param {number} qty - Quantity to confirm
+ * @param {string} pickerName - Name of the picker
+ * @returns {Promise<Object>} Confirmation result
+ */
+export const confirmPick = async (deliveryDetailId, qty, pickerName) => {
+  try {
+    const url = `${WMS_API_BASE}/CONFIRMPICK`;
+
+    console.log('[WMSService] Confirming pick:', { deliveryDetailId, qty, pickerName });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        delivery_detail_id: deliveryDetailId,
+        picked_qty: qty,
+        pick_confirm_status: 'YES',
+        picker_name: pickerName,
+        pick_confirm_date: new Date().toISOString(),
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[WMSService] Pick confirmed:', data);
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('[WMSService] Error confirming pick:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export default {
   fetchShipmentsSummary,
+  fetchShipmentLines,
+  confirmPick,
   getCachedWMSData,
   clearWMSCache,
   calculateWMSKPIs,

@@ -48,3 +48,4 @@ export { default as TripOrderDetailScreen } from './TripOrderDetailScreen';
 // WMS screens
 export { default as WMSHomeScreen } from './WMSHomeScreen';
 export { default as WMSReportsScreen } from './WMSReportsScreen';
+export { default as WMSOrderDetailsScreen } from './WMSOrderDetailsScreen';

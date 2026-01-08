@@ -62,7 +62,7 @@ const StatCard = ({ title, value, icon, color, subtitle }) => (
 );
 
 // Order Card Component for expanded date view
-const OrderCard = ({ order }) => {
+const OrderCard = ({ order, onPress }) => {
   const isPicked = order.pick_confirm_status === 'YES';
   const isShipped = order.shipped_status === 'YES';
 
@@ -81,15 +81,18 @@ const OrderCard = ({ order }) => {
   }
 
   return (
-    <View style={styles.orderCard}>
+    <TouchableOpacity style={styles.orderCard} onPress={() => onPress && onPress(order)} activeOpacity={0.7}>
       <View style={styles.orderCardHeader}>
         <View style={styles.orderCardLeft}>
           <Text style={styles.orderCardNumber}>{order.order_number || 'N/A'}</Text>
           <Text style={styles.orderCardType}>{order.transaction_type || 'Unknown'}</Text>
         </View>
-        <View style={[styles.orderCardStatus, { backgroundColor: `${statusColor}15` }]}>
-          <Ionicons name={statusIcon} size={14} color={statusColor} />
-          <Text style={[styles.orderCardStatusText, { color: statusColor }]}>{statusText}</Text>
+        <View style={styles.orderCardHeaderRight}>
+          <View style={[styles.orderCardStatus, { backgroundColor: `${statusColor}15` }]}>
+            <Ionicons name={statusIcon} size={14} color={statusColor} />
+            <Text style={[styles.orderCardStatusText, { color: statusColor }]}>{statusText}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#999" style={styles.orderCardChevron} />
         </View>
       </View>
       <View style={styles.orderCardBody}>
@@ -99,7 +102,7 @@ const OrderCard = ({ order }) => {
         </View>
         <View style={styles.orderCardDetail}>
           <Ionicons name="business-outline" size={12} color="#666" />
-          <Text style={styles.orderCardDetailText}>{order.customer_name || order.ship_to_name || 'N/A'}</Text>
+          <Text style={styles.orderCardDetailText}>{order.account_name || order.customer_name || order.ship_to_name || 'N/A'}</Text>
         </View>
         {order.lorry_number && (
           <View style={styles.orderCardDetail}>
@@ -114,9 +117,31 @@ const OrderCard = ({ order }) => {
           </View>
         )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
+
+// Bottom Toolbar Component
+const BottomToolbar = ({ onHome, onBack, onRefresh, isRefreshing }) => (
+  <View style={styles.bottomToolbar}>
+    <TouchableOpacity style={styles.toolbarButton} onPress={onHome}>
+      <Ionicons name="home" size={24} color="#1565C0" />
+      <Text style={styles.toolbarButtonText}>Home</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.toolbarButton} onPress={onBack}>
+      <Ionicons name="arrow-back" size={24} color="#666" />
+      <Text style={styles.toolbarButtonText}>Back</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.toolbarButton} onPress={onRefresh} disabled={isRefreshing}>
+      {isRefreshing ? (
+        <ActivityIndicator size="small" color="#1565C0" />
+      ) : (
+        <Ionicons name="refresh" size={24} color="#1565C0" />
+      )}
+      <Text style={styles.toolbarButtonText}>Refresh</Text>
+    </TouchableOpacity>
+  </View>
+);
 
 // Date Picker Modal Component
 const DatePickerModal = ({ visible, onClose, onSelect, currentDate, title }) => {
@@ -242,7 +267,7 @@ const ProgressBar = ({ label, value, total, color }) => {
 };
 
 // Date Row Component for By Date tab
-const DateRow = ({ dateData, isExpanded, onToggle }) => {
+const DateRow = ({ dateData, isExpanded, onToggle, onOrderPress }) => {
   const isToday = dateData.date === formatDateForAPI(new Date());
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
@@ -319,7 +344,7 @@ const DateRow = ({ dateData, isExpanded, onToggle }) => {
           <View style={styles.ordersListContainer}>
             <Text style={styles.ordersListTitle}>Orders ({dateData.orders.length})</Text>
             {dateData.orders.map((order, idx) => (
-              <OrderCard key={idx} order={order} />
+              <OrderCard key={idx} order={order} onPress={onOrderPress} />
             ))}
           </View>
         </View>
@@ -483,13 +508,13 @@ const WMSReportsScreen = ({ navigation }) => {
     }));
   };
 
-  // Customer analytics
+  // Customer analytics - using account_name
   const getCustomerAnalytics = () => {
     if (!shipments || shipments.length === 0) return { top: [], total: 0 };
 
     const customerCounts = {};
     shipments.forEach(order => {
-      const customer = order.customer_name || order.ship_to_name || 'Unknown';
+      const customer = order.account_name || order.customer_name || order.ship_to_name || 'Unknown';
       if (!customerCounts[customer]) {
         customerCounts[customer] = { name: customer, orders: 0, lines: 0 };
       }
@@ -502,6 +527,11 @@ const WMSReportsScreen = ({ navigation }) => {
       top: sorted.slice(0, 10),
       total: sorted.length,
     };
+  };
+
+  // Handle order press - navigate to details
+  const handleOrderPress = (order) => {
+    navigation.navigate('WMSOrderDetails', { order });
   };
 
   // Lorry analytics
@@ -689,6 +719,7 @@ const WMSReportsScreen = ({ navigation }) => {
                     dateData={dateData}
                     isExpanded={expandedDates.includes(dateData.date)}
                     onToggle={() => toggleDate(dateData.date)}
+                    onOrderPress={handleOrderPress}
                   />
                 ))
               )}
@@ -816,6 +847,14 @@ const WMSReportsScreen = ({ navigation }) => {
           )}
         </ScrollView>
       )}
+
+      {/* Bottom Toolbar */}
+      <BottomToolbar
+        onHome={() => navigation.navigate('Home')}
+        onBack={() => navigation.goBack()}
+        onRefresh={handleQuery}
+        isRefreshing={refreshing}
+      />
     </View>
   );
 };
@@ -925,7 +964,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
   tabContent: {
     padding: 16,
@@ -1618,6 +1657,43 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  // Order Card Header Right
+  orderCardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  orderCardChevron: {
+    marginLeft: 8,
+  },
+  // Bottom Toolbar
+  bottomToolbar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  toolbarButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  toolbarButtonText: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 4,
   },
 });
 
