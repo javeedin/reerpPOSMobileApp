@@ -910,7 +910,7 @@ const WMSHomeScreen = ({ navigation }) => {
       {/* Bottom Toolbar */}
       <BottomToolbar
         onRefresh={onRefresh}
-        onReports={() => setShowReportsModal(true)}
+        onReports={() => navigation.navigate('WMSReports')}
         onPerformance={() => setShowPerformanceModal(true)}
         onQuery={() => setShowQueryModal(true)}
         isRefreshing={refreshing}
