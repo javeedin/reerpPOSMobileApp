@@ -224,7 +224,7 @@ const LorryGroup = ({ lorryData, onOrderPress, expandedLorries, toggleLorry }) =
                 <View key={priorityIndex} style={styles.priorityGroup}>
                   {priorityData.orders.map((order, orderIndex) => (
                     <OrderCard
-                      key={orderIndex}
+                      key={`${order.delivery_detail_id || order.source_order_number}-${orderIndex}`}
                       order={order}
                       onPress={() => onOrderPress(order)}
                     />
@@ -296,7 +296,7 @@ const DateGroup = ({ dateData, onOrderPress, expandedDates, toggleDate }) => {
         <View style={styles.dateContent}>
           {dateData.orders.map((order, orderIndex) => (
             <OrderCard
-              key={orderIndex}
+              key={`${order.delivery_detail_id || order.source_order_number}-${orderIndex}`}
               order={order}
               onPress={() => onOrderPress(order)}
             />
@@ -901,7 +901,7 @@ const WMSHomeScreen = ({ navigation }) => {
             <View style={styles.ordersSection}>
               {filteredShipments.map((order, index) => (
                 <OrderCard
-                  key={index}
+                  key={`${order.delivery_detail_id || order.source_order_number}-${index}`}
                   order={order}
                   onPress={() => handleOrderPress(order)}
                 />
