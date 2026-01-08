@@ -8,8 +8,9 @@ import {
   RefreshControl,
   StatusBar,
   ActivityIndicator,
-  TextInput,
   Dimensions,
+  Platform,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,17 +49,180 @@ const TABS = [
   { id: 'analytics', label: 'Analytics', icon: 'analytics-outline' },
 ];
 
-// Stat Card Component
+// Stat Card Component - Fixed to prevent text overlap
 const StatCard = ({ title, value, icon, color, subtitle }) => (
   <View style={[styles.statCard, { borderTopColor: color }]}>
-    <View style={[styles.statIconContainer, { backgroundColor: color + '15' }]}>
-      <Ionicons name={icon} size={24} color={color} />
+    <View style={[styles.statIconContainer, { backgroundColor: `${color}20` }]}>
+      <Ionicons name={icon} size={20} color={color} />
     </View>
-    <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statTitle}>{title}</Text>
-    {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
+    <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+    <Text style={styles.statTitle} numberOfLines={2}>{title}</Text>
+    {subtitle && <Text style={styles.statSubtitle} numberOfLines={1}>{subtitle}</Text>}
   </View>
 );
+
+// Order Card Component for expanded date view
+const OrderCard = ({ order }) => {
+  const isPicked = order.pick_confirm_status === 'YES';
+  const isShipped = order.shipped_status === 'YES';
+
+  let statusColor = '#FF9800'; // Pending
+  let statusIcon = 'time-outline';
+  let statusText = 'Pending';
+
+  if (isShipped) {
+    statusColor = '#9C27B0';
+    statusIcon = 'checkmark-done-circle';
+    statusText = 'Shipped';
+  } else if (isPicked) {
+    statusColor = '#4CAF50';
+    statusIcon = 'checkmark-circle';
+    statusText = 'Picked';
+  }
+
+  return (
+    <View style={styles.orderCard}>
+      <View style={styles.orderCardHeader}>
+        <View style={styles.orderCardLeft}>
+          <Text style={styles.orderCardNumber}>{order.order_number || 'N/A'}</Text>
+          <Text style={styles.orderCardType}>{order.transaction_type || 'Unknown'}</Text>
+        </View>
+        <View style={[styles.orderCardStatus, { backgroundColor: `${statusColor}15` }]}>
+          <Ionicons name={statusIcon} size={14} color={statusColor} />
+          <Text style={[styles.orderCardStatusText, { color: statusColor }]}>{statusText}</Text>
+        </View>
+      </View>
+      <View style={styles.orderCardBody}>
+        <View style={styles.orderCardDetail}>
+          <Ionicons name="cube-outline" size={12} color="#666" />
+          <Text style={styles.orderCardDetailText}>{order.no_of_lines || 0} lines</Text>
+        </View>
+        <View style={styles.orderCardDetail}>
+          <Ionicons name="business-outline" size={12} color="#666" />
+          <Text style={styles.orderCardDetailText}>{order.customer_name || order.ship_to_name || 'N/A'}</Text>
+        </View>
+        {order.lorry_number && (
+          <View style={styles.orderCardDetail}>
+            <Ionicons name="car-outline" size={12} color="#666" />
+            <Text style={styles.orderCardDetailText}>Lorry: {order.lorry_number}</Text>
+          </View>
+        )}
+        {order.loading_bay && (
+          <View style={styles.orderCardDetail}>
+            <Ionicons name="grid-outline" size={12} color="#666" />
+            <Text style={styles.orderCardDetailText}>Bay: {order.loading_bay}</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+// Date Picker Modal Component
+const DatePickerModal = ({ visible, onClose, onSelect, currentDate, title }) => {
+  const [selectedYear, setSelectedYear] = useState(new Date(currentDate).getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date(currentDate).getMonth());
+  const [selectedDay, setSelectedDay] = useState(new Date(currentDate).getDate());
+
+  const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i);
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  const handleConfirm = () => {
+    const date = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+    onSelect(date);
+    onClose();
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.datePickerOverlay}>
+        <View style={styles.datePickerModal}>
+          <View style={styles.datePickerHeader}>
+            <Text style={styles.datePickerTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.datePickerContent}>
+            {/* Year Selector */}
+            <View style={styles.datePickerColumn}>
+              <Text style={styles.datePickerLabel}>Year</Text>
+              <ScrollView style={styles.datePickerScroll} showsVerticalScrollIndicator={false}>
+                {years.map(year => (
+                  <TouchableOpacity
+                    key={year}
+                    style={[styles.datePickerItem, selectedYear === year && styles.datePickerItemSelected]}
+                    onPress={() => setSelectedYear(year)}
+                  >
+                    <Text style={[styles.datePickerItemText, selectedYear === year && styles.datePickerItemTextSelected]}>
+                      {year}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Month Selector */}
+            <View style={styles.datePickerColumn}>
+              <Text style={styles.datePickerLabel}>Month</Text>
+              <ScrollView style={styles.datePickerScroll} showsVerticalScrollIndicator={false}>
+                {months.map((month, index) => (
+                  <TouchableOpacity
+                    key={month}
+                    style={[styles.datePickerItem, selectedMonth === index && styles.datePickerItemSelected]}
+                    onPress={() => {
+                      setSelectedMonth(index);
+                      // Adjust day if necessary
+                      const maxDays = new Date(selectedYear, index + 1, 0).getDate();
+                      if (selectedDay > maxDays) setSelectedDay(maxDays);
+                    }}
+                  >
+                    <Text style={[styles.datePickerItemText, selectedMonth === index && styles.datePickerItemTextSelected]}>
+                      {month}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Day Selector */}
+            <View style={styles.datePickerColumn}>
+              <Text style={styles.datePickerLabel}>Day</Text>
+              <ScrollView style={styles.datePickerScroll} showsVerticalScrollIndicator={false}>
+                {days.map(day => (
+                  <TouchableOpacity
+                    key={day}
+                    style={[styles.datePickerItem, selectedDay === day && styles.datePickerItemSelected]}
+                    onPress={() => setSelectedDay(day)}
+                  >
+                    <Text style={[styles.datePickerItemText, selectedDay === day && styles.datePickerItemTextSelected]}>
+                      {String(day).padStart(2, '0')}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+
+          <View style={styles.datePickerActions}>
+            <TouchableOpacity style={styles.datePickerCancelBtn} onPress={onClose}>
+              <Text style={styles.datePickerCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.datePickerConfirmBtn} onPress={handleConfirm}>
+              <Text style={styles.datePickerConfirmText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 // Progress Bar Component
 const ProgressBar = ({ label, value, total, color }) => {
@@ -148,6 +312,14 @@ const DateRow = ({ dateData, isExpanded, onToggle }) => {
                 <Text style={styles.breakdownLabel}>{type}</Text>
                 <Text style={styles.breakdownValue}>{count}</Text>
               </View>
+            ))}
+          </View>
+
+          {/* Individual Orders List */}
+          <View style={styles.ordersListContainer}>
+            <Text style={styles.ordersListTitle}>Orders ({dateData.orders.length})</Text>
+            {dateData.orders.map((order, idx) => (
+              <OrderCard key={idx} order={order} />
             ))}
           </View>
         </View>
@@ -249,6 +421,8 @@ const WMSReportsScreen = ({ navigation }) => {
   const [dateGroups, setDateGroups] = useState([]);
   const [expandedDates, setExpandedDates] = useState([]);
   const [hasQueried, setHasQueried] = useState(false);
+  const [showFromDatePicker, setShowFromDatePicker] = useState(false);
+  const [showToDatePicker, setShowToDatePicker] = useState(false);
 
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
 
@@ -309,6 +483,56 @@ const WMSReportsScreen = ({ navigation }) => {
     }));
   };
 
+  // Customer analytics
+  const getCustomerAnalytics = () => {
+    if (!shipments || shipments.length === 0) return { top: [], total: 0 };
+
+    const customerCounts = {};
+    shipments.forEach(order => {
+      const customer = order.customer_name || order.ship_to_name || 'Unknown';
+      if (!customerCounts[customer]) {
+        customerCounts[customer] = { name: customer, orders: 0, lines: 0 };
+      }
+      customerCounts[customer].orders++;
+      customerCounts[customer].lines += parseInt(order.no_of_lines) || 0;
+    });
+
+    const sorted = Object.values(customerCounts).sort((a, b) => b.orders - a.orders);
+    return {
+      top: sorted.slice(0, 10),
+      total: sorted.length,
+    };
+  };
+
+  // Lorry analytics
+  const getLorryAnalytics = () => {
+    if (!shipments || shipments.length === 0) return { data: [], total: 0 };
+
+    const lorryCounts = {};
+    shipments.forEach(order => {
+      const lorry = order.lorry_number || 'No Lorry';
+      if (!lorryCounts[lorry]) {
+        lorryCounts[lorry] = { lorry, orders: 0, lines: 0, bays: new Set() };
+      }
+      lorryCounts[lorry].orders++;
+      lorryCounts[lorry].lines += parseInt(order.no_of_lines) || 0;
+      if (order.loading_bay) {
+        lorryCounts[lorry].bays.add(order.loading_bay);
+      }
+    });
+
+    const sorted = Object.values(lorryCounts)
+      .map(l => ({ ...l, bayCount: l.bays.size }))
+      .sort((a, b) => b.orders - a.orders);
+    return {
+      data: sorted,
+      total: sorted.length,
+    };
+  };
+
+  const customerAnalytics = getCustomerAnalytics();
+  const lorryAnalytics = getLorryAnalytics();
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1565C0" />
@@ -331,23 +555,23 @@ const WMSReportsScreen = ({ navigation }) => {
         <View style={styles.queryRow}>
           <View style={styles.queryField}>
             <Text style={styles.queryLabel}>From Date</Text>
-            <TextInput
-              style={styles.queryInput}
-              value={fromDate}
-              onChangeText={setFromDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#999"
-            />
+            <TouchableOpacity
+              style={styles.datePickerButton}
+              onPress={() => setShowFromDatePicker(true)}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#1565C0" />
+              <Text style={styles.datePickerButtonText}>{fromDate}</Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.queryField}>
             <Text style={styles.queryLabel}>To Date</Text>
-            <TextInput
-              style={styles.queryInput}
-              value={toDate}
-              onChangeText={setToDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#999"
-            />
+            <TouchableOpacity
+              style={styles.datePickerButton}
+              onPress={() => setShowToDatePicker(true)}
+            >
+              <Ionicons name="calendar-outline" size={18} color="#1565C0" />
+              <Text style={styles.datePickerButtonText}>{toDate}</Text>
+            </TouchableOpacity>
           </View>
           <TouchableOpacity
             style={styles.queryButton}
@@ -362,6 +586,22 @@ const WMSReportsScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Date Picker Modals */}
+      <DatePickerModal
+        visible={showFromDatePicker}
+        onClose={() => setShowFromDatePicker(false)}
+        onSelect={setFromDate}
+        currentDate={fromDate}
+        title="Select From Date"
+      />
+      <DatePickerModal
+        visible={showToDatePicker}
+        onClose={() => setShowToDatePicker(false)}
+        onSelect={setToDate}
+        currentDate={toDate}
+        title="Select To Date"
+      />
 
       {/* Tabs */}
       <View style={styles.tabsContainer}>
@@ -407,19 +647,31 @@ const WMSReportsScreen = ({ navigation }) => {
           {activeTab === 'byDate' ? (
             /* By Date Tab */
             <View style={styles.tabContent}>
-              {/* Summary Cards */}
-              <View style={styles.summaryCards}>
+              {/* Summary Cards - Split by type */}
+              <View style={styles.summaryCardsRow}>
                 <StatCard
-                  title="Total Orders"
+                  title="Total"
                   value={kpis.totalOrders || 0}
                   icon="cube"
                   color="#1565C0"
                 />
                 <StatCard
-                  title="Total Lines"
-                  value={kpis.totalLines || 0}
-                  icon="layers"
-                  color="#9C27B0"
+                  title="Sales"
+                  value={kpis.salesOrders || 0}
+                  icon="cart"
+                  color="#2196F3"
+                />
+                <StatCard
+                  title="Transfers"
+                  value={kpis.storeTransactions || 0}
+                  icon="swap-horizontal"
+                  color="#FF9800"
+                />
+                <StatCard
+                  title="Returns"
+                  value={kpis.orderReturns || 0}
+                  icon="return-down-back"
+                  color="#F44336"
                 />
               </View>
 
@@ -495,6 +747,70 @@ const WMSReportsScreen = ({ navigation }) => {
                     <Text style={styles.breakdownRowValue}>{count}</Text>
                   </View>
                 ))}
+              </View>
+
+              {/* Customer Analytics */}
+              <View style={styles.analyticsSection}>
+                <View style={styles.analyticsSectionHeader}>
+                  <Ionicons name="people" size={20} color="#1565C0" />
+                  <Text style={styles.sectionTitle}>Customer Analytics</Text>
+                  <Text style={styles.analyticsSectionSubtitle}>({customerAnalytics.total} customers)</Text>
+                </View>
+                {customerAnalytics.top.length > 0 ? (
+                  <View style={styles.analyticsTable}>
+                    <View style={styles.analyticsTableHeader}>
+                      <Text style={[styles.analyticsTableHeaderText, { flex: 2 }]}>Customer</Text>
+                      <Text style={[styles.analyticsTableHeaderText, { flex: 1, textAlign: 'center' }]}>Orders</Text>
+                      <Text style={[styles.analyticsTableHeaderText, { flex: 1, textAlign: 'center' }]}>Lines</Text>
+                    </View>
+                    {customerAnalytics.top.map((customer, index) => (
+                      <View key={index} style={[styles.analyticsTableRow, index % 2 === 0 && styles.analyticsTableRowAlt]}>
+                        <View style={[styles.analyticsTableCell, { flex: 2 }]}>
+                          <View style={[styles.rankBadge, { backgroundColor: index < 3 ? '#FFD700' : '#E0E0E0' }]}>
+                            <Text style={styles.rankText}>{index + 1}</Text>
+                          </View>
+                          <Text style={styles.customerName} numberOfLines={1}>{customer.name}</Text>
+                        </View>
+                        <Text style={[styles.analyticsTableCellText, { flex: 1, textAlign: 'center' }]}>{customer.orders}</Text>
+                        <Text style={[styles.analyticsTableCellText, { flex: 1, textAlign: 'center' }]}>{customer.lines}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.noAnalyticsText}>No customer data available</Text>
+                )}
+              </View>
+
+              {/* Lorry Analytics */}
+              <View style={styles.analyticsSection}>
+                <View style={styles.analyticsSectionHeader}>
+                  <Ionicons name="car" size={20} color="#FF9800" />
+                  <Text style={styles.sectionTitle}>Lorry Analytics</Text>
+                  <Text style={styles.analyticsSectionSubtitle}>({lorryAnalytics.total} lorries)</Text>
+                </View>
+                {lorryAnalytics.data.length > 0 ? (
+                  <View style={styles.analyticsTable}>
+                    <View style={styles.analyticsTableHeader}>
+                      <Text style={[styles.analyticsTableHeaderText, { flex: 2 }]}>Lorry</Text>
+                      <Text style={[styles.analyticsTableHeaderText, { flex: 1, textAlign: 'center' }]}>Orders</Text>
+                      <Text style={[styles.analyticsTableHeaderText, { flex: 1, textAlign: 'center' }]}>Lines</Text>
+                      <Text style={[styles.analyticsTableHeaderText, { flex: 1, textAlign: 'center' }]}>Bays</Text>
+                    </View>
+                    {lorryAnalytics.data.map((lorry, index) => (
+                      <View key={index} style={[styles.analyticsTableRow, index % 2 === 0 && styles.analyticsTableRowAlt]}>
+                        <View style={[styles.analyticsTableCell, { flex: 2 }]}>
+                          <Ionicons name="car-outline" size={16} color="#666" />
+                          <Text style={styles.lorryName} numberOfLines={1}>{lorry.lorry}</Text>
+                        </View>
+                        <Text style={[styles.analyticsTableCellText, { flex: 1, textAlign: 'center' }]}>{lorry.orders}</Text>
+                        <Text style={[styles.analyticsTableCellText, { flex: 1, textAlign: 'center' }]}>{lorry.lines}</Text>
+                        <Text style={[styles.analyticsTableCellText, { flex: 1, textAlign: 'center' }]}>{lorry.bayCount}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.noAnalyticsText}>No lorry data available</Text>
+                )}
               </View>
             </View>
           )}
@@ -1029,6 +1345,279 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#1565C0',
+  },
+  // Date Picker Button
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  datePickerButtonText: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 8,
+  },
+  // Date Picker Modal
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  datePickerModal: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    width: width * 0.9,
+    maxWidth: 400,
+    maxHeight: '70%',
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  datePickerContent: {
+    flexDirection: 'row',
+    padding: 16,
+  },
+  datePickerColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  datePickerLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  datePickerScroll: {
+    height: 180,
+  },
+  datePickerItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginVertical: 2,
+  },
+  datePickerItemSelected: {
+    backgroundColor: '#1565C0',
+  },
+  datePickerItemText: {
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'center',
+  },
+  datePickerItemTextSelected: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  datePickerActions: {
+    flexDirection: 'row',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  datePickerCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    marginRight: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  datePickerCancelText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  datePickerConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    marginLeft: 8,
+    borderRadius: 8,
+    backgroundColor: '#1565C0',
+    alignItems: 'center',
+  },
+  datePickerConfirmText: {
+    fontSize: 16,
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  // Order Card Styles
+  orderCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+  },
+  orderCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  orderCardLeft: {
+    flex: 1,
+  },
+  orderCardNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  orderCardType: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  orderCardStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  orderCardStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  orderCardBody: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  orderCardDetail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  orderCardDetailText: {
+    fontSize: 11,
+    color: '#666',
+    marginLeft: 4,
+  },
+  // Orders List Container
+  ordersListContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  ordersListTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  // Summary Cards Row
+  summaryCardsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+    marginBottom: 16,
+  },
+  // Analytics Section
+  analyticsSection: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+  },
+  analyticsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  analyticsSectionSubtitle: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 8,
+  },
+  analyticsTable: {
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  analyticsTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  analyticsTableHeaderText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666',
+    textTransform: 'uppercase',
+  },
+  analyticsTableRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  analyticsTableRowAlt: {
+    backgroundColor: '#FAFAFA',
+  },
+  analyticsTableCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  analyticsTableCellText: {
+    fontSize: 13,
+    color: '#333',
+  },
+  rankBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  rankText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#333',
+  },
+  customerName: {
+    fontSize: 13,
+    color: '#333',
+    flex: 1,
+  },
+  lorryName: {
+    fontSize: 13,
+    color: '#333',
+    marginLeft: 6,
+    flex: 1,
+  },
+  noAnalyticsText: {
+    fontSize: 13,
+    color: '#999',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 20,
   },
 });
 
