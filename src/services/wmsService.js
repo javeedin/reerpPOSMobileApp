@@ -144,12 +144,12 @@ export const calculateWMSKPIs = (items) => {
     // Count by ship status
     byShipStatus[shipStatus] = (byShipStatus[shipStatus] || 0) + 1;
 
-    // Count by type
-    if (transType === 'Sales Orders') {
+    // Count by type (handle various naming conventions)
+    if (transType === 'Sales Orders' || transType === 'Sales Order') {
       salesOrders++;
-    } else if (transType === 'Store Transactions' || transType === 'Store Transaction') {
+    } else if (transType === 'Store Transfers' || transType === 'Store Transfer' || transType === 'Store Transactions' || transType === 'Store Transaction') {
       storeTransactions++;
-    } else if (transType === 'Order Returns' || transType.includes('Return')) {
+    } else if (transType === 'Order Returns' || transType === 'Order Return' || transType.includes('Return')) {
       orderReturns++;
     }
 
@@ -257,7 +257,67 @@ export const filterByTransactionType = (items, transactionType) => {
   if (!transactionType || transactionType === 'All') {
     return items;
   }
+  // Handle Store Transfers/Store Transactions as same category
+  if (transactionType === 'Store Transfers' || transactionType === 'Store Transactions') {
+    return items.filter(item =>
+      item.transaction_type === 'Store Transfers' ||
+      item.transaction_type === 'Store Transfer' ||
+      item.transaction_type === 'Store Transactions' ||
+      item.transaction_type === 'Store Transaction'
+    );
+  }
   return items.filter(item => item.transaction_type === transactionType);
+};
+
+/**
+ * Group orders by date
+ * @param {Array} items - Array of shipment items
+ * @returns {Array} Orders grouped by date
+ */
+export const groupOrdersByDate = (items) => {
+  if (!items || items.length === 0) {
+    return [];
+  }
+
+  const grouped = {};
+
+  items.forEach(item => {
+    const dateStr = item.assignment_date
+      ? new Date(item.assignment_date).toISOString().split('T')[0]
+      : 'No Date';
+
+    if (!grouped[dateStr]) {
+      grouped[dateStr] = {
+        date: dateStr,
+        displayDate: item.assignment_date
+          ? new Date(item.assignment_date).toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric'
+            })
+          : 'No Date',
+        orders: [],
+        totalLines: 0,
+        pendingCount: 0,
+        pickedCount: 0,
+        shippedCount: 0,
+      };
+    }
+
+    grouped[dateStr].orders.push(item);
+    grouped[dateStr].totalLines += parseInt(item.no_of_lines) || 0;
+
+    if (item.shipped_status === 'YES') {
+      grouped[dateStr].shippedCount++;
+    } else if (item.pick_confirm_status === 'YES') {
+      grouped[dateStr].pickedCount++;
+    } else {
+      grouped[dateStr].pendingCount++;
+    }
+  });
+
+  // Convert to array and sort by date (newest first)
+  return Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
 };
 
 /**
@@ -325,6 +385,7 @@ export default {
   clearWMSCache,
   calculateWMSKPIs,
   groupOrdersByLorry,
+  groupOrdersByDate,
   filterByTransactionType,
   filterByPickStatus,
   filterPendingOrders,
