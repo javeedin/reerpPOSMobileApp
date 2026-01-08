@@ -354,7 +354,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           <Text style={styles.sectionTitle}>Line Items ({lines.length})</Text>
           {lines.map((item, index) => (
             <LineItemCard
-              key={item.delivery_detail_id || index}
+              key={`line-${item.delivery_detail_id || item.line_number || index}-${index}`}
               item={item}
               onConfirmPick={handleConfirmPick}
               isConfirming={confirmingId === item.delivery_detail_id}
