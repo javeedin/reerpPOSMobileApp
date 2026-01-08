@@ -35,6 +35,8 @@ import {
   TripDetailsScreen,
   OrderVerificationScreen,
   TripOrderDetailScreen,
+  // WMS screens
+  WMSHomeScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -92,6 +94,8 @@ const MainStack = () => {
       <Stack.Screen name="TripDetails" component={TripDetailsScreen} />
       <Stack.Screen name="OrderVerification" component={OrderVerificationScreen} />
       <Stack.Screen name="TripOrderDetail" component={TripOrderDetailScreen} />
+      {/* WMS screens */}
+      <Stack.Screen name="WMSHome" component={WMSHomeScreen} />
     </Stack.Navigator>
   );
 };
