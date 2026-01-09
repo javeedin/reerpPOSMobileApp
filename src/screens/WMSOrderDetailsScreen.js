@@ -134,8 +134,9 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
   const isShipped = item.shipped_status === 'YES';
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
-  const needsPick = pickedQty === 0 && !isPicked;
-  const canCancel = isPicked && !isShipped;
+
+  // Show Confirm and Cancel buttons only when picked_qty = 0
+  const showActionButtons = pickedQty === 0;
 
   let statusColor = '#FF9800'; // Pending
   let statusIcon = 'time-outline';
@@ -229,8 +230,8 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
         )}
       </View>
 
-      {/* Action Buttons */}
-      {needsPick && (
+      {/* Action Buttons - show both when picked_qty = 0 */}
+      {showActionButtons && (
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={styles.confirmPickButton}
@@ -242,16 +243,11 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
             ) : (
               <>
                 <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-                <Text style={styles.confirmPickButtonText}>Confirm Pick</Text>
+                <Text style={styles.confirmPickButtonText}>Confirm</Text>
               </>
             )}
           </TouchableOpacity>
-        </View>
-      )}
 
-      {/* Cancel Pick Button - shown when picked but not shipped */}
-      {canCancel && (
-        <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={styles.cancelPickButton}
             onPress={() => onCancelPick(item)}
@@ -262,19 +258,19 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
             ) : (
               <>
                 <Ionicons name="close-circle" size={20} color="#FFF" />
-                <Text style={styles.cancelPickButtonText}>Cancel Pick</Text>
+                <Text style={styles.cancelPickButtonText}>Cancel</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Already Picked Info - shows along with Cancel button */}
-      {isPicked && !isShipped && (
+      {/* Already Picked Info - shows when picked_qty > 0 */}
+      {pickedQty > 0 && (
         <View style={styles.pickedInfo}>
           <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
           <Text style={styles.pickedInfoText}>
-            Picked by {item.pick_confirm_by || item.picker_name || 'Unknown'} on{' '}
+            Picked: {pickedQty} | By {item.pick_confirm_by || item.picker_name || 'Unknown'} on{' '}
             {item.pick_confirm_date ? new Date(item.pick_confirm_date).toLocaleDateString() : 'N/A'}
           </Text>
         </View>
@@ -828,6 +824,7 @@ const styles = StyleSheet.create({
   actionButtonsRow: {
     flexDirection: 'row',
     marginTop: 12,
+    gap: 10,
   },
   confirmPickButton: {
     flex: 1,
@@ -842,7 +839,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   cancelPickButton: {
     flex: 1,
@@ -857,7 +854,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   // Picked/Shipped Info
   pickedInfo: {
