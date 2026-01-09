@@ -163,7 +163,8 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
               style={styles.searchLotsButton}
               onPress={() => onSearchLots(item)}
             >
-              <Ionicons name="search" size={18} color="#1565C0" />
+              <Ionicons name="layers-outline" size={20} color="#1565C0" />
+              <Text style={styles.searchLotsText}>Lots</Text>
             </TouchableOpacity>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: `${statusColor}15` }]}>
@@ -269,8 +270,8 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
         </View>
       )}
 
-      {/* Already Picked/Shipped Info */}
-      {isPicked && !isShipped && !canCancel && (
+      {/* Already Picked Info - shows along with Cancel button */}
+      {isPicked && !isShipped && (
         <View style={styles.pickedInfo}>
           <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
           <Text style={styles.pickedInfoText}>
@@ -746,10 +747,21 @@ const styles = StyleSheet.create({
     color: '#1565C0',
   },
   searchLotsButton: {
-    marginLeft: 8,
-    padding: 4,
+    marginLeft: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     backgroundColor: '#E3F2FD',
     borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#1565C0',
+  },
+  searchLotsText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1565C0',
+    marginLeft: 4,
   },
   lineNumber: {
     fontSize: 11,
