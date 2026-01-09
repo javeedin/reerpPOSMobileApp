@@ -10,21 +10,133 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { fetchShipmentLines, confirmPick } from '../services/wmsService';
+import { getOnhand, fetchLotDetails } from '../services/syncService';
 
 const { width } = Dimensions.get('window');
 
+// Lots Modal Component
+const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <Ionicons name="layers-outline" size={24} color="#1565C0" />
+              <Text style={styles.modalTitle}>Available Lots</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Item Info */}
+          <View style={styles.modalItemInfo}>
+            <Text style={styles.modalItemNumber}>{item?.item_number || 'N/A'}</Text>
+            <Text style={styles.modalItemDesc} numberOfLines={2}>{item?.description || 'No Description'}</Text>
+          </View>
+
+          {/* Onhand Summary */}
+          {onhandItem && (
+            <View style={styles.onhandSummary}>
+              <View style={styles.onhandRow}>
+                <View style={styles.onhandItem}>
+                  <Text style={styles.onhandLabel}>On Hand Qty</Text>
+                  <Text style={styles.onhandValue}>{onhandItem.primaryQuantity || 0}</Text>
+                </View>
+                <View style={styles.onhandItem}>
+                  <Text style={styles.onhandLabel}>UOM</Text>
+                  <Text style={styles.onhandValue}>{onhandItem.primaryUomCode || 'EA'}</Text>
+                </View>
+                <View style={styles.onhandItem}>
+                  <Text style={styles.onhandLabel}>Subinventory</Text>
+                  <Text style={styles.onhandValue}>{onhandItem.subinventoryCode || 'N/A'}</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Lots List */}
+          <ScrollView style={styles.lotsScrollView}>
+            {isLoading ? (
+              <View style={styles.lotsLoading}>
+                <ActivityIndicator size="large" color="#1565C0" />
+                <Text style={styles.lotsLoadingText}>Loading lots...</Text>
+              </View>
+            ) : lots && lots.length > 0 ? (
+              <>
+                <Text style={styles.lotsSectionTitle}>Lot Details ({lots.length})</Text>
+                {lots.map((lot, index) => (
+                  <View key={`lot-${lot.lotNumber}-${index}`} style={styles.lotCard}>
+                    <View style={styles.lotHeader}>
+                      <Text style={styles.lotNumber}>{lot.lotNumber}</Text>
+                      <View style={styles.lotQtyBadge}>
+                        <Text style={styles.lotQtyText}>{lot.quantity || 0}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.lotDetails}>
+                      <View style={styles.lotDetailItem}>
+                        <Ionicons name="calendar-outline" size={14} color="#666" />
+                        <Text style={styles.lotDetailText}>
+                          Expiry: {lot.expirationDate ? new Date(lot.expirationDate).toLocaleDateString() : 'N/A'}
+                        </Text>
+                      </View>
+                      {lot.gradeCode && (
+                        <View style={styles.lotDetailItem}>
+                          <Ionicons name="star-outline" size={14} color="#666" />
+                          <Text style={styles.lotDetailText}>Grade: {lot.gradeCode}</Text>
+                        </View>
+                      )}
+                      {lot.originationDate && (
+                        <View style={styles.lotDetailItem}>
+                          <Ionicons name="time-outline" size={14} color="#666" />
+                          <Text style={styles.lotDetailText}>
+                            Origin: {new Date(lot.originationDate).toLocaleDateString()}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </>
+            ) : onhandItem ? (
+              <View style={styles.noLotsContainer}>
+                <Ionicons name="cube-outline" size={40} color="#CCC" />
+                <Text style={styles.noLotsText}>No lot details available</Text>
+                <Text style={styles.noLotsSubtext}>Item may not be lot controlled</Text>
+              </View>
+            ) : (
+              <View style={styles.noLotsContainer}>
+                <Ionicons name="alert-circle-outline" size={40} color="#FF9800" />
+                <Text style={styles.noLotsText}>Item not found in inventory</Text>
+                <Text style={styles.noLotsSubtext}>No onhand balance for this item</Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <TouchableOpacity style={styles.modalDoneButton} onPress={onClose}>
+            <Text style={styles.modalDoneButtonText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // Line Item Card Component
-const LineItemCard = ({ item, onConfirmPick, isConfirming }) => {
+const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfirming, isCancelling }) => {
   const isPicked = item.pick_confirm_status === 'YES';
   const isShipped = item.shipped_status === 'YES';
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
   const needsPick = pickedQty === 0 && !isPicked;
+  const canCancel = isPicked && !isShipped;
 
   let statusColor = '#FF9800'; // Pending
   let statusIcon = 'time-outline';
@@ -45,7 +157,16 @@ const LineItemCard = ({ item, onConfirmPick, isConfirming }) => {
       {/* Header with Item Number and Status */}
       <View style={styles.lineItemHeader}>
         <View style={styles.lineItemHeaderLeft}>
-          <Text style={styles.lineItemNumber}>{item.item_number || 'N/A'}</Text>
+          <View style={styles.itemNumberRow}>
+            <Text style={styles.lineItemNumber}>{item.item_number || 'N/A'}</Text>
+            {/* Search Lots Button */}
+            <TouchableOpacity
+              style={styles.searchLotsButton}
+              onPress={() => onSearchLots(item)}
+            >
+              <Ionicons name="search" size={18} color="#1565C0" />
+            </TouchableOpacity>
+          </View>
           <View style={[styles.statusBadge, { backgroundColor: `${statusColor}15` }]}>
             <Ionicons name={statusIcon} size={14} color={statusColor} />
             <Text style={[styles.statusBadgeText, { color: statusColor }]}>{statusText}</Text>
@@ -109,26 +230,48 @@ const LineItemCard = ({ item, onConfirmPick, isConfirming }) => {
         )}
       </View>
 
-      {/* Confirm Pick Button */}
+      {/* Action Buttons */}
       {needsPick && (
-        <TouchableOpacity
-          style={styles.confirmPickButton}
-          onPress={() => onConfirmPick(item)}
-          disabled={isConfirming}
-        >
-          {isConfirming ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
-            <>
-              <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-              <Text style={styles.confirmPickButtonText}>Confirm Pick</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity
+            style={styles.confirmPickButton}
+            onPress={() => onConfirmPick(item)}
+            disabled={isConfirming}
+          >
+            {isConfirming ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={20} color="#FFF" />
+                <Text style={styles.confirmPickButtonText}>Confirm Pick</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Cancel Pick Button - shown when picked but not shipped */}
+      {canCancel && (
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity
+            style={styles.cancelPickButton}
+            onPress={() => onCancelPick(item)}
+            disabled={isCancelling}
+          >
+            {isCancelling ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="close-circle" size={20} color="#FFF" />
+                <Text style={styles.cancelPickButtonText}>Cancel Pick</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* Already Picked/Shipped Info */}
-      {isPicked && !isShipped && (
+      {isPicked && !isShipped && !canCancel && (
         <View style={styles.pickedInfo}>
           <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
           <Text style={styles.pickedInfoText}>
@@ -180,6 +323,14 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [lines, setLines] = useState([]);
   const [confirmingId, setConfirmingId] = useState(null);
+  const [cancellingId, setCancellingId] = useState(null);
+
+  // Lots Modal state
+  const [lotsModalVisible, setLotsModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [lotsLoading, setLotsLoading] = useState(false);
+  const [lots, setLots] = useState([]);
+  const [onhandItem, setOnhandItem] = useState(null);
 
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
@@ -263,6 +414,83 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     );
   };
 
+  const handleCancelPick = async (item) => {
+    Alert.alert(
+      'Cancel Pick',
+      `Are you sure you want to cancel pick for ${item.item_number}?\n\nThis will reset the picked quantity to 0.`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            setCancellingId(item.delivery_detail_id);
+            try {
+              // TODO: Replace with actual cancel pick API call
+              // For now, just show a message
+              Alert.alert('Info', 'Cancel Pick API not yet configured.\n\nPlease provide the API endpoint.');
+
+              // When API is ready, uncomment and modify:
+              // const result = await cancelPick(item.delivery_detail_id, pickerName);
+              // if (result.success) {
+              //   setLines(prev =>
+              //     prev.map(line =>
+              //       line.delivery_detail_id === item.delivery_detail_id
+              //         ? { ...line, picked_qty: 0, pick_confirm_status: 'NO', pick_confirm_date: null }
+              //         : line
+              //     )
+              //   );
+              // }
+            } catch (error) {
+              console.error('[WMSOrderDetails] Error cancelling pick:', error);
+              Alert.alert('Error', 'Failed to cancel pick');
+            } finally {
+              setCancellingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSearchLots = async (item) => {
+    setSelectedItem(item);
+    setLotsModalVisible(true);
+    setLotsLoading(true);
+    setLots([]);
+    setOnhandItem(null);
+
+    try {
+      // Get onhand data from local storage
+      const onhandData = await getOnhand();
+
+      if (onhandData && onhandData.length > 0) {
+        // Find matching item by item number
+        const matchingOnhand = onhandData.find(
+          oh => oh.itemNumber === item.item_number ||
+                oh.item_number === item.item_number
+        );
+
+        if (matchingOnhand) {
+          setOnhandItem(matchingOnhand);
+
+          // If item has lotsHref, fetch lot details
+          if (matchingOnhand.lotsHref) {
+            const lotsResult = await fetchLotDetails(matchingOnhand.lotsHref);
+            if (lotsResult.success && lotsResult.lots) {
+              setLots(lotsResult.lots);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[WMSOrderDetails] Error searching lots:', error);
+      Alert.alert('Error', 'Failed to load lot information');
+    } finally {
+      setLotsLoading(false);
+    }
+  };
+
   // Calculate summary
   const summary = {
     totalLines: lines.length,
@@ -276,6 +504,16 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1565C0" />
+
+      {/* Lots Modal */}
+      <LotsModal
+        visible={lotsModalVisible}
+        onClose={() => setLotsModalVisible(false)}
+        item={selectedItem}
+        lots={lots}
+        onhandItem={onhandItem}
+        isLoading={lotsLoading}
+      />
 
       {/* Header */}
       <LinearGradient colors={['#1565C0', '#0D47A1']} style={styles.header}>
@@ -357,7 +595,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               key={`line-${item.delivery_detail_id || item.line_number || index}-${index}`}
               item={item}
               onConfirmPick={handleConfirmPick}
+              onCancelPick={handleCancelPick}
+              onSearchLots={handleSearchLots}
               isConfirming={confirmingId === item.delivery_detail_id}
+              isCancelling={cancellingId === item.delivery_detail_id}
             />
           ))}
         </ScrollView>
@@ -492,11 +733,21 @@ const styles = StyleSheet.create({
   lineItemHeaderLeft: {
     flex: 1,
   },
+  itemNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   lineItemNumber: {
     fontSize: 16,
     fontWeight: '700',
     color: '#1565C0',
-    marginBottom: 4,
+  },
+  searchLotsButton: {
+    marginLeft: 8,
+    padding: 4,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 6,
   },
   lineNumber: {
     fontSize: 11,
@@ -560,17 +811,36 @@ const styles = StyleSheet.create({
     color: '#666',
     marginLeft: 8,
   },
-  // Confirm Pick Button
+  // Action Buttons
+  actionButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+  },
   confirmPickButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#4CAF50',
     borderRadius: 8,
     paddingVertical: 12,
-    marginTop: 12,
   },
   confirmPickButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+    marginLeft: 8,
+  },
+  cancelPickButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F44336',
+    borderRadius: 8,
+    paddingVertical: 12,
+  },
+  cancelPickButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
@@ -590,6 +860,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#2E7D32',
     marginLeft: 8,
+    flex: 1,
   },
   shippedInfo: {
     flexDirection: 'row',
@@ -662,6 +933,167 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
     marginTop: 4,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginLeft: 8,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalItemInfo: {
+    padding: 16,
+    backgroundColor: '#F5F5F5',
+  },
+  modalItemNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1565C0',
+    marginBottom: 4,
+  },
+  modalItemDesc: {
+    fontSize: 14,
+    color: '#666',
+  },
+  onhandSummary: {
+    padding: 16,
+    backgroundColor: '#E3F2FD',
+  },
+  onhandRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  onhandItem: {
+    alignItems: 'center',
+  },
+  onhandLabel: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 4,
+  },
+  onhandValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1565C0',
+  },
+  lotsScrollView: {
+    maxHeight: 300,
+    padding: 16,
+  },
+  lotsLoading: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  lotsLoadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#666',
+  },
+  lotsSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  lotCard: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  lotHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  lotNumber: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#333',
+  },
+  lotQtyBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  lotQtyText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  lotDetails: {
+    borderTopWidth: 1,
+    borderTopColor: '#E8E8E8',
+    paddingTop: 8,
+  },
+  lotDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  lotDetailText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 6,
+  },
+  noLotsContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noLotsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 12,
+  },
+  noLotsSubtext: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  modalDoneButton: {
+    marginHorizontal: 16,
+    backgroundColor: '#1565C0',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalDoneButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFF',
   },
 });
 
