@@ -202,32 +202,10 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
         </View>
       </View>
 
-      {/* Additional Info */}
-      <View style={styles.additionalInfo}>
-        <View style={styles.infoRow}>
-          <Ionicons name="barcode-outline" size={14} color="#666" />
-          <Text style={styles.infoText}>Barcode: {item.barcode || 'N/A'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Ionicons name="folder-outline" size={14} color="#666" />
-          <Text style={styles.infoText}>Category: {item.category || item.groupcode || 'N/A'}</Text>
-        </View>
-        <View style={styles.infoRow}>
-          <Ionicons name="pricetag-outline" size={14} color="#666" />
-          <Text style={styles.infoText}>Brand: {item.brand || 'N/A'}</Text>
-        </View>
-        {item.lorry_number && (
-          <View style={styles.infoRow}>
-            <Ionicons name="car-outline" size={14} color="#666" />
-            <Text style={styles.infoText}>Lorry: {item.lorry_number}</Text>
-          </View>
-        )}
-        {item.loading_bay && (
-          <View style={styles.infoRow}>
-            <Ionicons name="grid-outline" size={14} color="#666" />
-            <Text style={styles.infoText}>Loading Bay: {item.loading_bay}</Text>
-          </View>
-        )}
+      {/* Barcode Info */}
+      <View style={styles.barcodeRow}>
+        <Ionicons name="barcode-outline" size={14} color="#666" />
+        <Text style={styles.barcodeText}>Barcode: {item.barcode || 'N/A'}</Text>
       </View>
 
       {/* Action Buttons - show both when picked_qty = 0 */}
@@ -804,18 +782,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  // Additional Info
-  additionalInfo: {
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    paddingTop: 12,
-  },
-  infoRow: {
+  // Barcode Row
+  barcodeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
   },
-  infoText: {
+  barcodeText: {
     fontSize: 12,
     color: '#666',
     marginLeft: 8,
