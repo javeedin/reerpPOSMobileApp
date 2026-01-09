@@ -9,7 +9,10 @@ import {
   StatusBar,
   ActivityIndicator,
   Dimensions,
+  Modal,
+  TextInput,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
@@ -166,6 +169,9 @@ const BottomToolbar = ({ onHome, onBack, onRefresh, isRefreshing }) => (
   </View>
 );
 
+const TARGET_TIME_KEY = '@wms_target_time';
+const DEFAULT_TARGET_TIME = 5; // Default 5 minutes per order
+
 const WMSPickerStatsScreen = ({ navigation }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -173,10 +179,50 @@ const WMSPickerStatsScreen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [performanceData, setPerformanceData] = useState([]);
   const [stats, setStats] = useState(null);
+  const [targetTime, setTargetTime] = useState(DEFAULT_TARGET_TIME);
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [tempTargetTime, setTempTargetTime] = useState('');
 
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
 
-  const calculateStats = (data) => {
+  // Load saved target time on mount
+  useEffect(() => {
+    const loadTargetTime = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(TARGET_TIME_KEY);
+        if (saved) {
+          setTargetTime(parseFloat(saved));
+        }
+      } catch (error) {
+        console.log('Error loading target time:', error);
+      }
+    };
+    loadTargetTime();
+  }, []);
+
+  const handleSaveTargetTime = async () => {
+    const newTime = parseFloat(tempTargetTime);
+    if (newTime > 0 && newTime <= 60) {
+      setTargetTime(newTime);
+      try {
+        await AsyncStorage.setItem(TARGET_TIME_KEY, newTime.toString());
+      } catch (error) {
+        console.log('Error saving target time:', error);
+      }
+      setShowTargetModal(false);
+      // Recalculate stats with new target
+      if (performanceData.length > 0) {
+        setStats(calculateStats(performanceData, newTime));
+      }
+    }
+  };
+
+  const openTargetModal = () => {
+    setTempTargetTime(targetTime.toString());
+    setShowTargetModal(true);
+  };
+
+  const calculateStats = (data, targetTimeParam = targetTime) => {
     if (!data || data.length === 0) {
       return {
         totalOrders: 0,
@@ -204,9 +250,8 @@ const WMSPickerStatsScreen = ({ navigation }) => {
     const ordersPerHour = totalHours > 0 ? totalOrders / totalHours : 0;
 
     // Calculate efficiency score (lower time = higher score)
-    const targetTimePerOrder = 3; // Target 3 minutes per order
     const efficiencyScore = avgTimePerOrder > 0
-      ? Math.min(100, Math.round((targetTimePerOrder / avgTimePerOrder) * 100))
+      ? Math.min(100, Math.round((targetTimeParam / avgTimePerOrder) * 100))
       : 0;
 
     // Group by date
@@ -265,10 +310,10 @@ const WMSPickerStatsScreen = ({ navigation }) => {
 
       if (result.success && result.data?.items) {
         setPerformanceData(result.data.items);
-        setStats(calculateStats(result.data.items));
+        setStats(calculateStats(result.data.items, targetTime));
       } else {
         setPerformanceData([]);
-        setStats(calculateStats([]));
+        setStats(calculateStats([], targetTime));
       }
     } catch (error) {
       console.error('[WMSPickerStats] Error loading data:', error);
@@ -276,7 +321,7 @@ const WMSPickerStatsScreen = ({ navigation }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [pickerName]);
+  }, [pickerName, targetTime]);
 
   useEffect(() => {
     loadData();
@@ -305,14 +350,19 @@ const WMSPickerStatsScreen = ({ navigation }) => {
 
       {/* Efficiency Score */}
       <View style={styles.efficiencyContainer}>
-        <View style={styles.efficiencyCircle}>
-          <Text style={styles.efficiencyScore}>{stats?.efficiencyScore || 0}</Text>
-          <Text style={styles.efficiencyLabel}>Score</Text>
-        </View>
+        <TouchableOpacity style={styles.efficiencyCircleWrapper} onPress={openTargetModal}>
+          <View style={styles.efficiencyCircle}>
+            <Text style={styles.efficiencyScore}>{stats?.efficiencyScore || 0}</Text>
+            <Text style={styles.efficiencyLabel}>Score</Text>
+          </View>
+          <View style={styles.settingsIconContainer}>
+            <Ionicons name="settings-outline" size={16} color="#1565C0" />
+          </View>
+        </TouchableOpacity>
         <View style={styles.efficiencyInfo}>
           <Text style={styles.efficiencyTitle}>Performance Score</Text>
           <Text style={styles.efficiencyDesc}>
-            Based on average picking time vs target (3 min/order)
+            Based on average picking time vs target ({targetTime} min/order)
           </Text>
           <View style={styles.efficiencyRating}>
             {stats?.efficiencyScore >= 80 && (
@@ -525,6 +575,76 @@ const WMSPickerStatsScreen = ({ navigation }) => {
         onRefresh={handleRefresh}
         isRefreshing={refreshing}
       />
+
+      {/* Target Time Modal */}
+      <Modal
+        visible={showTargetModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTargetModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="timer-outline" size={28} color="#1565C0" />
+              <Text style={styles.modalTitle}>Target Time</Text>
+            </View>
+            <Text style={styles.modalDescription}>
+              Set the target time per order (in minutes) for calculating your performance score.
+            </Text>
+            <View style={styles.modalInputContainer}>
+              <TextInput
+                style={styles.modalInput}
+                value={tempTargetTime}
+                onChangeText={setTempTargetTime}
+                keyboardType="numeric"
+                placeholder="Enter minutes"
+                maxLength={5}
+              />
+              <Text style={styles.modalInputSuffix}>min/order</Text>
+            </View>
+            <View style={styles.modalPresets}>
+              <Text style={styles.presetsLabel}>Quick presets:</Text>
+              <View style={styles.presetButtons}>
+                {[3, 5, 7, 10].map((time) => (
+                  <TouchableOpacity
+                    key={time}
+                    style={[
+                      styles.presetButton,
+                      tempTargetTime === time.toString() && styles.presetButtonActive
+                    ]}
+                    onPress={() => setTempTargetTime(time.toString())}
+                  >
+                    <Text
+                      style={[
+                        styles.presetButtonText,
+                        tempTargetTime === time.toString() && styles.presetButtonTextActive
+                      ]}
+                    >
+                      {time}m
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowTargetModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSaveButton}
+                onPress={handleSaveTargetTime}
+              >
+                <Ionicons name="checkmark" size={18} color="#FFF" />
+                <Text style={styles.modalSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -955,6 +1075,150 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
     marginTop: 4,
+  },
+  // Efficiency Circle Wrapper with Settings Icon
+  efficiencyCircleWrapper: {
+    position: 'relative',
+  },
+  settingsIconContainer: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E3F2FD',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+    marginLeft: 10,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  modalInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  modalInput: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#333',
+    paddingVertical: 14,
+    textAlign: 'center',
+  },
+  modalInputSuffix: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  modalPresets: {
+    marginBottom: 20,
+  },
+  presetsLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 10,
+  },
+  presetButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  presetButton: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  presetButtonActive: {
+    backgroundColor: '#E3F2FD',
+    borderColor: '#1565C0',
+  },
+  presetButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  presetButtonTextActive: {
+    color: '#1565C0',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancelButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#F5F5F5',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modalSaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#1565C0',
+    gap: 6,
+  },
+  modalSaveText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
   },
 });
 
