@@ -916,7 +916,7 @@ const WMSHomeScreen = ({ navigation }) => {
         onHome={() => navigation.navigate('MainTabs')}
         onRefresh={onRefresh}
         onReports={() => navigation.navigate('WMSReports')}
-        onPerformance={() => setShowPerformanceModal(true)}
+        onPerformance={() => navigation.navigate('WMSPickerStats')}
         onQuery={() => setShowQueryModal(true)}
         isRefreshing={refreshing}
       />

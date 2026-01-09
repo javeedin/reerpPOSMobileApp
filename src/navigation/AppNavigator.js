@@ -39,6 +39,7 @@ import {
   WMSHomeScreen,
   WMSReportsScreen,
   WMSOrderDetailsScreen,
+  WMSPickerStatsScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -100,6 +101,7 @@ const MainStack = () => {
       <Stack.Screen name="WMSHome" component={WMSHomeScreen} />
       <Stack.Screen name="WMSReports" component={WMSReportsScreen} />
       <Stack.Screen name="WMSOrderDetails" component={WMSOrderDetailsScreen} />
+      <Stack.Screen name="WMSPickerStats" component={WMSPickerStatsScreen} />
     </Stack.Navigator>
   );
 };

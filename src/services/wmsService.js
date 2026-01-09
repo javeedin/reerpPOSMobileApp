@@ -596,12 +596,55 @@ export const fetchItemLots = async (lotsHref) => {
   }
 };
 
+/**
+ * Fetch picker performance data
+ * @param {string} pickerName - Picker name
+ * @param {Date} fromDate - Start date
+ * @param {Date} toDate - End date
+ * @param {string} pickConfirmStatus - Pick confirm status filter (optional)
+ * @returns {Promise<Object>} Picker performance data
+ */
+export const fetchPickerPerformance = async (pickerName, fromDate, toDate, pickConfirmStatus = '') => {
+  try {
+    const from = formatDateForAPI(fromDate);
+    const to = formatDateForAPI(toDate);
+
+    let url = `${WMS_API_BASE}/PICKERPERFORMANCE?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
+
+    if (pickConfirmStatus) {
+      url += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
+    }
+
+    console.log('[WMSService] Fetching picker performance:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[WMSService] Fetched picker performance:', data?.items?.length || 0);
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('[WMSService] Error fetching picker performance:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export default {
   fetchShipmentsSummary,
   fetchShipmentLines,
   confirmPick,
   fetchItemOnhand,
   fetchItemLots,
+  fetchPickerPerformance,
   getCachedWMSData,
   clearWMSCache,
   calculateWMSKPIs,

@@ -49,3 +49,4 @@ export { default as TripOrderDetailScreen } from './TripOrderDetailScreen';
 export { default as WMSHomeScreen } from './WMSHomeScreen';
 export { default as WMSReportsScreen } from './WMSReportsScreen';
 export { default as WMSOrderDetailsScreen } from './WMSOrderDetailsScreen';
+export { default as WMSPickerStatsScreen } from './WMSPickerStatsScreen';
