@@ -156,17 +156,7 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
       {/* Header with Item Number and Status */}
       <View style={styles.lineItemHeader}>
         <View style={styles.lineItemHeaderLeft}>
-          <View style={styles.itemNumberRow}>
-            <Text style={styles.lineItemNumber}>{item.item_number || 'N/A'}</Text>
-            {/* Search Lots Button */}
-            <TouchableOpacity
-              style={styles.searchLotsButton}
-              onPress={() => onSearchLots(item)}
-            >
-              <Ionicons name="layers-outline" size={20} color="#1565C0" />
-              <Text style={styles.searchLotsText}>Lots</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.lineItemNumber}>{item.item_number || 'N/A'}</Text>
           <View style={[styles.statusBadge, { backgroundColor: `${statusColor}15` }]}>
             <Ionicons name={statusIcon} size={14} color={statusColor} />
             <Text style={[styles.statusBadgeText, { color: statusColor }]}>{statusText}</Text>
@@ -191,7 +181,16 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
           </Text>
         </View>
         <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>Lot Number</Text>
+          <View style={styles.lotLabelRow}>
+            <Text style={styles.detailLabel}>Lot Number</Text>
+            <TouchableOpacity
+              style={styles.searchLotsButton}
+              onPress={() => onSearchLots(item)}
+            >
+              <Ionicons name="layers-outline" size={14} color="#1565C0" />
+              <Text style={styles.searchLotsText}>Search</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.detailValue} numberOfLines={1}>{item.lot_number || 'N/A'}</Text>
         </View>
         <View style={styles.detailItem}>
@@ -736,32 +735,32 @@ const styles = StyleSheet.create({
   lineItemHeaderLeft: {
     flex: 1,
   },
-  itemNumberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
   lineItemNumber: {
     fontSize: 16,
     fontWeight: '700',
     color: '#1565C0',
+    marginBottom: 4,
+  },
+  lotLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   searchLotsButton: {
-    marginLeft: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     backgroundColor: '#E3F2FD',
-    borderRadius: 6,
+    borderRadius: 4,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#1565C0',
   },
   searchLotsText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: '#1565C0',
-    marginLeft: 4,
+    marginLeft: 3,
   },
   lineNumber: {
     fontSize: 11,
