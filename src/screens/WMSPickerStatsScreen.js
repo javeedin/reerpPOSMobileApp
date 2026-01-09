@@ -252,12 +252,16 @@ const WMSPickerStatsScreen = ({ navigation }) => {
 
   const loadData = useCallback(async () => {
     try {
-      const { fromDate, toDate } = getWMSDateRange();
-      // Extend range to 7 days for better stats
-      const extendedFromDate = new Date(toDate);
-      extendedFromDate.setDate(extendedFromDate.getDate() - 7);
+      // Use wider date range - 14 days back to today
+      const toDate = new Date();
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 14);
 
-      const result = await fetchPickerPerformance(pickerName, extendedFromDate, toDate);
+      console.log('[WMSPickerStats] Loading data for:', pickerName, 'from:', fromDate, 'to:', toDate);
+
+      const result = await fetchPickerPerformance(pickerName, fromDate, toDate);
+
+      console.log('[WMSPickerStats] API result:', result.success, 'items:', result.data?.items?.length);
 
       if (result.success && result.data?.items) {
         setPerformanceData(result.data.items);
@@ -284,7 +288,20 @@ const WMSPickerStatsScreen = ({ navigation }) => {
   };
 
   const renderOverviewTab = () => (
-    <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.tabContent}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />}
+    >
+      {/* Debug Info - remove in production */}
+      {performanceData.length === 0 && (
+        <View style={styles.debugInfo}>
+          <Text style={styles.debugText}>Picker: {pickerName || 'Not set'}</Text>
+          <Text style={styles.debugText}>Orders found: {performanceData.length}</Text>
+          <Text style={styles.debugText}>Check console for API response</Text>
+        </View>
+      )}
+
       {/* Efficiency Score */}
       <View style={styles.efficiencyContainer}>
         <View style={styles.efficiencyCircle}>
@@ -398,7 +415,11 @@ const WMSPickerStatsScreen = ({ navigation }) => {
   );
 
   const renderDailyTab = () => (
-    <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.tabContent}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />}
+    >
       <Text style={styles.sectionTitle}>Daily Breakdown</Text>
       {stats?.dailyBreakdown && stats.dailyBreakdown.length > 0 ? (
         stats.dailyBreakdown.map((day, index) => (
@@ -421,7 +442,11 @@ const WMSPickerStatsScreen = ({ navigation }) => {
   );
 
   const renderOrdersTab = () => (
-    <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.tabContent}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />}
+    >
       <Text style={styles.sectionTitle}>Recent Orders ({performanceData.length})</Text>
       {performanceData.length > 0 ? (
         performanceData.map((order, index) => (
@@ -484,11 +509,9 @@ const WMSPickerStatsScreen = ({ navigation }) => {
         </View>
       ) : (
         <View style={styles.contentContainer}>
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']}>
-            {activeTab === 'overview' && renderOverviewTab()}
-            {activeTab === 'daily' && renderDailyTab()}
-            {activeTab === 'orders' && renderOrdersTab()}
-          </RefreshControl>
+          {activeTab === 'overview' && renderOverviewTab()}
+          {activeTab === 'daily' && renderDailyTab()}
+          {activeTab === 'orders' && renderOrdersTab()}
         </View>
       )}
 
@@ -884,6 +907,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 12,
+  },
+  // Debug Info
+  debugInfo: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FF9800',
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#E65100',
+    marginBottom: 4,
   },
   // Bottom Toolbar
   bottomToolbar: {
