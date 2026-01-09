@@ -15,8 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick } from '../services/wmsService';
-import { getOnhand, fetchLotDetails } from '../services/syncService';
+import { fetchShipmentLines, confirmPick, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
 
 const { width } = Dimensions.get('window');
 
@@ -461,27 +460,30 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     setOnhandItem(null);
 
     try {
-      // Get onhand data from local storage
-      const onhandData = await getOnhand();
+      // Get organization and subinventory from order or item data
+      const organizationCode = item.organization_name || order?.organization_name || 'GIC';
+      const subinventoryCode = item.subinventory_code || order?.subinventory_code || 'DUTY PAID';
+      const itemNumber = item.item_number;
 
-      if (onhandData && onhandData.length > 0) {
-        // Find matching item by item number
-        const matchingOnhand = onhandData.find(
-          oh => oh.itemNumber === item.item_number ||
-                oh.item_number === item.item_number
-        );
+      console.log('[WMSOrderDetails] Searching lots for:', { organizationCode, subinventoryCode, itemNumber });
 
-        if (matchingOnhand) {
-          setOnhandItem(matchingOnhand);
+      // Fetch onhand from Fusion API
+      const onhandResult = await fetchItemOnhand(organizationCode, subinventoryCode, itemNumber);
 
-          // If item has lotsHref, fetch lot details
-          if (matchingOnhand.lotsHref) {
-            const lotsResult = await fetchLotDetails(matchingOnhand.lotsHref);
-            if (lotsResult.success && lotsResult.lots) {
-              setLots(lotsResult.lots);
-            }
+      if (onhandResult.success && onhandResult.items && onhandResult.items.length > 0) {
+        // Use the first onhand item (or aggregate if needed)
+        const firstOnhand = onhandResult.items[0];
+        setOnhandItem(firstOnhand);
+
+        // If item has lotsHref, fetch lot details
+        if (firstOnhand.lotsHref) {
+          const lotsResult = await fetchItemLots(firstOnhand.lotsHref);
+          if (lotsResult.success && lotsResult.lots) {
+            setLots(lotsResult.lots);
           }
         }
+      } else {
+        console.log('[WMSOrderDetails] No onhand found for item:', itemNumber);
       }
     } catch (error) {
       console.error('[WMSOrderDetails] Error searching lots:', error);
