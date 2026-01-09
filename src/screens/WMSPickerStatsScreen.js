@@ -289,7 +289,8 @@ const WMSPickerStatsScreen = ({ navigation }) => {
 
   const renderOverviewTab = () => (
     <ScrollView
-      style={styles.tabContent}
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />}
     >
@@ -416,7 +417,8 @@ const WMSPickerStatsScreen = ({ navigation }) => {
 
   const renderDailyTab = () => (
     <ScrollView
-      style={styles.tabContent}
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />}
     >
@@ -443,7 +445,8 @@ const WMSPickerStatsScreen = ({ navigation }) => {
 
   const renderOrdersTab = () => (
     <ScrollView
-      style={styles.tabContent}
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />}
     >
@@ -591,10 +594,12 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
   },
-  tabContent: {
+  scrollView: {
     flex: 1,
+  },
+  scrollContent: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   loadingContainer: {
     flex: 1,
