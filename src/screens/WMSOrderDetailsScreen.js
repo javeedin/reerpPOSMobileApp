@@ -15,11 +15,32 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
 
 const { width } = Dimensions.get('window');
 
-// Format date as YYYY-MM-DD
+// Month abbreviations for API format
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+// Format date as DD-MON-YYYY HH:MI:SS AM/PM (e.g., "15-JAN-2026 02:30:45 PM")
+const formatDateTimeForAPI = (date) => {
+  const d = new Date(date);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTHS[d.getMonth()];
+  const year = d.getFullYear();
+
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 becomes 12
+  const hoursStr = String(hours).padStart(2, '0');
+
+  return `${day}-${month}-${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
+};
+
+// Format date as YYYY-MM-DD (for display only)
 const formatDateForAPI = (date) => {
   const d = new Date(date);
   const year = d.getFullYear();
@@ -33,13 +54,14 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, insta
   if (!item) return null;
 
   // Build the JSON payload
+  // Note: Keep delivery_detail_id as-is (with S2V- prefix)
   const payload = {
     id: String(item.delivery_detail_id || ''),
     line_number: String(item.line_number || '1'),
     lot: item.lot_number || '',
     pickedQty: String(item.qty || '0'),
     pickedBy: pickerName || '',
-    pickConfirmDate: formatDateForAPI(new Date()),
+    pickConfirmDate: formatDateTimeForAPI(new Date()),
     pickConfirmStatus: 'YES',
     instance: instance || 'PROD',
   };
@@ -488,63 +510,41 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const executeConfirmPick = async (payload) => {
     setIsConfirmingPick(true);
     try {
-      // TODO: Call the actual API endpoint
-      // POST https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
-
       console.log('[WMSOrderDetails] Confirm Pick Payload:', JSON.stringify(payload, null, 2));
 
-      // For now, just show the payload and close (API integration pending)
-      Alert.alert(
-        'API Call Preview',
-        `The following payload would be sent to:\nPOST /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS\n\n${JSON.stringify(payload, null, 2)}`,
-        [
+      // Call the PENDING_PICKING_DETAILS API
+      const result = await confirmPickPending(payload);
+
+      if (result.success) {
+        Alert.alert('Success', 'Pick confirmed successfully', [
           {
             text: 'OK',
             onPress: () => {
+              // Update local state to reflect the confirmed pick
+              setLines(prev =>
+                prev.map(line =>
+                  line.delivery_detail_id === confirmPickItem.delivery_detail_id
+                    ? {
+                        ...line,
+                        picked_qty: confirmPickItem.qty,
+                        pick_confirm_status: 'YES',
+                        pick_confirm_date: new Date().toISOString(),
+                        pick_confirm_by: pickerName,
+                      }
+                    : line
+                )
+              );
               setConfirmPickModalVisible(false);
               setConfirmPickItem(null);
             }
           }
-        ]
-      );
-
-      // When ready to integrate API, uncomment below:
-      /*
-      const result = await confirmPick(
-        payload.id,
-        payload.pickedQty,
-        payload.pickedBy,
-        payload.lot,
-        payload.line_number,
-        payload.pickConfirmDate,
-        payload.instance
-      );
-
-      if (result.success) {
-        Alert.alert('Success', 'Pick confirmed successfully');
-        // Update local state
-        setLines(prev =>
-          prev.map(line =>
-            line.delivery_detail_id === confirmPickItem.delivery_detail_id
-              ? {
-                  ...line,
-                  picked_qty: confirmPickItem.qty,
-                  pick_confirm_status: 'YES',
-                  pick_confirm_date: new Date().toISOString(),
-                  pick_confirm_by: pickerName,
-                }
-              : line
-          )
-        );
-        setConfirmPickModalVisible(false);
-        setConfirmPickItem(null);
+        ]);
       } else {
         Alert.alert('Error', result.error || 'Failed to confirm pick');
       }
-      */
     } catch (error) {
       console.error('[WMSOrderDetails] Error confirming pick:', error);
-      Alert.alert('Error', 'Failed to confirm pick');
+      Alert.alert('Error', 'Failed to confirm pick: ' + (error.message || 'Unknown error'));
     } finally {
       setIsConfirmingPick(false);
     }

@@ -452,6 +452,52 @@ export const confirmPick = async (deliveryDetailId, qty, pickerName) => {
   }
 };
 
+/**
+ * Confirm pick via PENDING_PICKING_DETAILS endpoint
+ * @param {Object} payload - Pick confirmation payload
+ * @param {string} payload.id - Delivery detail ID (keep S2V- prefix)
+ * @param {string} payload.line_number - Line number
+ * @param {string} payload.lot - Lot number
+ * @param {string} payload.pickedQty - Picked quantity
+ * @param {string} payload.pickedBy - Picker name
+ * @param {string} payload.pickConfirmDate - Pick confirm date (DD-MON-YYYY HH:MI:SS AM/PM)
+ * @param {string} payload.pickConfirmStatus - Pick confirm status (YES/NO)
+ * @param {string} payload.instance - Instance (PROD/TEST)
+ * @returns {Promise<Object>} Confirmation result
+ */
+export const confirmPickPending = async (payload) => {
+  try {
+    const url = `${WMS_API_BASE}/PENDING_PICKING_DETAILS`;
+
+    console.log('[WMSService] Confirming pick (PENDING_PICKING_DETAILS):', url);
+    console.log('[WMSService] Payload:', JSON.stringify(payload, null, 2));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('[WMSService] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[WMSService] Error response:', errorText);
+      throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('[WMSService] Pick confirmed (PENDING_PICKING_DETAILS):', data);
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('[WMSService] Error confirming pick (PENDING_PICKING_DETAILS):', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Fusion Cloud API configuration for onhand lookup
 const FUSION_BASE_URL = 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05';
 const FUSION_CREDENTIALS = {
@@ -642,6 +688,7 @@ export default {
   fetchShipmentsSummary,
   fetchShipmentLines,
   confirmPick,
+  confirmPickPending,
   fetchItemOnhand,
   fetchItemLots,
   fetchPickerPerformance,
