@@ -352,24 +352,24 @@ const BulkShipConfirmModal = ({ visible, onClose, pickedItems, onProcess, proces
                     <View style={[styles.bulkItemStatus, { flex: 1.2 }]}>
                       {status === 'pending' && (
                         <View style={[styles.bulkStatusBadge, { backgroundColor: '#FFF3E0' }]}>
-                          <Ionicons name="time-outline" size={12} color="#FF9800" />
+                          <Ionicons name="time-outline" size={16} color="#FF9800" />
                           <Text style={[styles.bulkStatusText, { color: '#E65100' }]}>Pending</Text>
                         </View>
                       )}
                       {status === 'processing' && (
                         <View style={[styles.bulkStatusBadge, { backgroundColor: '#E3F2FD' }]}>
-                          <ActivityIndicator size={12} color="#1565C0" />
+                          <ActivityIndicator size="small" color="#1565C0" />
                         </View>
                       )}
                       {status === 'success' && (
                         <View style={[styles.bulkStatusBadge, { backgroundColor: '#E8F5E9' }]}>
-                          <Ionicons name="checkmark-circle" size={12} color="#4CAF50" />
+                          <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
                           <Text style={[styles.bulkStatusText, { color: '#2E7D32' }]}>Done</Text>
                         </View>
                       )}
                       {status === 'error' && (
                         <View style={[styles.bulkStatusBadge, { backgroundColor: '#FFEBEE' }]}>
-                          <Ionicons name="close-circle" size={12} color="#F44336" />
+                          <Ionicons name="close-circle" size={16} color="#F44336" />
                           <Text style={[styles.bulkStatusText, { color: '#C62828' }]}>Failed</Text>
                         </View>
                       )}
@@ -2189,14 +2189,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 10,
   },
   apiModalContainer: {
     backgroundColor: '#FFF',
     borderRadius: 16,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
+    width: '95%',
+    maxWidth: 500,
+    maxHeight: '90%',
     overflow: 'hidden',
   },
   apiStatusBanner: {
@@ -2280,49 +2280,51 @@ const styles = StyleSheet.create({
   bulkListHeader: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#FAFAFA',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    paddingVertical: 10,
+    backgroundColor: '#E3F2FD',
+    borderBottomWidth: 2,
+    borderBottomColor: '#1565C0',
   },
   bulkListHeaderText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#666',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1565C0',
     textTransform: 'uppercase',
   },
   bulkItemsScroll: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 4,
   },
   bulkItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#E0E0E0',
+    backgroundColor: '#FFF',
   },
   bulkLineNumber: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1565C0',
   },
   bulkItemInfo: {
     flex: 1,
   },
   bulkItemNumber: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#333',
   },
   bulkItemDesc: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#666',
-    marginTop: 1,
+    marginTop: 2,
   },
   bulkQtyText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1565C0',
   },
@@ -2338,14 +2340,14 @@ const styles = StyleSheet.create({
   bulkStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
   },
   bulkStatusText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
   },
   bulkActionButtons: {
     flexDirection: 'row',
