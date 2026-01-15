@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,9 @@ import {
   Alert,
   Dimensions,
   Modal,
+  Animated,
+  TextInput,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -390,28 +393,26 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
 
   return (
     <View style={styles.lineItemCard}>
-      {/* ID and Line Number Row */}
-      <View style={styles.idLineRow}>
-        <View style={styles.idContainer}>
-          <Text style={styles.itemId}>{formattedId}</Text>
-          {linesId ? <Text style={styles.linesId}>LID: {linesId}</Text> : null}
-        </View>
-        <Text style={styles.lineNumber}>Line #{item.line_number || '1'}</Text>
-      </View>
-
-      {/* Header with Item Number and Status */}
-      <View style={styles.lineItemHeader}>
-        <View style={styles.lineItemHeaderLeft}>
+      {/* Compact Header Row - Item Number, IDs, Status, Line# */}
+      <View style={styles.compactHeaderRow}>
+        <View style={styles.itemInfoLeft}>
           <Text style={styles.lineItemNumber}>{item.item_number || 'N/A'}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: `${statusColor}15` }]}>
-            <Ionicons name={statusIcon} size={14} color={statusColor} />
-            <Text style={[styles.statusBadgeText, { color: statusColor }]}>{statusText}</Text>
+          <View style={styles.idsInline}>
+            <Text style={styles.itemIdSmall}>{formattedId}</Text>
+            {linesId ? <Text style={styles.linesIdSmall}>L:{linesId}</Text> : null}
           </View>
         </View>
+        <View style={styles.itemInfoRight}>
+          <View style={[styles.statusBadgeSmall, { backgroundColor: `${statusColor}20` }]}>
+            <Ionicons name={statusIcon} size={12} color={statusColor} />
+            <Text style={[styles.statusBadgeTextSmall, { color: statusColor }]}>{statusText}</Text>
+          </View>
+          <Text style={styles.lineNumberSmall}>#{item.line_number || '1'}</Text>
+        </View>
       </View>
 
-      {/* Description */}
-      <Text style={styles.lineItemDescription}>{item.description || 'No Description'}</Text>
+      {/* Description - single line */}
+      <Text style={styles.lineItemDescriptionCompact} numberOfLines={1}>{item.description || 'No Description'}</Text>
 
       {/* Details Grid */}
       <View style={styles.detailsGrid}>
@@ -600,6 +601,15 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [apiResponseSuccess, setApiResponseSuccess] = useState(false);
   const [apiResponseLoading, setApiResponseLoading] = useState(false);
 
+  // Scroll and header collapse state
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+
+  // Filter state
+  const [filterText, setFilterText] = useState('');
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
 
@@ -632,6 +642,50 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const handleRefresh = () => {
     setRefreshing(true);
     loadOrderLines();
+  };
+
+  // Handle scroll events for header collapse
+  const handleScroll = (event) => {
+    const currentScrollY = event.nativeEvent.contentOffset.y;
+    const scrollDiff = currentScrollY - lastScrollY.current;
+
+    // Collapse header when scrolling down past threshold
+    if (currentScrollY > 50 && scrollDiff > 0 && !headerCollapsed) {
+      setHeaderCollapsed(true);
+    }
+    // Show header when scrolling up to top
+    if (currentScrollY <= 10 && headerCollapsed) {
+      setHeaderCollapsed(false);
+    }
+
+    lastScrollY.current = currentScrollY;
+  };
+
+  // Filter items based on search text
+  const filteredLines = filterText.trim()
+    ? lines.filter(item =>
+        (item.item_number || '').toLowerCase().includes(filterText.toLowerCase()) ||
+        (item.description || '').toLowerCase().includes(filterText.toLowerCase()) ||
+        (item.delivery_detail_id || '').toLowerCase().includes(filterText.toLowerCase()) ||
+        (item.barcode || '').toLowerCase().includes(filterText.toLowerCase())
+      )
+    : lines;
+
+  // Get unique item suggestions for autocomplete
+  const getFilterSuggestions = () => {
+    if (!filterText.trim()) return [];
+    const suggestions = lines
+      .filter(item =>
+        (item.item_number || '').toLowerCase().includes(filterText.toLowerCase()) ||
+        (item.description || '').toLowerCase().includes(filterText.toLowerCase())
+      )
+      .slice(0, 5)
+      .map(item => ({
+        id: item.delivery_detail_id,
+        label: item.item_number,
+        description: item.description,
+      }));
+    return suggestions;
   };
 
   // Open confirm pick modal with item details
@@ -896,42 +950,92 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         </View>
       </LinearGradient>
 
-      {/* Order Info Card */}
-      <View style={styles.orderInfoCard}>
-        <View style={styles.orderInfoRow}>
-          <View style={styles.orderInfoItem}>
-            <Text style={styles.orderInfoLabel}>Lorry</Text>
-            <Text style={styles.orderInfoValue}>{order?.lorry_number || 'N/A'}</Text>
+      {/* Collapsible Order Info & KPIs */}
+      {!headerCollapsed && (
+        <>
+          {/* Order Info Card */}
+          <View style={styles.orderInfoCard}>
+            <View style={styles.orderInfoRow}>
+              <View style={styles.orderInfoItem}>
+                <Text style={styles.orderInfoLabel}>Lorry</Text>
+                <Text style={styles.orderInfoValue}>{order?.lorry_number || 'N/A'}</Text>
+              </View>
+              <View style={styles.orderInfoItem}>
+                <Text style={styles.orderInfoLabel}>Bay</Text>
+                <Text style={styles.orderInfoValue}>{order?.loading_bay || 'N/A'}</Text>
+              </View>
+              <View style={styles.orderInfoItem}>
+                <Text style={styles.orderInfoLabel}>Priority</Text>
+                <Text style={styles.orderInfoValue}>{order?.order_priority || 'N/A'}</Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.orderInfoItem}>
-            <Text style={styles.orderInfoLabel}>Bay</Text>
-            <Text style={styles.orderInfoValue}>{order?.loading_bay || 'N/A'}</Text>
-          </View>
-          <View style={styles.orderInfoItem}>
-            <Text style={styles.orderInfoLabel}>Priority</Text>
-            <Text style={styles.orderInfoValue}>{order?.order_priority || 'N/A'}</Text>
-          </View>
-        </View>
-      </View>
 
-      {/* Summary Stats */}
-      <View style={styles.summaryContainer}>
-        <View style={[styles.summaryItem, { borderColor: '#1565C0' }]}>
-          <Text style={[styles.summaryValue, { color: '#1565C0' }]}>{summary.totalLines}</Text>
-          <Text style={styles.summaryLabel}>Total</Text>
+          {/* Summary Stats */}
+          <View style={styles.summaryContainer}>
+            <View style={[styles.summaryItem, { borderColor: '#1565C0' }]}>
+              <Text style={[styles.summaryValue, { color: '#1565C0' }]}>{summary.totalLines}</Text>
+              <Text style={styles.summaryLabel}>Total</Text>
+            </View>
+            <View style={[styles.summaryItem, { borderColor: '#FF9800' }]}>
+              <Text style={[styles.summaryValue, { color: '#FF9800' }]}>{summary.pendingLines}</Text>
+              <Text style={styles.summaryLabel}>Pending</Text>
+            </View>
+            <View style={[styles.summaryItem, { borderColor: '#4CAF50' }]}>
+              <Text style={[styles.summaryValue, { color: '#4CAF50' }]}>{summary.pickedLines}</Text>
+              <Text style={styles.summaryLabel}>Picked</Text>
+            </View>
+            <View style={[styles.summaryItem, { borderColor: '#9C27B0' }]}>
+              <Text style={[styles.summaryValue, { color: '#9C27B0' }]}>{summary.shippedLines}</Text>
+              <Text style={styles.summaryLabel}>Shipped</Text>
+            </View>
+          </View>
+        </>
+      )}
+
+      {/* Filter Section - always visible, sticks to top when header collapsed */}
+      <View style={[styles.filterContainer, headerCollapsed && styles.filterContainerSticky]}>
+        <View style={styles.filterInputWrapper}>
+          <Ionicons name="search" size={18} color="#666" style={styles.filterIcon} />
+          <TextInput
+            style={styles.filterInput}
+            placeholder="Search items..."
+            placeholderTextColor="#999"
+            value={filterText}
+            onChangeText={(text) => {
+              setFilterText(text);
+              setShowFilterDropdown(text.length > 0);
+            }}
+            onFocus={() => setShowFilterDropdown(filterText.length > 0)}
+            onBlur={() => setTimeout(() => setShowFilterDropdown(false), 200)}
+          />
+          {filterText.length > 0 && (
+            <TouchableOpacity onPress={() => { setFilterText(''); setShowFilterDropdown(false); }}>
+              <Ionicons name="close-circle" size={18} color="#999" />
+            </TouchableOpacity>
+          )}
         </View>
-        <View style={[styles.summaryItem, { borderColor: '#FF9800' }]}>
-          <Text style={[styles.summaryValue, { color: '#FF9800' }]}>{summary.pendingLines}</Text>
-          <Text style={styles.summaryLabel}>Pending</Text>
-        </View>
-        <View style={[styles.summaryItem, { borderColor: '#4CAF50' }]}>
-          <Text style={[styles.summaryValue, { color: '#4CAF50' }]}>{summary.pickedLines}</Text>
-          <Text style={styles.summaryLabel}>Picked</Text>
-        </View>
-        <View style={[styles.summaryItem, { borderColor: '#9C27B0' }]}>
-          <Text style={[styles.summaryValue, { color: '#9C27B0' }]}>{summary.shippedLines}</Text>
-          <Text style={styles.summaryLabel}>Shipped</Text>
-        </View>
+        <Text style={styles.filterCount}>
+          {filteredLines.length}/{lines.length}
+        </Text>
+        {/* Autocomplete Dropdown */}
+        {showFilterDropdown && getFilterSuggestions().length > 0 && (
+          <View style={styles.filterDropdown}>
+            {getFilterSuggestions().map((suggestion, idx) => (
+              <TouchableOpacity
+                key={`suggestion-${suggestion.id}-${idx}`}
+                style={styles.filterSuggestion}
+                onPress={() => {
+                  setFilterText(suggestion.label);
+                  setShowFilterDropdown(false);
+                }}
+              >
+                <Text style={styles.filterSuggestionLabel}>{suggestion.label}</Text>
+                <Text style={styles.filterSuggestionDesc} numberOfLines={1}>{suggestion.description}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Content */}
@@ -946,6 +1050,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           <Text style={styles.emptyStateText}>No line items found</Text>
           <Text style={styles.emptyStateSubtext}>This order has no items to display</Text>
         </View>
+      ) : filteredLines.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="search-outline" size={60} color="#CCC" />
+          <Text style={styles.emptyStateText}>No matching items</Text>
+          <Text style={styles.emptyStateSubtext}>Try a different search term</Text>
+        </View>
       ) : (
         <ScrollView
           style={styles.scrollView}
@@ -954,9 +1064,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />
           }
           showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         >
-          <Text style={styles.sectionTitle}>Line Items ({lines.length})</Text>
-          {lines.map((item, index) => (
+          {filteredLines.map((item, index) => (
             <LineItemCard
               key={`line-${item.delivery_detail_id || item.line_number || index}-${index}`}
               item={item}
@@ -1068,6 +1179,76 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 2,
   },
+  // Filter Section
+  filterContainer: {
+    backgroundColor: '#FFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  filterContainerSticky: {
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  filterInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 36,
+  },
+  filterIcon: {
+    marginRight: 8,
+  },
+  filterInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+    paddingVertical: 0,
+  },
+  filterCount: {
+    marginLeft: 10,
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+  },
+  filterDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 12,
+    right: 60,
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 200,
+    maxHeight: 200,
+  },
+  filterSuggestion: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  filterSuggestionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1565C0',
+  },
+  filterSuggestionDesc: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
   // Content
   scrollView: {
     flex: 1,
@@ -1082,17 +1263,78 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 12,
   },
-  // Line Item Card
+  // Line Item Card - Compact
   lineItemCard: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  // Compact Header Row
+  compactHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  itemInfoLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  itemInfoRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  idsInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  itemIdSmall: {
+    fontSize: 10,
+    color: '#888',
+    fontFamily: 'monospace',
+  },
+  linesIdSmall: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#9C27B0',
+    fontFamily: 'monospace',
+    backgroundColor: '#F3E5F5',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  statusBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  statusBadgeTextSmall: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginLeft: 3,
+  },
+  lineNumberSmall: {
+    fontSize: 10,
+    color: '#999',
+    fontWeight: '500',
+  },
+  lineItemDescriptionCompact: {
+    fontSize: 12,
+    color: '#555',
+    marginBottom: 8,
   },
   lineItemHeader: {
     flexDirection: 'row',
@@ -1104,10 +1346,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   lineItemNumber: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#1565C0',
-    marginBottom: 4,
   },
   lotLabelRow: {
     flexDirection: 'row',
