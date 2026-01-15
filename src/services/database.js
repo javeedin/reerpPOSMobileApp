@@ -95,11 +95,17 @@ const initNativeDatabase = async () => {
 
 /**
  * Initialize web SQLite (sql.js)
+ * Note: sql.js is only loaded on web platform via metro.config.js resolver
  */
 const initWebDatabase = async () => {
   try {
-    // Dynamic import sql.js
+    // sql.js is mocked on native platforms via metro.config.js
+    // This import will only work on web
     const initSqlJs = (await import('sql.js')).default;
+
+    if (!initSqlJs) {
+      throw new Error('sql.js not available on this platform');
+    }
 
     // Initialize sql.js with WASM
     sqlJs = await initSqlJs({
