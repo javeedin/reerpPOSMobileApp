@@ -107,6 +107,7 @@ const QuickActions = ({ navigation, onNewOrderPress }) => {
     { icon: 'cube-outline', label: 'Stock', onPress: () => navigation.navigate('MainTabs', { screen: 'Inventory' }), color: '#FF9800' },
     { icon: 'cash-outline', label: 'Lodgement', onPress: () => navigation.navigate('LodgementReport'), color: '#E91E63' },
     { icon: 'card-outline', label: 'Credit', onPress: () => navigation.navigate('CreditCheck'), color: '#00BCD4' },
+    { icon: 'code-slash-outline', label: 'APIs', onPress: () => navigation.navigate('APIList'), color: '#795548' },
   ];
 
   return (

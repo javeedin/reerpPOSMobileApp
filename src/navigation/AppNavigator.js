@@ -40,6 +40,8 @@ import {
   WMSReportsScreen,
   WMSOrderDetailsScreen,
   WMSPickerStatsScreen,
+  // API Documentation
+  APIListScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -102,6 +104,8 @@ const MainStack = () => {
       <Stack.Screen name="WMSReports" component={WMSReportsScreen} />
       <Stack.Screen name="WMSOrderDetails" component={WMSOrderDetailsScreen} />
       <Stack.Screen name="WMSPickerStats" component={WMSPickerStatsScreen} />
+      {/* API Documentation */}
+      <Stack.Screen name="APIList" component={APIListScreen} />
     </Stack.Navigator>
   );
 };
