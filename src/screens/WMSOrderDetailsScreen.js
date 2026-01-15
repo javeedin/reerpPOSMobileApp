@@ -65,13 +65,11 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, insta
   if (!item) return null;
 
   // Build the JSON payload
-  // Note: Keep delivery_detail_id as-is (with S2V- prefix)
-  // Use source_delivery_detail_id if available, otherwise ensure S2V- prefix
+  // Use the ID as-is without any prefix modification
   const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
-  const formattedId = String(rawId).startsWith('S2V-') ? String(rawId) : `S2V-${rawId}`;
 
   const payload = {
-    id: formattedId,
+    id: String(rawId),
     line_number: String(item.line_number || '1'),
     lot: item.lot_number || '',
     pickedQty: String(item.qty || '0'),
@@ -551,9 +549,9 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
   // Show Ship Confirm and Undo Pick buttons when picked but not shipped
   const showShipButtons = pickedQty > 0 && !isShipped;
 
-  // Format ID with S2V- prefix
+  // Use ID as-is without any prefix modification
   const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
-  const formattedId = String(rawId).startsWith('S2V-') ? String(rawId) : `S2V-${rawId}`;
+  const formattedId = String(rawId);
 
   // Get Lines_id for ship confirm API
   const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
