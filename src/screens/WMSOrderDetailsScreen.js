@@ -371,6 +371,9 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
   const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
   const formattedId = String(rawId).startsWith('S2V-') ? String(rawId) : `S2V-${rawId}`;
 
+  // Get Lines_id for ship confirm API
+  const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
+
   let statusColor = '#FF9800'; // Pending
   let statusIcon = 'time-outline';
   let statusText = 'Pending';
@@ -389,7 +392,10 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
     <View style={styles.lineItemCard}>
       {/* ID and Line Number Row */}
       <View style={styles.idLineRow}>
-        <Text style={styles.itemId}>{formattedId}</Text>
+        <View style={styles.idContainer}>
+          <Text style={styles.itemId}>{formattedId}</Text>
+          {linesId ? <Text style={styles.linesId}>LID: {linesId}</Text> : null}
+        </View>
         <Text style={styles.lineNumber}>Line #{item.line_number || '1'}</Text>
       </View>
 
@@ -486,8 +492,8 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={styles.shipConfirmButton}
-            onPress={() => onShipConfirm(item, formattedId)}
-            disabled={isShipping}
+            onPress={() => onShipConfirm(item, linesId)}
+            disabled={isShipping || !linesId}
           >
             {isShipping ? (
               <ActivityIndicator size="small" color="#FFF" />
@@ -718,7 +724,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   };
 
   // Handle Ship Confirm
-  const handleShipConfirm = async (item, formattedId) => {
+  const handleShipConfirm = async (item, linesId) => {
     setShippingId(item.delivery_detail_id);
     setApiResponseTitle('Ship Confirm');
     setApiResponseLoading(true);
@@ -727,9 +733,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     setApiResponseModalVisible(true);
 
     try {
-      console.log('[WMSOrderDetails] Ship Confirm for ID:', formattedId);
+      console.log('[WMSOrderDetails] Ship Confirm for Lines_id:', linesId);
 
-      const result = await shipConfirm(formattedId);
+      const result = await shipConfirm(linesId);
 
       setApiResponseLoading(false);
       setApiResponse(result.data || { error: result.error });
@@ -1137,11 +1143,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E8E8E8',
   },
+  idContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   itemId: {
     fontSize: 12,
     fontWeight: '600',
     color: '#666',
     fontFamily: 'monospace',
+  },
+  linesId: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9C27B0',
+    fontFamily: 'monospace',
+    backgroundColor: '#F3E5F5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   statusBadge: {
     flexDirection: 'row',
