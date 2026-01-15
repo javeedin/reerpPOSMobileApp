@@ -550,6 +550,7 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
   // Get Lines_id for ship confirm API
   const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
 
+  // Status determination: picked_qty = 0 means pending, > 0 means picked
   let statusColor = '#FF9800'; // Pending
   let statusIcon = 'time-outline';
   let statusText = 'Pending';
@@ -558,7 +559,8 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
     statusColor = '#9C27B0';
     statusIcon = 'checkmark-done-circle';
     statusText = 'Shipped';
-  } else if (isPicked) {
+  } else if (pickedQty > 0) {
+    // picked_qty > 0 means picked (not based on pick_confirm_status)
     statusColor = '#4CAF50';
     statusIcon = 'checkmark-circle';
     statusText = 'Picked';
@@ -1163,8 +1165,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     totalLines: lines.length,
     totalQty: lines.reduce((sum, l) => sum + (parseInt(l.qty) || 0), 0),
     pickedQty: lines.reduce((sum, l) => sum + (parseInt(l.picked_qty) || 0), 0),
-    pendingLines: lines.filter(l => l.pick_confirm_status !== 'YES').length,
-    pickedLines: lines.filter(l => l.pick_confirm_status === 'YES' && l.shipped_status !== 'YES').length,
+    // Pending: picked_qty = 0; Picked: picked_qty > 0 and not shipped
+    pendingLines: lines.filter(l => (parseInt(l.picked_qty) || 0) === 0).length,
+    pickedLines: lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 && l.shipped_status !== 'YES').length,
     shippedLines: lines.filter(l => l.shipped_status === 'YES').length,
   };
 

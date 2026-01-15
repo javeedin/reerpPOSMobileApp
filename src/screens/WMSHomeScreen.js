@@ -39,14 +39,6 @@ const FILTER_OPTIONS = [
   { id: 'Order Returns', label: 'Returns', icon: 'return-down-back-outline' },
 ];
 
-// Status filter options
-const STATUS_OPTIONS = [
-  { id: 'all', label: 'All', color: '#2196F3' },
-  { id: 'pending', label: 'Pending', color: '#FF9800' },
-  { id: 'picked', label: 'Picked', color: '#4CAF50' },
-  { id: 'shipped', label: 'Shipped', color: '#9C27B0' },
-];
-
 // View mode options
 const VIEW_MODES = [
   { id: 'grouped', icon: 'car-outline', label: 'By Lorry' },
@@ -63,39 +55,38 @@ const formatDateForAPI = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-// KPI Card Component
-const KPICard = ({ title, value, icon, color, subtitle, onPress }) => (
+// Overview Card Component for Sales and Store Transactions
+const OverviewCard = ({ title, icon, color, kpis, onPress }) => (
   <TouchableOpacity
-    style={[styles.kpiCard, { borderLeftColor: color }]}
+    style={[styles.overviewCard, { borderLeftColor: color }]}
     onPress={onPress}
     disabled={!onPress}
   >
-    <View style={[styles.kpiIconContainer, { backgroundColor: color + '15' }]}>
-      <Ionicons name={icon} size={24} color={color} />
+    <View style={styles.overviewCardHeader}>
+      <View style={[styles.overviewIconContainer, { backgroundColor: color + '15' }]}>
+        <Ionicons name={icon} size={22} color={color} />
+      </View>
+      <View style={styles.overviewCardTitleContainer}>
+        <Text style={styles.overviewCardTitle}>{title}</Text>
+        <Text style={[styles.overviewOrderCount, { color }]}>{kpis.orders} orders</Text>
+      </View>
     </View>
-    <View style={styles.kpiContent}>
-      <Text style={styles.kpiValue}>{value}</Text>
-      <Text style={styles.kpiTitle}>{title}</Text>
-      {subtitle && <Text style={styles.kpiSubtitle}>{subtitle}</Text>}
+    <View style={styles.overviewCardStats}>
+      <View style={styles.overviewStatItem}>
+        <Text style={[styles.overviewStatValue, { color: '#FF9800' }]}>{kpis.pendingLines}</Text>
+        <Text style={styles.overviewStatLabel}>Pending</Text>
+      </View>
+      <View style={styles.overviewStatDivider} />
+      <View style={styles.overviewStatItem}>
+        <Text style={[styles.overviewStatValue, { color: '#4CAF50' }]}>{kpis.pickedLines}</Text>
+        <Text style={styles.overviewStatLabel}>Picked</Text>
+      </View>
+      <View style={styles.overviewStatDivider} />
+      <View style={styles.overviewStatItem}>
+        <Text style={[styles.overviewStatValue, { color: '#9C27B0' }]}>{kpis.shippedLines}</Text>
+        <Text style={styles.overviewStatLabel}>Shipped</Text>
+      </View>
     </View>
-  </TouchableOpacity>
-);
-
-// Status Badge Component
-const StatusBadge = ({ label, count, color, isActive, onPress }) => (
-  <TouchableOpacity
-    style={[
-      styles.statusBadge,
-      isActive && { backgroundColor: color, borderColor: color },
-    ]}
-    onPress={onPress}
-  >
-    <Text style={[styles.statusBadgeCount, isActive && { color: '#FFF' }]}>
-      {count}
-    </Text>
-    <Text style={[styles.statusBadgeLabel, isActive && { color: '#FFF' }]}>
-      {label}
-    </Text>
   </TouchableOpacity>
 );
 
@@ -859,41 +850,25 @@ const WMSHomeScreen = ({ navigation }) => {
           }
           showsVerticalScrollIndicator={false}
         >
-          {/* KPI Cards */}
-          <View style={styles.kpiSection}>
+          {/* Overview Cards - Sales and Store Transactions */}
+          <View style={styles.overviewSection}>
             <Text style={styles.sectionTitle}>Overview</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.kpiRow}>
-                <KPICard
-                  title="Sales Orders"
-                  value={kpis.salesOrders || 0}
-                  icon="cart"
-                  color="#2196F3"
-                  subtitle={`${kpis.byPickStatus?.['YES'] || 0} picked`}
-                  onPress={() => setSelectedFilter('Sales Orders')}
-                />
-                <KPICard
-                  title="Store Transfers"
-                  value={kpis.storeTransactions || 0}
-                  icon="swap-horizontal"
-                  color="#FF9800"
-                  onPress={() => setSelectedFilter('Store Transfers')}
-                />
-                <KPICard
-                  title="Returns"
-                  value={kpis.orderReturns || 0}
-                  icon="return-down-back"
-                  color="#F44336"
-                  onPress={() => setSelectedFilter('Order Returns')}
-                />
-                <KPICard
-                  title="Total Lines"
-                  value={kpis.totalLines || 0}
-                  icon="layers"
-                  color="#9C27B0"
-                />
-              </View>
-            </ScrollView>
+            <View style={styles.overviewCardsContainer}>
+              <OverviewCard
+                title="Sales"
+                icon="cart"
+                color="#2196F3"
+                kpis={kpis.salesKPIs || { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 }}
+                onPress={() => setSelectedFilter('Sales Orders')}
+              />
+              <OverviewCard
+                title="Store Transfers"
+                icon="swap-horizontal"
+                color="#FF9800"
+                kpis={kpis.storeKPIs || { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 }}
+                onPress={() => setSelectedFilter('Store Transfers')}
+              />
+            </View>
           </View>
 
           {/* Pending Alert */}
@@ -905,30 +880,6 @@ const WMSHomeScreen = ({ navigation }) => {
               </Text>
             </View>
           )}
-
-          {/* Status Filter */}
-          <View style={styles.statusSection}>
-            <Text style={styles.sectionTitle}>Status</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.statusRow}>
-                {STATUS_OPTIONS.map(status => (
-                  <StatusBadge
-                    key={status.id}
-                    label={status.label}
-                    count={
-                      status.id === 'all' ? kpis.totalOrders || 0 :
-                      status.id === 'pending' ? kpis.pendingPick || 0 :
-                      status.id === 'picked' ? ((kpis.pickedOrders || 0) - (kpis.shippedOrders || 0)) :
-                      kpis.shippedOrders || 0
-                    }
-                    color={status.color}
-                    isActive={selectedStatus === status.id}
-                    onPress={() => setSelectedStatus(status.id)}
-                  />
-                ))}
-              </View>
-            </ScrollView>
-          </View>
 
           {/* Transaction Type Filter */}
           <View style={styles.filterSection}>
@@ -1105,20 +1056,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 16,
   },
-  // KPI Section
-  kpiSection: {
+  // Overview Section with Sales and Store Cards
+  overviewSection: {
     marginTop: 16,
   },
-  kpiRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
+  overviewCardsContainer: {
+    paddingHorizontal: 16,
   },
-  kpiCard: {
+  overviewCard: {
     backgroundColor: '#FFF',
     borderRadius: 12,
     padding: 16,
-    marginHorizontal: 4,
-    width: 140,
+    marginBottom: 12,
     borderLeftWidth: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1126,29 +1075,57 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  kpiIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  overviewCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  overviewIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginRight: 12,
   },
-  kpiContent: {},
-  kpiValue: {
-    fontSize: 28,
-    fontWeight: '800',
+  overviewCardTitleContainer: {
+    flex: 1,
+  },
+  overviewCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#1A1A1A',
   },
-  kpiTitle: {
-    fontSize: 12,
+  overviewOrderCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  overviewCardStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#F8F8F8',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  overviewStatItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  overviewStatValue: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  overviewStatLabel: {
+    fontSize: 11,
     color: '#666',
     marginTop: 4,
   },
-  kpiSubtitle: {
-    fontSize: 10,
-    color: '#999',
-    marginTop: 2,
+  overviewStatDivider: {
+    width: 1,
+    backgroundColor: '#E0E0E0',
+    marginVertical: 4,
   },
   // Alert Banner
   alertBanner: {
@@ -1167,35 +1144,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#E65100',
     fontWeight: '500',
-  },
-  // Status Section
-  statusSection: {
-    marginTop: 20,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginHorizontal: 4,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  statusBadgeCount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginRight: 6,
-  },
-  statusBadgeLabel: {
-    fontSize: 12,
-    color: '#666',
   },
   // Filter Section
   filterSection: {

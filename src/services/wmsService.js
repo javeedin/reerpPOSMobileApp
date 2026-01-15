@@ -116,6 +116,9 @@ export const calculateWMSKPIs = (items) => {
       byTransactionType: {},
       byPickStatus: {},
       byShipStatus: {},
+      // New detailed KPIs for Sales and Store Transactions
+      salesKPIs: { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 },
+      storeKPIs: { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 },
     };
   }
 
@@ -130,10 +133,15 @@ export const calculateWMSKPIs = (items) => {
   const byPickStatus = {};
   const byShipStatus = {};
 
+  // Detailed KPIs for Sales and Store Transactions
+  const salesKPIs = { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 };
+  const storeKPIs = { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 };
+
   items.forEach(item => {
     const transType = item.transaction_type || 'Unknown';
     const pickStatus = item.pick_confirm_status || 'NO';
     const shipStatus = item.shipped_status || 'NO';
+    const lines = parseInt(item.no_of_lines) || 0;
 
     // Count by transaction type
     byTransactionType[transType] = (byTransactionType[transType] || 0) + 1;
@@ -144,11 +152,33 @@ export const calculateWMSKPIs = (items) => {
     // Count by ship status
     byShipStatus[shipStatus] = (byShipStatus[shipStatus] || 0) + 1;
 
+    // Determine if Sales or Store type
+    const isSales = transType === 'Sales Orders' || transType === 'Sales Order';
+    const isStore = transType === 'Store Transfers' || transType === 'Store Transfer' || transType === 'Store Transactions' || transType === 'Store Transaction';
+
     // Count by type (handle various naming conventions)
-    if (transType === 'Sales Orders' || transType === 'Sales Order') {
+    if (isSales) {
       salesOrders++;
-    } else if (transType === 'Store Transfers' || transType === 'Store Transfer' || transType === 'Store Transactions' || transType === 'Store Transaction') {
+      salesKPIs.orders++;
+      // Categorize lines based on order status
+      if (shipStatus === 'YES') {
+        salesKPIs.shippedLines += lines;
+      } else if (pickStatus === 'YES') {
+        salesKPIs.pickedLines += lines;
+      } else {
+        salesKPIs.pendingLines += lines;
+      }
+    } else if (isStore) {
       storeTransactions++;
+      storeKPIs.orders++;
+      // Categorize lines based on order status
+      if (shipStatus === 'YES') {
+        storeKPIs.shippedLines += lines;
+      } else if (pickStatus === 'YES') {
+        storeKPIs.pickedLines += lines;
+      } else {
+        storeKPIs.pendingLines += lines;
+      }
     } else if (transType === 'Order Returns' || transType === 'Order Return' || transType.includes('Return')) {
       orderReturns++;
     }
@@ -166,7 +196,7 @@ export const calculateWMSKPIs = (items) => {
     }
 
     // Sum total lines
-    totalLines += parseInt(item.no_of_lines) || 0;
+    totalLines += lines;
   });
 
   return {
@@ -181,6 +211,8 @@ export const calculateWMSKPIs = (items) => {
     byTransactionType,
     byPickStatus,
     byShipStatus,
+    salesKPIs,
+    storeKPIs,
   };
 };
 
