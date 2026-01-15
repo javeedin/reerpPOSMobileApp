@@ -55,8 +55,12 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, insta
 
   // Build the JSON payload
   // Note: Keep delivery_detail_id as-is (with S2V- prefix)
+  // Use source_delivery_detail_id if available, otherwise ensure S2V- prefix
+  const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
+  const formattedId = String(rawId).startsWith('S2V-') ? String(rawId) : `S2V-${rawId}`;
+
   const payload = {
-    id: String(item.delivery_detail_id || ''),
+    id: formattedId,
     line_number: String(item.line_number || '1'),
     lot: item.lot_number || '',
     pickedQty: String(item.qty || '0'),
