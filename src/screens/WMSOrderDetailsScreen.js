@@ -187,9 +187,9 @@ const APIResponseModal = ({ visible, onClose, title, response, isSuccess, isLoad
   const jsonString = response ? JSON.stringify(response, null, 2) : '';
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={styles.apiModalOverlay}>
+        <View style={styles.apiModalContainer}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <Ionicons
@@ -212,7 +212,7 @@ const APIResponseModal = ({ visible, onClose, title, response, isSuccess, isLoad
             {isLoading ? (
               <View style={styles.apiStatusContent}>
                 <ActivityIndicator size="small" color="#FF9800" />
-                <Text style={[styles.apiStatusText, { color: '#E65100' }]}>Processing...</Text>
+                <Text style={[styles.apiStatusText, { color: '#E65100', marginLeft: 8 }]}>Processing...</Text>
               </View>
             ) : (
               <View style={styles.apiStatusContent}>
@@ -221,7 +221,7 @@ const APIResponseModal = ({ visible, onClose, title, response, isSuccess, isLoad
                   size={20}
                   color={isSuccess ? '#4CAF50' : '#F44336'}
                 />
-                <Text style={[styles.apiStatusText, { color: isSuccess ? '#2E7D32' : '#C62828' }]}>
+                <Text style={[styles.apiStatusText, { color: isSuccess ? '#2E7D32' : '#C62828', marginLeft: 8 }]}>
                   {isSuccess ? 'Success' : 'Error'}
                 </Text>
               </View>
@@ -229,7 +229,7 @@ const APIResponseModal = ({ visible, onClose, title, response, isSuccess, isLoad
           </View>
 
           {/* JSON Response */}
-          <ScrollView style={styles.apiResponseScroll}>
+          <ScrollView style={styles.apiResponseScroll} nestedScrollEnabled={true}>
             <View style={styles.jsonCodeBlock}>
               <Text style={styles.jsonCodeText}>{jsonString || 'No response data'}</Text>
             </View>
@@ -237,7 +237,7 @@ const APIResponseModal = ({ visible, onClose, title, response, isSuccess, isLoad
 
           {/* Close Button */}
           <TouchableOpacity
-            style={[styles.modalDoneButton, isLoading && { backgroundColor: '#999' }]}
+            style={[styles.apiModalCloseButton, isLoading && { backgroundColor: '#999' }]}
             onPress={onClose}
             disabled={isLoading}
           >
@@ -1895,7 +1895,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFF',
   },
-  // API Response Modal Styles
+  // API Response Modal Styles - Centered
+  apiModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  apiModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    overflow: 'hidden',
+  },
   apiStatusBanner: {
     padding: 12,
     borderBottomWidth: 1,
@@ -1905,16 +1920,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
   },
   apiStatusText: {
     fontSize: 14,
     fontWeight: '600',
   },
   apiResponseScroll: {
-    flex: 1,
     padding: 16,
-    maxHeight: 400,
+    maxHeight: 300,
+  },
+  apiModalCloseButton: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: '#1565C0',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
   },
 });
 
