@@ -19,6 +19,140 @@ import { fetchShipmentLines, confirmPick, fetchItemOnhand, fetchItemLots } from 
 
 const { width } = Dimensions.get('window');
 
+// Format date as YYYY-MM-DD
+const formatDateForAPI = (date) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Confirm Pick Modal Component - Shows JSON payload preview
+const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, instance, isProcessing }) => {
+  if (!item) return null;
+
+  // Build the JSON payload
+  const payload = {
+    id: String(item.delivery_detail_id || ''),
+    line_number: String(item.line_number || '1'),
+    lot: item.lot_number || '',
+    pickedQty: String(item.qty || '0'),
+    pickedBy: pickerName || '',
+    pickConfirmDate: formatDateForAPI(new Date()),
+    pickConfirmStatus: 'YES',
+    instance: instance || 'PROD',
+  };
+
+  const jsonString = JSON.stringify(payload, null, 2);
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContainer, { maxHeight: '85%' }]}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <Ionicons name="code-slash-outline" size={24} color="#1565C0" />
+              <Text style={styles.modalTitle}>Confirm Pick</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} disabled={isProcessing}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Item Info */}
+          <View style={styles.modalItemInfo}>
+            <Text style={styles.modalItemNumber}>{item.item_number || 'N/A'}</Text>
+            <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
+          </View>
+
+          {/* API Endpoint Info */}
+          <View style={styles.apiEndpointInfo}>
+            <View style={styles.apiMethodBadge}>
+              <Text style={styles.apiMethodText}>POST</Text>
+            </View>
+            <Text style={styles.apiEndpointText} numberOfLines={2}>
+              /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
+            </Text>
+          </View>
+
+          {/* JSON Preview */}
+          <View style={styles.jsonPreviewContainer}>
+            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+            <ScrollView style={styles.jsonScrollView}>
+              <View style={styles.jsonCodeBlock}>
+                <Text style={styles.jsonCodeText}>{jsonString}</Text>
+              </View>
+            </ScrollView>
+          </View>
+
+          {/* Field Details */}
+          <ScrollView style={styles.fieldDetailsScroll}>
+            <Text style={styles.fieldDetailsTitle}>Field Mapping:</Text>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>id:</Text>
+              <Text style={styles.fieldValue}>{payload.id || '(empty)'}</Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>line_number:</Text>
+              <Text style={styles.fieldValue}>{payload.line_number}</Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>lot:</Text>
+              <Text style={styles.fieldValue}>{payload.lot || '(empty)'}</Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>pickedQty:</Text>
+              <Text style={styles.fieldValue}>{payload.pickedQty}</Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>pickedBy:</Text>
+              <Text style={styles.fieldValue}>{payload.pickedBy || '(empty)'}</Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>pickConfirmDate:</Text>
+              <Text style={styles.fieldValue}>{payload.pickConfirmDate}</Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>pickConfirmStatus:</Text>
+              <Text style={styles.fieldValue}>{payload.pickConfirmStatus}</Text>
+            </View>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>instance:</Text>
+              <Text style={styles.fieldValue}>{payload.instance}</Text>
+            </View>
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={styles.confirmModalActions}>
+            <TouchableOpacity
+              style={styles.confirmModalCancelBtn}
+              onPress={onClose}
+              disabled={isProcessing}
+            >
+              <Text style={styles.confirmModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.confirmModalConfirmBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
+              onPress={() => onConfirm(payload)}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="#FFF" />
+                  <Text style={styles.confirmModalConfirmText}>Confirm Pick</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // Lots Modal Component
 const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
   return (
@@ -305,6 +439,11 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [lots, setLots] = useState([]);
   const [onhandItem, setOnhandItem] = useState(null);
 
+  // Confirm Pick Modal state
+  const [confirmPickModalVisible, setConfirmPickModalVisible] = useState(false);
+  const [confirmPickItem, setConfirmPickItem] = useState(null);
+  const [isConfirmingPick, setIsConfirmingPick] = useState(false);
+
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
 
@@ -339,52 +478,76 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     loadOrderLines();
   };
 
-  const handleConfirmPick = async (item) => {
-    Alert.alert(
-      'Confirm Pick',
-      `Are you sure you want to confirm pick for ${item.item_number}?\n\nQuantity: ${item.qty}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            setConfirmingId(item.delivery_detail_id);
-            try {
-              const result = await confirmPick(
-                item.delivery_detail_id,
-                item.qty,
-                pickerName
-              );
+  // Open confirm pick modal with item details
+  const handleConfirmPick = (item) => {
+    setConfirmPickItem(item);
+    setConfirmPickModalVisible(true);
+  };
 
-              if (result.success) {
-                Alert.alert('Success', 'Pick confirmed successfully');
-                // Update local state
-                setLines(prev =>
-                  prev.map(line =>
-                    line.delivery_detail_id === item.delivery_detail_id
-                      ? {
-                          ...line,
-                          picked_qty: item.qty,
-                          pick_confirm_status: 'YES',
-                          pick_confirm_date: new Date().toISOString(),
-                          pick_confirm_by: pickerName,
-                        }
-                      : line
-                  )
-                );
-              } else {
-                Alert.alert('Error', result.error || 'Failed to confirm pick');
-              }
-            } catch (error) {
-              console.error('[WMSOrderDetails] Error confirming pick:', error);
-              Alert.alert('Error', 'Failed to confirm pick');
-            } finally {
-              setConfirmingId(null);
+  // Execute the confirm pick API call
+  const executeConfirmPick = async (payload) => {
+    setIsConfirmingPick(true);
+    try {
+      // TODO: Call the actual API endpoint
+      // POST https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
+
+      console.log('[WMSOrderDetails] Confirm Pick Payload:', JSON.stringify(payload, null, 2));
+
+      // For now, just show the payload and close (API integration pending)
+      Alert.alert(
+        'API Call Preview',
+        `The following payload would be sent to:\nPOST /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS\n\n${JSON.stringify(payload, null, 2)}`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setConfirmPickModalVisible(false);
+              setConfirmPickItem(null);
             }
-          },
-        },
-      ]
-    );
+          }
+        ]
+      );
+
+      // When ready to integrate API, uncomment below:
+      /*
+      const result = await confirmPick(
+        payload.id,
+        payload.pickedQty,
+        payload.pickedBy,
+        payload.lot,
+        payload.line_number,
+        payload.pickConfirmDate,
+        payload.instance
+      );
+
+      if (result.success) {
+        Alert.alert('Success', 'Pick confirmed successfully');
+        // Update local state
+        setLines(prev =>
+          prev.map(line =>
+            line.delivery_detail_id === confirmPickItem.delivery_detail_id
+              ? {
+                  ...line,
+                  picked_qty: confirmPickItem.qty,
+                  pick_confirm_status: 'YES',
+                  pick_confirm_date: new Date().toISOString(),
+                  pick_confirm_by: pickerName,
+                }
+              : line
+          )
+        );
+        setConfirmPickModalVisible(false);
+        setConfirmPickItem(null);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to confirm pick');
+      }
+      */
+    } catch (error) {
+      console.error('[WMSOrderDetails] Error confirming pick:', error);
+      Alert.alert('Error', 'Failed to confirm pick');
+    } finally {
+      setIsConfirmingPick(false);
+    }
   };
 
   const handleCancelPick = async (item) => {
@@ -489,6 +652,20 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         lots={lots}
         onhandItem={onhandItem}
         isLoading={lotsLoading}
+      />
+
+      {/* Confirm Pick Modal */}
+      <ConfirmPickModal
+        visible={confirmPickModalVisible}
+        onClose={() => {
+          setConfirmPickModalVisible(false);
+          setConfirmPickItem(null);
+        }}
+        onConfirm={executeConfirmPick}
+        item={confirmPickItem}
+        pickerName={pickerName}
+        instance={user?.instance || 'PROD'}
+        isProcessing={isConfirmingPick}
       />
 
       {/* Header */}
@@ -1077,6 +1254,126 @@ const styles = StyleSheet.create({
   },
   modalDoneButtonText: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  // Confirm Pick Modal Styles
+  apiEndpointInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#FFF3E0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  apiMethodBadge: {
+    backgroundColor: '#2196F3',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  apiMethodText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  apiEndpointText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#666',
+    fontFamily: 'monospace',
+  },
+  jsonPreviewContainer: {
+    padding: 12,
+    backgroundColor: '#F5F5F5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  jsonPreviewTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  jsonScrollView: {
+    maxHeight: 150,
+  },
+  jsonCodeBlock: {
+    backgroundColor: '#1E1E1E',
+    padding: 12,
+    borderRadius: 8,
+  },
+  jsonCodeText: {
+    fontSize: 11,
+    color: '#D4D4D4',
+    fontFamily: 'monospace',
+    lineHeight: 18,
+  },
+  fieldDetailsScroll: {
+    maxHeight: 180,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  fieldDetailsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  fieldLabel: {
+    width: 120,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1565C0',
+  },
+  fieldValue: {
+    flex: 1,
+    fontSize: 12,
+    color: '#333',
+  },
+  confirmModalActions: {
+    flexDirection: 'row',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    gap: 12,
+  },
+  confirmModalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  confirmModalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  confirmModalConfirmBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    backgroundColor: '#4CAF50',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  confirmModalConfirmBtnDisabled: {
+    backgroundColor: '#A5D6A7',
+  },
+  confirmModalConfirmText: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
   },
