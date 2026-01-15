@@ -581,6 +581,87 @@ export const shipConfirm = async (deliveryDetailId) => {
   }
 };
 
+/**
+ * Process S2V shipment after all lines are ship confirmed
+ * @param {string} sourceOrderNumber - Source order number (with or without S2V- prefix)
+ * @param {string} instanceName - Instance name (default: PROD)
+ * @returns {Promise<Object>} Process result
+ */
+export const processS2VShipment = async (sourceOrderNumber, instanceName = 'PROD') => {
+  try {
+    // Remove S2V- prefix if present
+    const orderNumber = String(sourceOrderNumber).replace(/^S2V-/i, '');
+
+    if (!orderNumber) {
+      return { success: false, error: 'Order number is required', data: null };
+    }
+
+    const url = `${WMS_API_BASE}/trip/processs2v`;
+    const payload = {
+      p_trx_number: orderNumber,
+      p_instance_name: instanceName
+    };
+
+    console.log('[WMSService] Process S2V shipment:', url);
+    console.log('[WMSService] Payload:', JSON.stringify(payload));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('[WMSService] Process S2V response status:', response.status);
+
+    let data;
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      console.log('[WMSService] Response first 500 chars:', responseText.substring(0, 500));
+    } catch (textError) {
+      console.error('[WMSService] Error reading response text:', textError);
+      responseText = 'Error reading response';
+    }
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        data = {
+          error: titleMatch?.[1] || 'Server returned HTML error page',
+          type: 'HTML_ERROR',
+          status: response.status
+        };
+      } else {
+        data = {
+          message: responseText.substring(0, 500),
+          type: 'TEXT_RESPONSE'
+        };
+      }
+    }
+
+    console.log('[WMSService] Process S2V response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}`,
+        data,
+        status: response.status
+      };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error process S2V:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
 // Fusion Cloud API configuration for onhand lookup
 const FUSION_BASE_URL = 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05';
 const FUSION_CREDENTIALS = {
