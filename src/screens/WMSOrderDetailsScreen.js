@@ -65,8 +65,8 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, insta
   if (!item) return null;
 
   // Build the JSON payload
-  // Use the ID as-is without any prefix modification
-  const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
+  // Use the "id" field directly as-is
+  const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
 
   const payload = {
     id: String(rawId),
@@ -549,8 +549,8 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
   // Show Ship Confirm and Undo Pick buttons when picked but not shipped
   const showShipButtons = pickedQty > 0 && !isShipped;
 
-  // Use ID as-is without any prefix modification
-  const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
+  // Use the "id" field directly as-is
+  const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
   const formattedId = String(rawId);
 
   // Get Lines_id for ship confirm API
