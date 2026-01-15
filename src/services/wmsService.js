@@ -514,12 +514,14 @@ export const shipConfirm = async (deliveryDetailId) => {
     console.log('[WMSService] Ship confirm:', url);
     console.log('[WMSService] Lines_id:', deliveryDetailId);
 
-    // Try with minimal headers - some ORDS endpoints don't like Content-Type for empty POST
+    // Send empty body - some ORDS endpoints expect a body even if empty
     const response = await fetch(url, {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
+      body: JSON.stringify({}),
     });
 
     console.log('[WMSService] Ship confirm response status:', response.status);
