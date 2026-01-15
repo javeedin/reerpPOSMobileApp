@@ -85,6 +85,8 @@ export const AuthProvider = ({ children }) => {
             username: userData.username || userData.user_name || username,
             instance: instance,
             loginTime: new Date().toISOString(),
+            // Normalize USER_TYPE field (check various possible field names)
+            userType: userData.USER_TYPE || userData.user_type || userData.userType || null,
           };
 
           await saveUserData(fullUserData);
@@ -98,8 +100,14 @@ export const AuthProvider = ({ children }) => {
 
           setIsLoading(false);
 
-          // Check and sync data after login (runs in background)
-          checkAndSyncData(fullUserData);
+          // Skip sync for PICKER users - they only need WMS access
+          const isPicker = (fullUserData.userType || '').toUpperCase() === 'PICKER';
+          if (!isPicker) {
+            // Check and sync data after login (runs in background)
+            checkAndSyncData(fullUserData);
+          } else {
+            console.log('[AuthContext] PICKER user detected - skipping data sync');
+          }
 
           return { success: true };
         } else {

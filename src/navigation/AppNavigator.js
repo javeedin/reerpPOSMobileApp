@@ -57,6 +57,18 @@ const AuthStack = () => {
   );
 };
 
+// PICKER Stack Navigator (WMS only - no access to main home)
+const PickerStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="WMSHome" component={WMSHomeScreen} />
+      <Stack.Screen name="WMSReports" component={WMSReportsScreen} />
+      <Stack.Screen name="WMSOrderDetails" component={WMSOrderDetailsScreen} />
+      <Stack.Screen name="WMSPickerStats" component={WMSPickerStatsScreen} />
+    </Stack.Navigator>
+  );
+};
+
 // Main Stack Navigator (replaces Drawer)
 const MainStack = () => {
   return (
@@ -112,7 +124,7 @@ const MainStack = () => {
 
 // Main App Navigator
 const AppNavigator = () => {
-  const { isLoggedIn, isLoading } = useAuth();
+  const { isLoggedIn, isLoading, user } = useAuth();
   // Skip splash on web for faster loading
   const [showSplash, setShowSplash] = useState(Platform.OS !== 'web');
 
@@ -132,9 +144,12 @@ const AppNavigator = () => {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
 
+  // Check if user is a PICKER - they get WMS-only navigation
+  const isPicker = user && (user.userType || '').toUpperCase() === 'PICKER';
+
   return (
     <NavigationContainer>
-      {isLoggedIn ? <MainStack /> : <AuthStack />}
+      {isLoggedIn ? (isPicker ? <PickerStack /> : <MainStack />) : <AuthStack />}
     </NavigationContainer>
   );
 };

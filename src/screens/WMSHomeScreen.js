@@ -360,12 +360,20 @@ const QueryModal = ({ visible, onClose, onQuery, initialFromDate, initialToDate 
 };
 
 // Bottom Toolbar Component
-const BottomToolbar = ({ onHome, onRefresh, onReports, onPerformance, onQuery, isRefreshing }) => (
+const BottomToolbar = ({ onHome, onRefresh, onReports, onPerformance, onQuery, onProfile, isRefreshing, isPicker }) => (
   <View style={styles.bottomToolbar}>
-    <TouchableOpacity style={styles.toolbarButton} onPress={onHome}>
-      <Ionicons name="home" size={24} color="#1565C0" />
-      <Text style={styles.toolbarButtonText}>Home</Text>
-    </TouchableOpacity>
+    {isPicker ? (
+      // PICKER users get Profile/Me button instead of Home
+      <TouchableOpacity style={styles.toolbarButton} onPress={onProfile}>
+        <Ionicons name="person-circle" size={24} color="#E91E63" />
+        <Text style={styles.toolbarButtonText}>Me</Text>
+      </TouchableOpacity>
+    ) : (
+      <TouchableOpacity style={styles.toolbarButton} onPress={onHome}>
+        <Ionicons name="home" size={24} color="#1565C0" />
+        <Text style={styles.toolbarButtonText}>Home</Text>
+      </TouchableOpacity>
+    )}
 
     <TouchableOpacity style={styles.toolbarButton} onPress={onRefresh} disabled={isRefreshing}>
       {isRefreshing ? (
@@ -548,8 +556,94 @@ const PerformanceModal = ({ visible, onClose, shipments, pickerName }) => {
   );
 };
 
+// Profile Modal Component for PICKER users
+const ProfileModal = ({ visible, onClose, user, onLogout }) => {
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString();
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>My Profile</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.profileContent}>
+            {/* User Avatar */}
+            <View style={styles.profileAvatarContainer}>
+              <LinearGradient
+                colors={['#1565C0', '#0D47A1']}
+                style={styles.profileAvatar}
+              >
+                <Ionicons name="person" size={50} color="#FFF" />
+              </LinearGradient>
+            </View>
+
+            {/* User Details */}
+            <View style={styles.profileDetails}>
+              <View style={styles.profileDetailRow}>
+                <Ionicons name="person-outline" size={20} color="#666" />
+                <View style={styles.profileDetailContent}>
+                  <Text style={styles.profileDetailLabel}>Username</Text>
+                  <Text style={styles.profileDetailValue}>{user?.username || 'N/A'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.profileDetailRow}>
+                <Ionicons name="briefcase-outline" size={20} color="#666" />
+                <View style={styles.profileDetailContent}>
+                  <Text style={styles.profileDetailLabel}>User Type</Text>
+                  <Text style={styles.profileDetailValue}>{user?.userType || 'PICKER'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.profileDetailRow}>
+                <Ionicons name="cube-outline" size={20} color="#666" />
+                <View style={styles.profileDetailContent}>
+                  <Text style={styles.profileDetailLabel}>Picker Name</Text>
+                  <Text style={styles.profileDetailValue}>
+                    {user?.PICKER_NAME || user?.picker_name || user?.username || 'N/A'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.profileDetailRow}>
+                <Ionicons name="business-outline" size={20} color="#666" />
+                <View style={styles.profileDetailContent}>
+                  <Text style={styles.profileDetailLabel}>Warehouse</Text>
+                  <Text style={styles.profileDetailValue}>{user?.warehouse || 'N/A'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.profileDetailRow}>
+                <Ionicons name="time-outline" size={20} color="#666" />
+                <View style={styles.profileDetailContent}>
+                  <Text style={styles.profileDetailLabel}>Login Time</Text>
+                  <Text style={styles.profileDetailValue}>{formatDate(user?.loginTime)}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Logout Button */}
+            <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
+              <Ionicons name="log-out-outline" size={22} color="#FFF" />
+              <Text style={styles.logoutButtonText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const WMSHomeScreen = ({ navigation }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [shipments, setShipments] = useState([]);
@@ -562,11 +656,21 @@ const WMSHomeScreen = ({ navigation }) => {
   const [showQueryModal, setShowQueryModal] = useState(false);
   const [showReportsModal, setShowReportsModal] = useState(false);
   const [showPerformanceModal, setShowPerformanceModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [queryFromDate, setQueryFromDate] = useState('');
   const [queryToDate, setQueryToDate] = useState('');
 
   // Get picker name from user data
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
+
+  // Check if user is a PICKER
+  const isPicker = (user?.userType || '').toUpperCase() === 'PICKER';
+
+  // Handle logout
+  const handleLogout = async () => {
+    setShowProfileModal(false);
+    await logout();
+  };
 
   const loadData = useCallback(async (showLoading = true, fromDate = null, toDate = null) => {
     if (showLoading) setLoading(true);
@@ -688,15 +792,22 @@ const WMSHomeScreen = ({ navigation }) => {
       {/* Header */}
       <LinearGradient colors={['#1565C0', '#0D47A1']} style={styles.header}>
         <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
+          {!isPicker && (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </TouchableOpacity>
+          )}
           <View style={styles.headerText}>
             <Text style={styles.headerTitle}>Warehouse Management</Text>
             <Text style={styles.headerSubtitle}>
               {pickerName || 'Not Set'} | {queryFromDate} to {queryToDate}
             </Text>
           </View>
+          {isPicker && (
+            <TouchableOpacity onPress={() => setShowProfileModal(true)} style={styles.headerProfileButton}>
+              <Ionicons name="person-circle-outline" size={28} color="#FFF" />
+            </TouchableOpacity>
+          )}
         </View>
       </LinearGradient>
 
@@ -723,6 +834,14 @@ const WMSHomeScreen = ({ navigation }) => {
         onClose={() => setShowPerformanceModal(false)}
         shipments={shipments}
         pickerName={pickerName}
+      />
+
+      {/* Profile Modal for PICKER users */}
+      <ProfileModal
+        visible={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        onLogout={handleLogout}
       />
 
       {loading ? (
@@ -918,7 +1037,9 @@ const WMSHomeScreen = ({ navigation }) => {
         onReports={() => navigation.navigate('WMSReports')}
         onPerformance={() => navigation.navigate('WMSPickerStats')}
         onQuery={() => setShowQueryModal(true)}
+        onProfile={() => setShowProfileModal(true)}
         isRefreshing={refreshing}
+        isPicker={isPicker}
       />
     </View>
   );
@@ -941,6 +1062,10 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     marginRight: 8,
+  },
+  headerProfileButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   headerText: {
     flex: 1,
@@ -1657,6 +1782,62 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     marginTop: 8,
     textAlign: 'center',
+  },
+  // Profile Modal Styles
+  profileContent: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  profileAvatarContainer: {
+    marginBottom: 24,
+  },
+  profileAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileDetails: {
+    width: '100%',
+    marginBottom: 24,
+  },
+  profileDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  profileDetailContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  profileDetailLabel: {
+    fontSize: 11,
+    color: '#999',
+    marginBottom: 2,
+  },
+  profileDetailValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    backgroundColor: '#F44336',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  logoutButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 8,
   },
 });
 
