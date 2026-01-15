@@ -500,14 +500,19 @@ export const confirmPickPending = async (payload) => {
 
 /**
  * Ship confirm via trip/processs2vauto endpoint
- * @param {string} deliveryDetailId - Delivery detail ID (with S2V- prefix)
+ * @param {string} deliveryDetailId - Delivery detail ID (Lines_id)
  * @returns {Promise<Object>} Ship confirmation result with full response data
  */
 export const shipConfirm = async (deliveryDetailId) => {
   try {
+    if (!deliveryDetailId) {
+      return { success: false, error: 'Lines_id is required', data: null };
+    }
+
     const url = `${WMS_API_BASE}/trip/processs2vauto/${encodeURIComponent(deliveryDetailId)}`;
 
     console.log('[WMSService] Ship confirm:', url);
+    console.log('[WMSService] Lines_id:', deliveryDetailId);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -520,11 +525,38 @@ export const shipConfirm = async (deliveryDetailId) => {
 
     // Try to parse JSON response regardless of status
     let data;
-    const responseText = await response.text();
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      // Truncate very long responses (HTML error pages)
+      if (responseText.length > 5000) {
+        console.log('[WMSService] Response truncated (was ' + responseText.length + ' chars)');
+        responseText = responseText.substring(0, 2000) + '\n\n... [truncated] ...';
+      }
+    } catch (textError) {
+      console.error('[WMSService] Error reading response text:', textError);
+      responseText = 'Error reading response';
+    }
+
     try {
       data = JSON.parse(responseText);
     } catch (e) {
-      data = { raw_response: responseText };
+      // Check if it's an HTML error page
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        // Extract error message from HTML if possible
+        const errorMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        const errorMessage = errorMatch ? errorMatch[1] : 'Server returned HTML error page';
+        data = {
+          error: errorMessage,
+          type: 'HTML_ERROR',
+          status: response.status
+        };
+      } else {
+        data = {
+          message: responseText.substring(0, 500),
+          type: 'TEXT_RESPONSE'
+        };
+      }
     }
 
     console.log('[WMSService] Ship confirm response:', JSON.stringify(data, null, 2));
@@ -541,7 +573,7 @@ export const shipConfirm = async (deliveryDetailId) => {
     return { success: true, data, status: response.status };
   } catch (error) {
     console.error('[WMSService] Error ship confirm:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error.message, data: { error: error.message } };
   }
 };
 
