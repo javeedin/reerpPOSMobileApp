@@ -249,6 +249,142 @@ const APIResponseModal = ({ visible, onClose, title, response, isSuccess, isLoad
   );
 };
 
+// Bulk Ship Confirm Modal Component - Shows picked items and processes them
+const BulkShipConfirmModal = ({ visible, onClose, pickedItems, onProcess, processingStatus }) => {
+  const isProcessing = Object.keys(processingStatus).some(k => processingStatus[k] === 'processing');
+  const processedCount = Object.keys(processingStatus).filter(k => processingStatus[k] === 'success' || processingStatus[k] === 'error').length;
+  const successCount = Object.keys(processingStatus).filter(k => processingStatus[k] === 'success').length;
+  const errorCount = Object.keys(processingStatus).filter(k => processingStatus[k] === 'error').length;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.apiModalOverlay}>
+        <View style={[styles.apiModalContainer, { maxHeight: '85%' }]}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <Ionicons name="airplane" size={24} color="#9C27B0" />
+              <Text style={styles.modalTitle}>Ship Confirm All</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} disabled={isProcessing}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Summary Banner */}
+          <View style={styles.bulkSummaryBanner}>
+            <View style={styles.bulkSummaryItem}>
+              <Text style={styles.bulkSummaryValue}>{pickedItems.length}</Text>
+              <Text style={styles.bulkSummaryLabel}>Total</Text>
+            </View>
+            <View style={styles.bulkSummaryItem}>
+              <Text style={[styles.bulkSummaryValue, { color: '#4CAF50' }]}>{successCount}</Text>
+              <Text style={styles.bulkSummaryLabel}>Success</Text>
+            </View>
+            <View style={styles.bulkSummaryItem}>
+              <Text style={[styles.bulkSummaryValue, { color: '#F44336' }]}>{errorCount}</Text>
+              <Text style={styles.bulkSummaryLabel}>Failed</Text>
+            </View>
+            <View style={styles.bulkSummaryItem}>
+              <Text style={[styles.bulkSummaryValue, { color: '#FF9800' }]}>{pickedItems.length - processedCount}</Text>
+              <Text style={styles.bulkSummaryLabel}>Pending</Text>
+            </View>
+          </View>
+
+          {/* Items List */}
+          <ScrollView style={styles.bulkItemsScroll} nestedScrollEnabled={true}>
+            {pickedItems.length === 0 ? (
+              <View style={styles.noItemsContainer}>
+                <Ionicons name="checkmark-done-circle" size={48} color="#4CAF50" />
+                <Text style={styles.noItemsText}>No items to ship</Text>
+                <Text style={styles.noItemsSubtext}>All picked items have been shipped</Text>
+              </View>
+            ) : (
+              pickedItems.map((item, index) => {
+                const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
+                const status = processingStatus[linesId] || 'pending';
+                const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
+                const formattedId = String(rawId).startsWith('S2V-') ? String(rawId) : `S2V-${rawId}`;
+
+                return (
+                  <View key={`bulk-${linesId}-${index}`} style={styles.bulkItemRow}>
+                    <View style={styles.bulkItemInfo}>
+                      <Text style={styles.bulkItemNumber}>{item.item_number || 'N/A'}</Text>
+                      <Text style={styles.bulkItemIds}>{formattedId} | L:{linesId}</Text>
+                    </View>
+                    <View style={styles.bulkItemStatus}>
+                      {status === 'pending' && (
+                        <View style={[styles.bulkStatusBadge, { backgroundColor: '#FFF3E0' }]}>
+                          <Ionicons name="time-outline" size={14} color="#FF9800" />
+                          <Text style={[styles.bulkStatusText, { color: '#E65100' }]}>Pending</Text>
+                        </View>
+                      )}
+                      {status === 'processing' && (
+                        <View style={[styles.bulkStatusBadge, { backgroundColor: '#E3F2FD' }]}>
+                          <ActivityIndicator size="small" color="#1565C0" />
+                          <Text style={[styles.bulkStatusText, { color: '#1565C0' }]}>Processing</Text>
+                        </View>
+                      )}
+                      {status === 'success' && (
+                        <View style={[styles.bulkStatusBadge, { backgroundColor: '#E8F5E9' }]}>
+                          <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+                          <Text style={[styles.bulkStatusText, { color: '#2E7D32' }]}>Success</Text>
+                        </View>
+                      )}
+                      {status === 'error' && (
+                        <View style={[styles.bulkStatusBadge, { backgroundColor: '#FFEBEE' }]}>
+                          <Ionicons name="close-circle" size={14} color="#F44336" />
+                          <Text style={[styles.bulkStatusText, { color: '#C62828' }]}>Failed</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={styles.bulkActionButtons}>
+            {processedCount === pickedItems.length && pickedItems.length > 0 ? (
+              <TouchableOpacity style={styles.bulkDoneButton} onPress={onClose}>
+                <Ionicons name="checkmark-done" size={20} color="#FFF" />
+                <Text style={styles.bulkButtonText}>Done</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[styles.bulkCancelButton, isProcessing && { opacity: 0.5 }]}
+                  onPress={onClose}
+                  disabled={isProcessing}
+                >
+                  <Text style={styles.bulkCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.bulkConfirmButton, (isProcessing || pickedItems.length === 0) && { opacity: 0.5 }]}
+                  onPress={onProcess}
+                  disabled={isProcessing || pickedItems.length === 0}
+                >
+                  {isProcessing ? (
+                    <>
+                      <ActivityIndicator size="small" color="#FFF" />
+                      <Text style={styles.bulkButtonText}>Processing...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="airplane" size={20} color="#FFF" />
+                      <Text style={styles.bulkButtonText}>Ship All ({pickedItems.length})</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // Lots Modal Component
 const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
   return (
@@ -610,6 +746,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [filterText, setFilterText] = useState('');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
+  // Bulk Ship Confirm state
+  const [bulkShipModalVisible, setBulkShipModalVisible] = useState(false);
+  const [bulkProcessingStatus, setBulkProcessingStatus] = useState({});
+
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
 
@@ -849,6 +989,70 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     );
   };
 
+  // Get picked items (picked but not shipped) for bulk ship confirm
+  const getPickedItems = () => {
+    return lines.filter(item => {
+      const pickedQty = parseInt(item.picked_qty) || 0;
+      const isShipped = item.shipped_status === 'YES';
+      const hasLinesId = item.lines_id || item.Lines_id || item.LINES_ID;
+      return pickedQty > 0 && !isShipped && hasLinesId;
+    });
+  };
+
+  // Open bulk ship confirm modal
+  const handleOpenBulkShipConfirm = () => {
+    setBulkProcessingStatus({});
+    setBulkShipModalVisible(true);
+  };
+
+  // Process all picked items for ship confirm
+  const handleBulkShipConfirm = async () => {
+    const pickedItems = getPickedItems();
+    if (pickedItems.length === 0) return;
+
+    console.log('[WMSOrderDetails] Starting bulk ship confirm for', pickedItems.length, 'items');
+
+    // Process each item sequentially
+    for (const item of pickedItems) {
+      const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
+
+      // Set status to processing
+      setBulkProcessingStatus(prev => ({ ...prev, [linesId]: 'processing' }));
+
+      try {
+        console.log('[WMSOrderDetails] Processing item:', linesId);
+        const result = await shipConfirm(linesId);
+
+        if (result.success) {
+          // Update status to success
+          setBulkProcessingStatus(prev => ({ ...prev, [linesId]: 'success' }));
+
+          // Update local lines state
+          setLines(prev =>
+            prev.map(line =>
+              (line.lines_id || line.Lines_id || line.LINES_ID) === linesId
+                ? { ...line, shipped_status: 'YES', shipped_date: new Date().toISOString() }
+                : line
+            )
+          );
+        } else {
+          // Update status to error
+          setBulkProcessingStatus(prev => ({ ...prev, [linesId]: 'error' }));
+          console.error('[WMSOrderDetails] Ship confirm failed for:', linesId, result.error);
+        }
+      } catch (error) {
+        // Update status to error
+        setBulkProcessingStatus(prev => ({ ...prev, [linesId]: 'error' }));
+        console.error('[WMSOrderDetails] Error processing item:', linesId, error);
+      }
+
+      // Small delay between requests to avoid overwhelming the server
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    console.log('[WMSOrderDetails] Bulk ship confirm completed');
+  };
+
   const handleSearchLots = async (item) => {
     setSelectedItem(item);
     setLotsModalVisible(true);
@@ -938,6 +1142,15 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         isLoading={apiResponseLoading}
       />
 
+      {/* Bulk Ship Confirm Modal */}
+      <BulkShipConfirmModal
+        visible={bulkShipModalVisible}
+        onClose={() => setBulkShipModalVisible(false)}
+        pickedItems={getPickedItems()}
+        onProcess={handleBulkShipConfirm}
+        processingStatus={bulkProcessingStatus}
+      />
+
       {/* Header */}
       <LinearGradient colors={['#1565C0', '#0D47A1']} style={styles.header}>
         <View style={styles.headerContent}>
@@ -950,6 +1163,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               {order?.account_name || order?.customer_name || 'Customer'} | {order?.transaction_type || 'Order'}
             </Text>
           </View>
+          {/* Ship Confirm All Button */}
+          {summary.pickedLines > 0 && (
+            <TouchableOpacity style={styles.shipAllButton} onPress={handleOpenBulkShipConfirm}>
+              <Ionicons name="airplane" size={18} color="#FFF" />
+              <Text style={styles.shipAllButtonText}>Ship All</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </LinearGradient>
 
@@ -1939,6 +2159,146 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
+  },
+  // Ship All Button in Header
+  shipAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#9C27B0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 4,
+  },
+  shipAllButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  // Bulk Ship Confirm Modal Styles
+  bulkSummaryBanner: {
+    flexDirection: 'row',
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  bulkSummaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  bulkSummaryValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#333',
+  },
+  bulkSummaryLabel: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  bulkItemsScroll: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  bulkItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  bulkItemInfo: {
+    flex: 1,
+  },
+  bulkItemNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  bulkItemIds: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+    fontFamily: 'monospace',
+  },
+  bulkItemStatus: {
+    marginLeft: 12,
+  },
+  bulkStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  bulkStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  bulkActionButtons: {
+    flexDirection: 'row',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    gap: 12,
+  },
+  bulkCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  bulkCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  bulkConfirmButton: {
+    flex: 2,
+    flexDirection: 'row',
+    backgroundColor: '#9C27B0',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  bulkDoneButton: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#4CAF50',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  bulkButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  noItemsContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noItemsText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginTop: 12,
+  },
+  noItemsSubtext: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 4,
   },
 });
 
