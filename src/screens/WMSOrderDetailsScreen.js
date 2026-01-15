@@ -14,6 +14,9 @@ import {
   Animated,
   TextInput,
   FlatList,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +24,11 @@ import { useAuth } from '../context/AuthContext';
 import { fetchShipmentLines, confirmPick, confirmPickPending, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
 
 const { width } = Dimensions.get('window');
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Month abbreviations for API format
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -831,10 +839,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
     // Collapse header when scrolling down past threshold
     if (currentScrollY > 50 && scrollDiff > 0 && !headerCollapsed) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setHeaderCollapsed(true);
     }
     // Show header when scrolling up to top
     if (currentScrollY <= 10 && headerCollapsed) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setHeaderCollapsed(false);
     }
 
