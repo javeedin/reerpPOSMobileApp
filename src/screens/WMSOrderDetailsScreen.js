@@ -261,7 +261,7 @@ const BulkShipConfirmModal = ({ visible, onClose, pickedItems, onProcess, proces
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.apiModalOverlay}>
-        <View style={[styles.apiModalContainer, { maxHeight: '90%' }]}>
+        <View style={[styles.apiModalContainer, { maxHeight: '90%', flex: 0, height: 500 }]}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <Ionicons name="airplane" size={24} color="#9C27B0" />
@@ -2296,6 +2296,8 @@ const styles = StyleSheet.create({
   },
   bulkItemsScroll: {
     flex: 1,
+    minHeight: 150,
+    maxHeight: 250,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
