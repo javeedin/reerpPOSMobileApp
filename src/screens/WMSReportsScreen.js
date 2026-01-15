@@ -84,7 +84,7 @@ const OrderCard = ({ order, onPress }) => {
     <TouchableOpacity style={styles.orderCard} onPress={() => onPress && onPress(order)} activeOpacity={0.7}>
       <View style={styles.orderCardHeader}>
         <View style={styles.orderCardLeft}>
-          <Text style={styles.orderCardNumber}>{order.order_number || 'N/A'}</Text>
+          <Text style={styles.orderCardNumber}>{order.source_order_number || order.order_number || 'N/A'}</Text>
           <Text style={styles.orderCardType}>{order.transaction_type || 'Unknown'}</Text>
         </View>
         <View style={styles.orderCardHeaderRight}>
