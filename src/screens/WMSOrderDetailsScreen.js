@@ -787,7 +787,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     setApiResponseModalVisible(true);
 
     try {
-      console.log('[WMSOrderDetails] Ship Confirm for Lines_id:', linesId);
+      // Debug: Log all item fields to find the correct Lines_id field
+      console.log('[WMSOrderDetails] Ship Confirm - Item keys:', Object.keys(item));
+      console.log('[WMSOrderDetails] Ship Confirm - Full item:', JSON.stringify(item, null, 2));
+      console.log('[WMSOrderDetails] Ship Confirm - Extracted Lines_id:', linesId);
 
       const result = await shipConfirm(linesId);
 
