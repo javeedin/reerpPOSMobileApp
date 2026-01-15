@@ -509,19 +509,15 @@ export const shipConfirm = async (deliveryDetailId) => {
       return { success: false, error: 'Lines_id is required', data: null };
     }
 
-    const url = `${WMS_API_BASE}/trip/processs2vauto/${encodeURIComponent(deliveryDetailId)}`;
+    // Don't encode - it's just a number
+    const url = `${WMS_API_BASE}/trip/processs2vauto/${deliveryDetailId}`;
 
     console.log('[WMSService] Ship confirm:', url);
     console.log('[WMSService] Lines_id:', deliveryDetailId);
 
-    // Send empty body - some ORDS endpoints expect a body even if empty
+    // Try simple POST without body
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({}),
     });
 
     console.log('[WMSService] Ship confirm response status:', response.status);
@@ -531,10 +527,12 @@ export const shipConfirm = async (deliveryDetailId) => {
     let responseText = '';
     try {
       responseText = await response.text();
+      // Log first 500 chars to see actual error
+      console.log('[WMSService] Response first 500 chars:', responseText.substring(0, 500));
+
       // Truncate very long responses (HTML error pages)
       if (responseText.length > 5000) {
         console.log('[WMSService] Response truncated (was ' + responseText.length + ' chars)');
-        responseText = responseText.substring(0, 2000) + '\n\n... [truncated] ...';
       }
     } catch (textError) {
       console.error('[WMSService] Error reading response text:', textError);
@@ -546,13 +544,16 @@ export const shipConfirm = async (deliveryDetailId) => {
     } catch (e) {
       // Check if it's an HTML error page
       if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-        // Extract error message from HTML if possible
-        const errorMatch = responseText.match(/<title>(.*?)<\/title>/i);
-        const errorMessage = errorMatch ? errorMatch[1] : 'Server returned HTML error page';
+        // Extract error message from HTML - try multiple patterns
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        const h1Match = responseText.match(/<h1[^>]*>(.*?)<\/h1>/i);
+        const errorMatch = responseText.match(/error[:\s]*(.*?)(?:<|$)/i);
+        const errorMessage = titleMatch?.[1] || h1Match?.[1] || errorMatch?.[1] || 'Server returned HTML error page';
         data = {
           error: errorMessage,
           type: 'HTML_ERROR',
-          status: response.status
+          status: response.status,
+          preview: responseText.substring(0, 300)
         };
       } else {
         data = {
