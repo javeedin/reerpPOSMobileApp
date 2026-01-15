@@ -298,6 +298,10 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
   // Show Confirm and Cancel buttons only when picked_qty = 0
   const showActionButtons = pickedQty === 0;
 
+  // Format ID with S2V- prefix
+  const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
+  const formattedId = String(rawId).startsWith('S2V-') ? String(rawId) : `S2V-${rawId}`;
+
   let statusColor = '#FF9800'; // Pending
   let statusIcon = 'time-outline';
   let statusText = 'Pending';
@@ -314,6 +318,12 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
 
   return (
     <View style={styles.lineItemCard}>
+      {/* ID and Line Number Row */}
+      <View style={styles.idLineRow}>
+        <Text style={styles.itemId}>{formattedId}</Text>
+        <Text style={styles.lineNumber}>Line #{item.line_number || '1'}</Text>
+      </View>
+
       {/* Header with Item Number and Status */}
       <View style={styles.lineItemHeader}>
         <View style={styles.lineItemHeaderLeft}>
@@ -323,7 +333,6 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
             <Text style={[styles.statusBadgeText, { color: statusColor }]}>{statusText}</Text>
           </View>
         </View>
-        <Text style={styles.lineNumber}>Line #{item.line_number || '1'}</Text>
       </View>
 
       {/* Description */}
@@ -920,6 +929,21 @@ const styles = StyleSheet.create({
   lineNumber: {
     fontSize: 11,
     color: '#999',
+  },
+  idLineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
+  },
+  itemId: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    fontFamily: 'monospace',
   },
   statusBadge: {
     flexDirection: 'row',
