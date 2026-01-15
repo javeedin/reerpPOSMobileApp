@@ -798,7 +798,7 @@ const WMSHomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
           <View style={styles.headerText}>
-            <Text style={styles.headerTitle}>Warehouse Management</Text>
+            <Text style={styles.headerTitle}>WMS 1.0.0</Text>
             <Text style={styles.headerSubtitle}>
               {pickerName || 'Not Set'} | {queryFromDate} to {queryToDate}
             </Text>
