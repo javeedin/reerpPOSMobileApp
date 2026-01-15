@@ -653,6 +653,7 @@ const WMSHomeScreen = ({ navigation }) => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [queryFromDate, setQueryFromDate] = useState('');
   const [queryToDate, setQueryToDate] = useState('');
+  const [searchText, setSearchText] = useState('');
 
   // Get picker name from user data
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
@@ -753,6 +754,16 @@ const WMSHomeScreen = ({ navigation }) => {
   const getFilteredShipments = () => {
     let filtered = [...shipments];
 
+    // Filter by search text (customer name or order number)
+    if (searchText.trim()) {
+      const search = searchText.toLowerCase().trim();
+      filtered = filtered.filter(s => {
+        const orderNum = (s.source_order_number || '').toLowerCase();
+        const customer = (s.account_name || s.customer_name || '').toLowerCase();
+        return orderNum.includes(search) || customer.includes(search);
+      });
+    }
+
     // Filter by transaction type
     if (selectedFilter !== 'All') {
       filtered = filterByTransactionType(filtered, selectedFilter);
@@ -773,9 +784,6 @@ const WMSHomeScreen = ({ navigation }) => {
   const filteredShipments = getFilteredShipments();
   const groupedShipments = groupOrdersByLorry(filteredShipments);
   const dateGroupedShipments = groupOrdersByDate(filteredShipments);
-
-  // Get pending count for today and yesterday
-  const pendingToday = filterPendingOrders(shipments);
 
   return (
     <View style={styles.container}>
@@ -871,15 +879,26 @@ const WMSHomeScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {/* Pending Alert */}
-          {pendingToday.length > 0 && (
-            <View style={styles.alertBanner}>
-              <Ionicons name="warning" size={20} color="#FF9800" />
-              <Text style={styles.alertText}>
-                {pendingToday.length} pending order{pendingToday.length > 1 ? 's' : ''} for today/yesterday
-              </Text>
+          {/* Search Filter */}
+          <View style={styles.searchSection}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by customer or order number..."
+                placeholderTextColor="#999"
+                value={searchText}
+                onChangeText={setSearchText}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchText('')} style={styles.searchClearBtn}>
+                  <Ionicons name="close-circle" size={20} color="#999" />
+                </TouchableOpacity>
+              )}
             </View>
-          )}
+          </View>
 
           {/* Transaction Type Filter */}
           <View style={styles.filterSection}>
@@ -1127,23 +1146,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E0E0',
     marginVertical: 4,
   },
-  // Alert Banner
-  alertBanner: {
+  // Search Section
+  searchSection: {
+    paddingHorizontal: 16,
+    marginTop: 16,
+  },
+  searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF9800',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
-  alertText: {
-    marginLeft: 8,
-    fontSize: 13,
-    color: '#E65100',
-    fontWeight: '500',
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+    paddingVertical: 10,
+  },
+  searchClearBtn: {
+    padding: 4,
   },
   // Filter Section
   filterSection: {
