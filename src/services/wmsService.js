@@ -498,6 +498,53 @@ export const confirmPickPending = async (payload) => {
   }
 };
 
+/**
+ * Ship confirm via trip/processs2vauto endpoint
+ * @param {string} deliveryDetailId - Delivery detail ID (with S2V- prefix)
+ * @returns {Promise<Object>} Ship confirmation result with full response data
+ */
+export const shipConfirm = async (deliveryDetailId) => {
+  try {
+    const url = `${WMS_API_BASE}/trip/processs2vauto/${encodeURIComponent(deliveryDetailId)}`;
+
+    console.log('[WMSService] Ship confirm:', url);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('[WMSService] Ship confirm response status:', response.status);
+
+    // Try to parse JSON response regardless of status
+    let data;
+    const responseText = await response.text();
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      data = { raw_response: responseText };
+    }
+
+    console.log('[WMSService] Ship confirm response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}`,
+        data,
+        status: response.status
+      };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error ship confirm:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 // Fusion Cloud API configuration for onhand lookup
 const FUSION_BASE_URL = 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05';
 const FUSION_CREDENTIALS = {
@@ -689,6 +736,7 @@ export default {
   fetchShipmentLines,
   confirmPick,
   confirmPickPending,
+  shipConfirm,
   fetchItemOnhand,
   fetchItemLots,
   fetchPickerPerformance,

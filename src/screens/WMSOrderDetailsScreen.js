@@ -15,7 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, shipConfirm, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
 
 const { width } = Dimensions.get('window');
 
@@ -179,6 +179,73 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, insta
   );
 };
 
+// API Response Modal Component - Shows JSON response/errors from API calls
+const APIResponseModal = ({ visible, onClose, title, response, isSuccess, isLoading }) => {
+  const jsonString = response ? JSON.stringify(response, null, 2) : '';
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <Ionicons
+                name={isLoading ? 'hourglass-outline' : isSuccess ? 'checkmark-circle' : 'alert-circle'}
+                size={24}
+                color={isLoading ? '#FF9800' : isSuccess ? '#4CAF50' : '#F44336'}
+              />
+              <Text style={styles.modalTitle}>{title || 'API Response'}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} disabled={isLoading}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Status Banner */}
+          <View style={[
+            styles.apiStatusBanner,
+            { backgroundColor: isLoading ? '#FFF3E0' : isSuccess ? '#E8F5E9' : '#FFEBEE' }
+          ]}>
+            {isLoading ? (
+              <View style={styles.apiStatusContent}>
+                <ActivityIndicator size="small" color="#FF9800" />
+                <Text style={[styles.apiStatusText, { color: '#E65100' }]}>Processing...</Text>
+              </View>
+            ) : (
+              <View style={styles.apiStatusContent}>
+                <Ionicons
+                  name={isSuccess ? 'checkmark-circle' : 'close-circle'}
+                  size={20}
+                  color={isSuccess ? '#4CAF50' : '#F44336'}
+                />
+                <Text style={[styles.apiStatusText, { color: isSuccess ? '#2E7D32' : '#C62828' }]}>
+                  {isSuccess ? 'Success' : 'Error'}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* JSON Response */}
+          <ScrollView style={styles.apiResponseScroll}>
+            <View style={styles.jsonCodeBlock}>
+              <Text style={styles.jsonCodeText}>{jsonString || 'No response data'}</Text>
+            </View>
+          </ScrollView>
+
+          {/* Close Button */}
+          <TouchableOpacity
+            style={[styles.modalDoneButton, isLoading && { backgroundColor: '#999' }]}
+            onPress={onClose}
+            disabled={isLoading}
+          >
+            <Text style={styles.modalDoneButtonText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // Lots Modal Component
 const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
   return (
@@ -289,14 +356,16 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
 };
 
 // Line Item Card Component
-const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfirming, isCancelling }) => {
+const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing }) => {
   const isPicked = item.pick_confirm_status === 'YES';
   const isShipped = item.shipped_status === 'YES';
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
 
   // Show Confirm and Cancel buttons only when picked_qty = 0
-  const showActionButtons = pickedQty === 0;
+  const showPickButtons = pickedQty === 0;
+  // Show Ship Confirm and Undo Pick buttons when picked but not shipped
+  const showShipButtons = pickedQty > 0 && !isShipped;
 
   // Format ID with S2V- prefix
   const rawId = item.source_delivery_detail_id || item.delivery_detail_id || '';
@@ -377,8 +446,8 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
         <Text style={styles.barcodeText}>Barcode: {item.barcode || 'N/A'}</Text>
       </View>
 
-      {/* Action Buttons - show both when picked_qty = 0 */}
-      {showActionButtons && (
+      {/* Pick Action Buttons - show when picked_qty = 0 */}
+      {showPickButtons && (
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={styles.confirmPickButton}
@@ -406,6 +475,41 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onSearchLots, isConfi
               <>
                 <Ionicons name="close-circle" size={20} color="#FFF" />
                 <Text style={styles.cancelPickButtonText}>Cancel</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Ship Action Buttons - show when picked but not shipped */}
+      {showShipButtons && (
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity
+            style={styles.shipConfirmButton}
+            onPress={() => onShipConfirm(item, formattedId)}
+            disabled={isShipping}
+          >
+            {isShipping ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="airplane" size={20} color="#FFF" />
+                <Text style={styles.shipConfirmButtonText}>Ship Confirm</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.undoPickButton}
+            onPress={() => onUndoPick(item)}
+            disabled={isUndoing}
+          >
+            {isUndoing ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="arrow-undo" size={20} color="#FFF" />
+                <Text style={styles.undoPickButtonText}>Undo Pick</Text>
               </>
             )}
           </TouchableOpacity>
@@ -478,6 +582,17 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [confirmPickModalVisible, setConfirmPickModalVisible] = useState(false);
   const [confirmPickItem, setConfirmPickItem] = useState(null);
   const [isConfirmingPick, setIsConfirmingPick] = useState(false);
+
+  // Ship Confirm state
+  const [shippingId, setShippingId] = useState(null);
+  const [undoingId, setUndoingId] = useState(null);
+
+  // API Response Modal state
+  const [apiResponseModalVisible, setApiResponseModalVisible] = useState(false);
+  const [apiResponseTitle, setApiResponseTitle] = useState('');
+  const [apiResponse, setApiResponse] = useState(null);
+  const [apiResponseSuccess, setApiResponseSuccess] = useState(false);
+  const [apiResponseLoading, setApiResponseLoading] = useState(false);
 
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
@@ -602,6 +717,75 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     );
   };
 
+  // Handle Ship Confirm
+  const handleShipConfirm = async (item, formattedId) => {
+    setShippingId(item.delivery_detail_id);
+    setApiResponseTitle('Ship Confirm');
+    setApiResponseLoading(true);
+    setApiResponse(null);
+    setApiResponseSuccess(false);
+    setApiResponseModalVisible(true);
+
+    try {
+      console.log('[WMSOrderDetails] Ship Confirm for ID:', formattedId);
+
+      const result = await shipConfirm(formattedId);
+
+      setApiResponseLoading(false);
+      setApiResponse(result.data || { error: result.error });
+      setApiResponseSuccess(result.success);
+
+      if (result.success) {
+        // Update local state to reflect shipped status
+        setLines(prev =>
+          prev.map(line =>
+            line.delivery_detail_id === item.delivery_detail_id
+              ? {
+                  ...line,
+                  shipped_status: 'YES',
+                  shipped_date: new Date().toISOString(),
+                }
+              : line
+          )
+        );
+      }
+    } catch (error) {
+      console.error('[WMSOrderDetails] Error ship confirm:', error);
+      setApiResponseLoading(false);
+      setApiResponse({ error: error.message || 'Unknown error' });
+      setApiResponseSuccess(false);
+    } finally {
+      setShippingId(null);
+    }
+  };
+
+  // Handle Undo Pick
+  const handleUndoPick = async (item) => {
+    Alert.alert(
+      'Undo Pick',
+      `Are you sure you want to undo pick for ${item.item_number}?\n\nID: ${item.delivery_detail_id}`,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Undo',
+          style: 'destructive',
+          onPress: async () => {
+            setUndoingId(item.delivery_detail_id);
+            try {
+              // TODO: Replace with actual undo pick API call when provided
+              Alert.alert('Info', 'Undo Pick API not yet configured.\n\nPlease provide the API endpoint.');
+            } catch (error) {
+              console.error('[WMSOrderDetails] Error undo pick:', error);
+              Alert.alert('Error', 'Failed to undo pick');
+            } finally {
+              setUndoingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleSearchLots = async (item) => {
     setSelectedItem(item);
     setLotsModalVisible(true);
@@ -679,6 +863,16 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         pickerName={pickerName}
         instance={user?.instance || 'PROD'}
         isProcessing={isConfirmingPick}
+      />
+
+      {/* API Response Modal */}
+      <APIResponseModal
+        visible={apiResponseModalVisible}
+        onClose={() => setApiResponseModalVisible(false)}
+        title={apiResponseTitle}
+        response={apiResponse}
+        isSuccess={apiResponseSuccess}
+        isLoading={apiResponseLoading}
       />
 
       {/* Header */}
@@ -762,9 +956,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               item={item}
               onConfirmPick={handleConfirmPick}
               onCancelPick={handleCancelPick}
+              onShipConfirm={handleShipConfirm}
+              onUndoPick={handleUndoPick}
               onSearchLots={handleSearchLots}
               isConfirming={confirmingId === item.delivery_detail_id}
               isCancelling={cancellingId === item.delivery_detail_id}
+              isShipping={shippingId === item.delivery_detail_id}
+              isUndoing={undoingId === item.delivery_detail_id}
             />
           ))}
         </ScrollView>
@@ -1031,6 +1229,36 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   cancelPickButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+    marginLeft: 6,
+  },
+  shipConfirmButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#9C27B0',
+    borderRadius: 8,
+    paddingVertical: 12,
+  },
+  shipConfirmButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+    marginLeft: 6,
+  },
+  undoPickButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF9800',
+    borderRadius: 8,
+    paddingVertical: 12,
+  },
+  undoPickButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
@@ -1404,6 +1632,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
+  },
+  // API Response Modal Styles
+  apiStatusBanner: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  apiStatusContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  apiStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  apiResponseScroll: {
+    flex: 1,
+    padding: 16,
+    maxHeight: 400,
   },
 });
 
