@@ -1349,7 +1349,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
       {/* Bottom Toolbar */}
       <BottomToolbar
-        onHome={() => navigation.navigate('Home')}
+        onHome={() => navigation.navigate('WMSHome')}
         onBack={() => navigation.goBack()}
         onRefresh={handleRefresh}
         isRefreshing={refreshing}

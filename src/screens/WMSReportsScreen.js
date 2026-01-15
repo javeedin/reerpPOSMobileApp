@@ -850,7 +850,7 @@ const WMSReportsScreen = ({ navigation }) => {
 
       {/* Bottom Toolbar */}
       <BottomToolbar
-        onHome={() => navigation.navigate('Home')}
+        onHome={() => navigation.navigate('WMSHome')}
         onBack={() => navigation.goBack()}
         onRefresh={handleQuery}
         isRefreshing={refreshing}
