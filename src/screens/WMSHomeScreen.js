@@ -11,10 +11,12 @@ import {
   Modal,
   TextInput,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import {
   fetchShipmentsSummary,
@@ -360,8 +362,8 @@ const QueryModal = ({ visible, onClose, onQuery, initialFromDate, initialToDate 
 };
 
 // Bottom Toolbar Component
-const BottomToolbar = ({ onHome, onRefresh, onReports, onPerformance, onQuery, onProfile, isRefreshing, isPicker }) => (
-  <View style={styles.bottomToolbar}>
+const BottomToolbar = ({ onHome, onRefresh, onReports, onPerformance, onQuery, onProfile, isRefreshing, isPicker, bottomInset }) => (
+  <View style={[styles.bottomToolbar, { paddingBottom: Math.max(bottomInset, 8) + 8 }]}>
     {isPicker ? (
       // PICKER users get Profile/Me button instead of Home
       <TouchableOpacity style={styles.toolbarButton} onPress={onProfile}>
@@ -644,6 +646,7 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
 
 const WMSHomeScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [shipments, setShipments] = useState([]);
@@ -1038,6 +1041,7 @@ const WMSHomeScreen = ({ navigation }) => {
         onProfile={() => setShowProfileModal(true)}
         isRefreshing={refreshing}
         isPicker={isPicker}
+        bottomInset={insets.bottom}
       />
     </View>
   );
@@ -1092,7 +1096,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   sectionTitle: {
     fontSize: 14,
