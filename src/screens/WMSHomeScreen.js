@@ -676,12 +676,10 @@ const WMSHomeScreen = ({ navigation }) => {
     if (showLoading) setLoading(true);
 
     try {
-      // Use custom dates or default 4-day range
+      // Use custom dates or default to TODAY only
       const today = new Date();
-      const defaultFrom = new Date(today);
-      defaultFrom.setDate(defaultFrom.getDate() - 3);
-      const defaultTo = new Date(today);
-      defaultTo.setDate(defaultTo.getDate() + 1);
+      const defaultFrom = new Date(today); // Today
+      const defaultTo = new Date(today);   // Today
 
       const from = fromDate || defaultFrom;
       const to = toDate || defaultTo;
