@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,8 @@ import {
   Alert,
   Dimensions,
   Modal,
-  Animated,
   TextInput,
   FlatList,
-  LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,11 +20,6 @@ import { useAuth } from '../context/AuthContext';
 import { fetchShipmentLines, confirmPick, confirmPickPending, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
 
 const { width } = Dimensions.get('window');
-
-// Enable LayoutAnimation for Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // Month abbreviations for API format
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -782,11 +773,6 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [apiResponseSuccess, setApiResponseSuccess] = useState(false);
   const [apiResponseLoading, setApiResponseLoading] = useState(false);
 
-  // Scroll and header collapse state
-  const [headerCollapsed, setHeaderCollapsed] = useState(false);
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const lastScrollY = useRef(0);
-
   // Filter state
   const [filterText, setFilterText] = useState('');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
@@ -828,25 +814,6 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const handleRefresh = () => {
     setRefreshing(true);
     loadOrderLines();
-  };
-
-  // Handle scroll events for header collapse
-  const handleScroll = (event) => {
-    const currentScrollY = event.nativeEvent.contentOffset.y;
-    const scrollDiff = currentScrollY - lastScrollY.current;
-
-    // Collapse header when scrolling down past threshold
-    if (currentScrollY > 50 && scrollDiff > 0 && !headerCollapsed) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setHeaderCollapsed(true);
-    }
-    // Show header when scrolling up to top
-    if (currentScrollY <= 10 && headerCollapsed) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setHeaderCollapsed(false);
-    }
-
-    lastScrollY.current = currentScrollY;
   };
 
   // Filter items based on search text
@@ -1249,9 +1216,21 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         </View>
       </LinearGradient>
 
-      {/* Collapsible Order Info & KPIs */}
-      {!headerCollapsed && (
-        <>
+      {/* Content */}
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#1565C0" />
+          <Text style={styles.loadingText}>Loading order details...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />
+          }
+          showsVerticalScrollIndicator={false}
+        >
           {/* Order Info Card */}
           <View style={styles.orderInfoCard}>
             <View style={styles.orderInfoRow}>
@@ -1289,98 +1268,82 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               <Text style={styles.summaryLabel}>Shipped</Text>
             </View>
           </View>
-        </>
-      )}
 
-      {/* Filter Section - always visible, sticks to top when header collapsed */}
-      <View style={[styles.filterContainer, headerCollapsed && styles.filterContainerSticky]}>
-        <View style={styles.filterInputWrapper}>
-          <Ionicons name="search" size={18} color="#666" style={styles.filterIcon} />
-          <TextInput
-            style={styles.filterInput}
-            placeholder="Search items..."
-            placeholderTextColor="#999"
-            value={filterText}
-            onChangeText={(text) => {
-              setFilterText(text);
-              setShowFilterDropdown(text.length > 0);
-            }}
-            onFocus={() => setShowFilterDropdown(filterText.length > 0)}
-            onBlur={() => setTimeout(() => setShowFilterDropdown(false), 200)}
-          />
-          {filterText.length > 0 && (
-            <TouchableOpacity onPress={() => { setFilterText(''); setShowFilterDropdown(false); }}>
-              <Ionicons name="close-circle" size={18} color="#999" />
-            </TouchableOpacity>
-          )}
-        </View>
-        <Text style={styles.filterCount}>
-          {filteredLines.length}/{lines.length}
-        </Text>
-        {/* Autocomplete Dropdown */}
-        {showFilterDropdown && getFilterSuggestions().length > 0 && (
-          <View style={styles.filterDropdown}>
-            {getFilterSuggestions().map((suggestion, idx) => (
-              <TouchableOpacity
-                key={`suggestion-${suggestion.id}-${idx}`}
-                style={styles.filterSuggestion}
-                onPress={() => {
-                  setFilterText(suggestion.label);
-                  setShowFilterDropdown(false);
+          {/* Filter Section */}
+          <View style={styles.filterContainer}>
+            <View style={styles.filterInputWrapper}>
+              <Ionicons name="search" size={18} color="#666" style={styles.filterIcon} />
+              <TextInput
+                style={styles.filterInput}
+                placeholder="Search items..."
+                placeholderTextColor="#999"
+                value={filterText}
+                onChangeText={(text) => {
+                  setFilterText(text);
+                  setShowFilterDropdown(text.length > 0);
                 }}
-              >
-                <Text style={styles.filterSuggestionLabel}>{suggestion.label}</Text>
-                <Text style={styles.filterSuggestionDesc} numberOfLines={1}>{suggestion.description}</Text>
-              </TouchableOpacity>
-            ))}
+                onFocus={() => setShowFilterDropdown(filterText.length > 0)}
+                onBlur={() => setTimeout(() => setShowFilterDropdown(false), 200)}
+              />
+              {filterText.length > 0 && (
+                <TouchableOpacity onPress={() => { setFilterText(''); setShowFilterDropdown(false); }}>
+                  <Ionicons name="close-circle" size={18} color="#999" />
+                </TouchableOpacity>
+              )}
+            </View>
+            <Text style={styles.filterCount}>
+              {filteredLines.length}/{lines.length}
+            </Text>
+            {/* Autocomplete Dropdown */}
+            {showFilterDropdown && getFilterSuggestions().length > 0 && (
+              <View style={styles.filterDropdown}>
+                {getFilterSuggestions().map((suggestion, idx) => (
+                  <TouchableOpacity
+                    key={`suggestion-${suggestion.id}-${idx}`}
+                    style={styles.filterSuggestion}
+                    onPress={() => {
+                      setFilterText(suggestion.label);
+                      setShowFilterDropdown(false);
+                    }}
+                  >
+                    <Text style={styles.filterSuggestionLabel}>{suggestion.label}</Text>
+                    <Text style={styles.filterSuggestionDesc} numberOfLines={1}>{suggestion.description}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
-        )}
-      </View>
 
-      {/* Content */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#1565C0" />
-          <Text style={styles.loadingText}>Loading order details...</Text>
-        </View>
-      ) : lines.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="cube-outline" size={60} color="#CCC" />
-          <Text style={styles.emptyStateText}>No line items found</Text>
-          <Text style={styles.emptyStateSubtext}>This order has no items to display</Text>
-        </View>
-      ) : filteredLines.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="search-outline" size={60} color="#CCC" />
-          <Text style={styles.emptyStateText}>No matching items</Text>
-          <Text style={styles.emptyStateSubtext}>Try a different search term</Text>
-        </View>
-      ) : (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#1565C0']} />
-          }
-          showsVerticalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-        >
-          {filteredLines.map((item, index) => (
-            <LineItemCard
-              key={`line-${item.delivery_detail_id || item.line_number || index}-${index}`}
-              item={item}
-              onConfirmPick={handleConfirmPick}
-              onCancelPick={handleCancelPick}
-              onShipConfirm={handleShipConfirm}
-              onUndoPick={handleUndoPick}
-              onSearchLots={handleSearchLots}
-              isConfirming={confirmingId === item.delivery_detail_id}
-              isCancelling={cancellingId === item.delivery_detail_id}
-              isShipping={shippingId === item.delivery_detail_id}
-              isUndoing={undoingId === item.delivery_detail_id}
-            />
-          ))}
+          {/* Line Items */}
+          {lines.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="cube-outline" size={60} color="#CCC" />
+              <Text style={styles.emptyStateText}>No line items found</Text>
+              <Text style={styles.emptyStateSubtext}>This order has no items to display</Text>
+            </View>
+          ) : filteredLines.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="search-outline" size={60} color="#CCC" />
+              <Text style={styles.emptyStateText}>No matching items</Text>
+              <Text style={styles.emptyStateSubtext}>Try a different search term</Text>
+            </View>
+          ) : (
+            filteredLines.map((item, index) => (
+              <LineItemCard
+                key={`line-${item.delivery_detail_id || item.line_number || index}-${index}`}
+                item={item}
+                onConfirmPick={handleConfirmPick}
+                onCancelPick={handleCancelPick}
+                onShipConfirm={handleShipConfirm}
+                onUndoPick={handleUndoPick}
+                onSearchLots={handleSearchLots}
+                isConfirming={confirmingId === item.delivery_detail_id}
+                isCancelling={cancellingId === item.delivery_detail_id}
+                isShipping={shippingId === item.delivery_detail_id}
+                isUndoing={undoingId === item.delivery_detail_id}
+              />
+            ))
+          )}
         </ScrollView>
       )}
 
@@ -1488,10 +1451,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     zIndex: 100,
-  },
-  filterContainerSticky: {
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
   },
   filterInputWrapper: {
     flex: 1,
