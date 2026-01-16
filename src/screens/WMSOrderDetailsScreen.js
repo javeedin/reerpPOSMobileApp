@@ -14,8 +14,8 @@ import {
   TextInput,
   FlatList,
   Animated,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
@@ -608,7 +608,7 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   if (showScanner) {
     return (
       <Modal visible={visible} animationType="slide">
-        <SafeAreaView style={styles.scannerContainer}>
+        <SafeAreaView style={styles.scannerContainer} edges={['top']}>
           <View style={styles.scannerHeader}>
             <Text style={styles.scannerTitle}>Scan Printer Barcode</Text>
             <TouchableOpacity
@@ -619,14 +619,16 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
             </TouchableOpacity>
           </View>
 
-          <CameraView
-            style={styles.scannerCamera}
-            facing="back"
-            barcodeScannerSettings={{
-              barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8', 'datamatrix'],
-            }}
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          >
+          <View style={styles.scannerCameraContainer}>
+            <CameraView
+              style={StyleSheet.absoluteFillObject}
+              facing="back"
+              barcodeScannerSettings={{
+                barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8', 'datamatrix'],
+              }}
+              onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+            />
+            {/* Overlay positioned absolutely on top of camera */}
             <View style={styles.scannerOverlay}>
               <View style={styles.scannerFrame}>
                 <View style={[styles.scannerCorner, styles.scannerCornerTL]} />
@@ -636,7 +638,7 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
               </View>
               <Text style={styles.scannerHint}>Point at printer's IP barcode</Text>
             </View>
-          </CameraView>
+          </View>
 
           <TouchableOpacity
             style={styles.scannerCancelBtn}
@@ -2745,11 +2747,12 @@ const styles = StyleSheet.create({
   scannerCloseBtn: {
     padding: 4,
   },
-  scannerCamera: {
+  scannerCameraContainer: {
     flex: 1,
+    position: 'relative',
   },
   scannerOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
