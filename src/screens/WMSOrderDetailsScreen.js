@@ -14,10 +14,12 @@ import {
   TextInput,
   FlatList,
   Animated,
+  SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
 import { fetchShipmentLines, confirmPick, confirmPickPending, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
 import printerService from '../services/printerService';
@@ -531,9 +533,12 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
   );
 };
 
-// QR Code Print Modal Component - Compact Version
+// QR Code Print Modal Component - Compact Version with Scanner
 const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const [isPrinting, setIsPrinting] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanned, setScanned] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
   const orderNumber = order?.source_order_number || order?.order_number || 'N/A';
   const orderDate = order?.assignment_date
@@ -543,31 +548,106 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const loadingBay = order?.loading_bay || 'N/A';
   const lorryNumber = order?.lorry_number || 'N/A';
 
-  const handlePrintLabel = async () => {
-    setIsPrinting(true);
-    try {
-      const orderData = {
-        orderNumber: orderNumber,
-        orderDate: orderDate,
-        accountName: accountName,
-        picker: pickerName || 'N/A',
-        loadingBy: loadingBay,
-        lorry: lorryNumber,
-      };
+  const orderData = {
+    orderNumber: orderNumber,
+    orderDate: orderDate,
+    accountName: accountName,
+    picker: pickerName || 'N/A',
+    loadingBy: loadingBay,
+    lorry: lorryNumber,
+  };
 
-      const result = await printerService.printOrderLabel(orderData);
-
-      if (result.success) {
-        Alert.alert('Success', result.message);
-      } else {
-        Alert.alert('Print Error', result.message);
+  const handleOpenScanner = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permission Required', 'Camera permission is required to scan printer barcode');
+        return;
       }
-    } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to print label');
-    } finally {
-      setIsPrinting(false);
+    }
+    setScanned(false);
+    setShowScanner(true);
+  };
+
+  const handleBarCodeScanned = async ({ data }) => {
+    if (scanned) return;
+    setScanned(true);
+
+    const parsed = printerService.parseIPFromBarcode(data);
+
+    if (parsed) {
+      setShowScanner(false);
+      setIsPrinting(true);
+
+      try {
+        const result = await printerService.printToIP(parsed.ipAddress, parsed.port, orderData);
+
+        if (result.success) {
+          Alert.alert('Success', `Printed to ${parsed.ipAddress}`);
+        } else {
+          Alert.alert('Print Error', result.message);
+        }
+      } catch (error) {
+        Alert.alert('Error', error.message || 'Failed to print');
+      } finally {
+        setIsPrinting(false);
+      }
+    } else {
+      Alert.alert(
+        'Invalid Barcode',
+        `Scanned: "${data}"\n\nExpected: IP address (e.g., 192.168.1.100)`,
+        [
+          { text: 'Try Again', onPress: () => setScanned(false) },
+          { text: 'Cancel', onPress: () => setShowScanner(false) },
+        ]
+      );
     }
   };
+
+  // Scanner view
+  if (showScanner) {
+    return (
+      <Modal visible={visible} animationType="slide">
+        <SafeAreaView style={styles.scannerContainer}>
+          <View style={styles.scannerHeader}>
+            <Text style={styles.scannerTitle}>Scan Printer Barcode</Text>
+            <TouchableOpacity
+              style={styles.scannerCloseBtn}
+              onPress={() => setShowScanner(false)}
+            >
+              <Ionicons name="close" size={28} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+          <CameraView
+            style={styles.scannerCamera}
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8', 'datamatrix'],
+            }}
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          >
+            <View style={styles.scannerOverlay}>
+              <View style={styles.scannerFrame}>
+                <View style={[styles.scannerCorner, styles.scannerCornerTL]} />
+                <View style={[styles.scannerCorner, styles.scannerCornerTR]} />
+                <View style={[styles.scannerCorner, styles.scannerCornerBL]} />
+                <View style={[styles.scannerCorner, styles.scannerCornerBR]} />
+              </View>
+              <Text style={styles.scannerHint}>Point at printer's IP barcode</Text>
+            </View>
+          </CameraView>
+
+          <TouchableOpacity
+            style={styles.scannerCancelBtn}
+            onPress={() => setShowScanner(false)}
+          >
+            <Text style={styles.scannerCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </Modal>
+    );
+  }
 
   return (
     <Modal visible={visible} animationType="fade" transparent>
@@ -595,18 +675,18 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
             <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Bay:</Text> {loadingBay}  |  <Text style={styles.qrLabelKey}>Lorry:</Text> {lorryNumber}</Text>
           </View>
 
-          {/* Print to Label Button */}
+          {/* Print to Label Button - Opens Scanner */}
           <TouchableOpacity
             style={[styles.qrPrintButton, isPrinting && styles.qrPrintButtonDisabled]}
-            onPress={handlePrintLabel}
+            onPress={handleOpenScanner}
             disabled={isPrinting}
           >
             {isPrinting ? (
               <ActivityIndicator size="small" color="#FFF" />
             ) : (
               <>
-                <Ionicons name="print" size={18} color="#FFF" />
-                <Text style={styles.qrPrintButtonText}>Print to Label Printer</Text>
+                <Ionicons name="barcode-outline" size={18} color="#FFF" />
+                <Text style={styles.qrPrintButtonText}>Scan Printer & Print</Text>
               </>
             )}
           </TouchableOpacity>
@@ -2644,6 +2724,86 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
+  },
+  // Scanner styles for QR print
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#1565C0',
+  },
+  scannerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  scannerCloseBtn: {
+    padding: 4,
+  },
+  scannerCamera: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  scannerFrame: {
+    width: 250,
+    height: 250,
+    position: 'relative',
+  },
+  scannerCorner: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderColor: '#4CAF50',
+  },
+  scannerCornerTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+  },
+  scannerCornerTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+  },
+  scannerCornerBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+  },
+  scannerCornerBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+  },
+  scannerHint: {
+    color: '#FFF',
+    fontSize: 16,
+    marginTop: 30,
+    textAlign: 'center',
+  },
+  scannerCancelBtn: {
+    backgroundColor: '#FF5252',
+    padding: 16,
+    alignItems: 'center',
+  },
+  scannerCancelText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

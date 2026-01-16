@@ -303,6 +303,23 @@ class PrinterService {
     }
   }
 
+  // Print directly to IP address (scan and print flow)
+  async printToIP(ipAddress, port, orderData) {
+    try {
+      await this.connectToPrinter(ipAddress, port || DEFAULT_PRINTER_PORT);
+      const commands = this.createLabelCommands(orderData);
+      await this.sendData(commands);
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await this.disconnect();
+
+      return { success: true, message: 'Label printed successfully!' };
+    } catch (error) {
+      await this.disconnect();
+      return { success: false, message: error.message };
+    }
+  }
+
   // Validate IP address format
   isValidIPAddress(ip) {
     const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
