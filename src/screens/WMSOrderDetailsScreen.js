@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Modal,
   TextInput,
   FlatList,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -584,6 +585,34 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   const discPer = item.disc_per || '';
   const isStoreTransfer = (transactionType || '').toLowerCase().includes('store');
 
+  // Check if discount is 50% (handle both "50%" and "50" formats)
+  const discValue = parseFloat(discPer.replace('%', '')) || 0;
+  const isHighDiscount = discValue >= 50;
+
+  // Blinking animation for high discount
+  const blinkAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (isHighDiscount && !isStoreTransfer) {
+      const blink = Animated.loop(
+        Animated.sequence([
+          Animated.timing(blinkAnim, {
+            toValue: 0.3,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(blinkAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      blink.start();
+      return () => blink.stop();
+    }
+  }, [isHighDiscount, isStoreTransfer]);
+
   // Show Confirm and Cancel buttons only when picked_qty = 0
   const showPickButtons = pickedQty === 0;
   // Show Ship Confirm and Undo Pick buttons when picked but not shipped
@@ -673,7 +702,14 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         <Ionicons name="barcode-outline" size={14} color="#666" />
         <Text style={styles.barcodeText}>Barcode: {item.barcode || 'N/A'}</Text>
         {!isStoreTransfer && discPer && (
-          <Text style={styles.discPerText}>Disc: {discPer}</Text>
+          isHighDiscount ? (
+            <Animated.View style={[styles.highDiscountBadge, { opacity: blinkAnim }]}>
+              <Ionicons name="pricetag" size={12} color="#fff" />
+              <Text style={styles.highDiscountText}>Disc: {discPer}</Text>
+            </Animated.View>
+          ) : (
+            <Text style={styles.discPerText}>Disc: {discPer}</Text>
+          )
         )}
       </View>
 
@@ -1796,6 +1832,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
+  },
+  highDiscountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D32F2F',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  highDiscountText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   // Action Buttons
   actionButtonsRow: {
