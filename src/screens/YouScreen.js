@@ -18,6 +18,7 @@ const YouScreen = () => {
 
   const menuItems = [
     { icon: 'person-outline', title: 'Account Details', screen: 'AccountDetails' },
+    { icon: 'print-outline', title: 'Printer Settings', screen: 'PrinterSettings' },
     { icon: 'settings-outline', title: 'Settings', screen: null },
     { icon: 'notifications-outline', title: 'Notifications', screen: null },
     { icon: 'help-circle-outline', title: 'Help & Support', screen: null },

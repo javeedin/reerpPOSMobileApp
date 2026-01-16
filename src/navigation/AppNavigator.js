@@ -42,6 +42,8 @@ import {
   WMSPickerStatsScreen,
   // API Documentation
   APIListScreen,
+  // Settings screens
+  PrinterSettingsScreen,
 } from '../screens';
 import BottomTabs from './BottomTabs';
 import colors from '../theme/colors';
@@ -65,6 +67,7 @@ const PickerStack = () => {
       <Stack.Screen name="WMSReports" component={WMSReportsScreen} />
       <Stack.Screen name="WMSOrderDetails" component={WMSOrderDetailsScreen} />
       <Stack.Screen name="WMSPickerStats" component={WMSPickerStatsScreen} />
+      <Stack.Screen name="PrinterSettings" component={PrinterSettingsScreen} />
     </Stack.Navigator>
   );
 };
@@ -118,6 +121,8 @@ const MainStack = () => {
       <Stack.Screen name="WMSPickerStats" component={WMSPickerStatsScreen} />
       {/* API Documentation */}
       <Stack.Screen name="APIList" component={APIListScreen} />
+      {/* Settings screens */}
+      <Stack.Screen name="PrinterSettings" component={PrinterSettingsScreen} />
     </Stack.Navigator>
   );
 };

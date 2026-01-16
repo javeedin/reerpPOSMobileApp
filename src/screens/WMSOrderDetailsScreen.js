@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { useAuth } from '../context/AuthContext';
 import { fetchShipmentLines, confirmPick, confirmPickPending, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
+import printerService from '../services/printerService';
 
 const { width } = Dimensions.get('window');
 
@@ -532,6 +533,8 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
 
 // QR Code Print Modal Component - Compact Version
 const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
+  const [isPrinting, setIsPrinting] = useState(false);
+
   const orderNumber = order?.source_order_number || order?.order_number || 'N/A';
   const orderDate = order?.assignment_date
     ? new Date(order.assignment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -539,6 +542,32 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const accountName = order?.account_name || order?.customer_name || 'N/A';
   const loadingBay = order?.loading_bay || 'N/A';
   const lorryNumber = order?.lorry_number || 'N/A';
+
+  const handlePrintLabel = async () => {
+    setIsPrinting(true);
+    try {
+      const orderData = {
+        orderNumber: orderNumber,
+        orderDate: orderDate,
+        accountName: accountName,
+        picker: pickerName || 'N/A',
+        loadingBy: loadingBay,
+        lorry: lorryNumber,
+      };
+
+      const result = await printerService.printOrderLabel(orderData);
+
+      if (result.success) {
+        Alert.alert('Success', result.message);
+      } else {
+        Alert.alert('Print Error', result.message);
+      }
+    } catch (error) {
+      Alert.alert('Error', error.message || 'Failed to print label');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   return (
     <Modal visible={visible} animationType="fade" transparent>
@@ -565,6 +594,22 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
             <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Picker:</Text> {pickerName || 'N/A'}</Text>
             <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Bay:</Text> {loadingBay}  |  <Text style={styles.qrLabelKey}>Lorry:</Text> {lorryNumber}</Text>
           </View>
+
+          {/* Print to Label Button */}
+          <TouchableOpacity
+            style={[styles.qrPrintButton, isPrinting && styles.qrPrintButtonDisabled]}
+            onPress={handlePrintLabel}
+            disabled={isPrinting}
+          >
+            {isPrinting ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="print" size={18} color="#FFF" />
+                <Text style={styles.qrPrintButtonText}>Print to Label Printer</Text>
+              </>
+            )}
+          </TouchableOpacity>
 
           {/* Close Button */}
           <TouchableOpacity style={styles.qrCloseButton} onPress={onClose}>
@@ -2570,8 +2615,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1565C0',
   },
+  qrPrintButton: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    borderRadius: 8,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  qrPrintButtonDisabled: {
+    backgroundColor: '#A5D6A7',
+  },
+  qrPrintButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  },
   qrCloseButton: {
-    marginTop: 12,
+    marginTop: 10,
     backgroundColor: '#1565C0',
     borderRadius: 6,
     paddingVertical: 10,

@@ -52,3 +52,5 @@ export { default as WMSOrderDetailsScreen } from './WMSOrderDetailsScreen';
 export { default as WMSPickerStatsScreen } from './WMSPickerStatsScreen';
 // API Documentation
 export { default as APIListScreen } from './APIListScreen';
+// Settings screens
+export { default as PrinterSettingsScreen } from './PrinterSettingsScreen';
