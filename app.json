@@ -36,11 +36,8 @@
         "android.permission.ACCESS_MEDIA_LOCATION",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO",
-        "android.permission.BLUETOOTH",
-        "android.permission.BLUETOOTH_ADMIN",
-        "android.permission.BLUETOOTH_SCAN",
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
       ]
     },
     "web": {
@@ -68,13 +65,6 @@
           "photosPermission": "Allow FCPos to access your photos.",
           "savePhotosPermission": "Allow FCPos to save photos.",
           "isAccessMediaLocationEnabled": true
-        }
-      ],
-      [
-        "react-native-ble-plx",
-        {
-          "isBackgroundEnabled": false,
-          "neverForLocation": false
         }
       ],
       "@react-native-community/datetimepicker",
