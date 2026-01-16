@@ -56,13 +56,22 @@ const formatDateForAPI = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-// Confirm Pick Modal Component - Shows JSON payload preview
-const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, instance, isProcessing }) => {
+// Confirm Pick Modal Component - Shows JSON payload preview with two-step process for Store
+const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, pickerName, instance, isProcessing, transactionType }) => {
+  const [showDetails, setShowDetails] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1); // 1 = Pick, 2 = Ship
+  const [pickCompleted, setPickCompleted] = useState(false);
+
   if (!item) return null;
+
+  const isStoreTransaction = (transactionType || '').toLowerCase().includes('store');
+  const totalSteps = isStoreTransaction ? 2 : 1;
+  const modalTitle = isStoreTransaction ? 'Pick & Ship Confirm' : 'Confirm Pick';
 
   // Build the JSON payload
   // Use the "id" field directly as-is
   const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
+  const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
 
   const payload = {
     id: String(rawId),
@@ -77,6 +86,27 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, insta
 
   const jsonString = JSON.stringify(payload, null, 2);
 
+  const handlePickConfirm = async () => {
+    await onConfirm(payload);
+    if (isStoreTransaction) {
+      setPickCompleted(true);
+      setCurrentStep(2);
+    }
+  };
+
+  const handleShipConfirm = async () => {
+    if (onShipConfirm && linesId) {
+      await onShipConfirm(item, linesId);
+    }
+  };
+
+  const handleClose = () => {
+    setCurrentStep(1);
+    setPickCompleted(false);
+    setShowDetails(false);
+    onClose();
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
@@ -84,12 +114,35 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, insta
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <Ionicons name="code-slash-outline" size={24} color="#1565C0" />
-              <Text style={styles.modalTitle}>Confirm Pick</Text>
+              <Text style={styles.modalTitle}>{modalTitle}</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} disabled={isProcessing}>
+            <TouchableOpacity onPress={handleClose} style={styles.modalCloseBtn} disabled={isProcessing}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
+
+          {/* Step Indicator - only show for Store transactions */}
+          {isStoreTransaction && (
+            <View style={styles.stepIndicatorContainer}>
+              <View style={styles.stepIndicator}>
+                <View style={[styles.stepCircle, currentStep >= 1 && styles.stepCircleActive, pickCompleted && styles.stepCircleCompleted]}>
+                  {pickCompleted ? (
+                    <Ionicons name="checkmark" size={14} color="#FFF" />
+                  ) : (
+                    <Text style={[styles.stepNumber, currentStep >= 1 && styles.stepNumberActive]}>1</Text>
+                  )}
+                </View>
+                <Text style={[styles.stepLabel, currentStep >= 1 && styles.stepLabelActive]}>Pick Confirm</Text>
+              </View>
+              <View style={[styles.stepLine, pickCompleted && styles.stepLineActive]} />
+              <View style={styles.stepIndicator}>
+                <View style={[styles.stepCircle, currentStep >= 2 && styles.stepCircleActive]}>
+                  <Text style={[styles.stepNumber, currentStep >= 2 && styles.stepNumberActive]}>2</Text>
+                </View>
+                <Text style={[styles.stepLabel, currentStep >= 2 && styles.stepLabelActive]}>Ship Confirm</Text>
+              </View>
+            </View>
+          )}
 
           {/* Item Info */}
           <View style={styles.modalItemInfo}>
@@ -97,87 +150,164 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, item, pickerName, insta
             <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
           </View>
 
-          {/* API Endpoint Info */}
-          <View style={styles.apiEndpointInfo}>
-            <View style={styles.apiMethodBadge}>
-              <Text style={styles.apiMethodText}>POST</Text>
-            </View>
-            <Text style={styles.apiEndpointText} numberOfLines={2}>
-              /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
-            </Text>
-          </View>
-
-          {/* JSON Preview */}
-          <View style={styles.jsonPreviewContainer}>
-            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
-            <ScrollView style={styles.jsonScrollView}>
-              <View style={styles.jsonCodeBlock}>
-                <Text style={styles.jsonCodeText}>{jsonString}</Text>
+          {/* Step 1: Pick Confirm */}
+          {currentStep === 1 && (
+            <>
+              {/* API Endpoint Info */}
+              <View style={styles.apiEndpointInfo}>
+                <View style={styles.apiMethodBadge}>
+                  <Text style={styles.apiMethodText}>POST</Text>
+                </View>
+                <Text style={styles.apiEndpointText} numberOfLines={2}>
+                  /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
+                </Text>
               </View>
-            </ScrollView>
-          </View>
 
-          {/* Field Details */}
-          <ScrollView style={styles.fieldDetailsScroll}>
-            <Text style={styles.fieldDetailsTitle}>Field Mapping:</Text>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>id:</Text>
-              <Text style={styles.fieldValue}>{payload.id || '(empty)'}</Text>
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>line_number:</Text>
-              <Text style={styles.fieldValue}>{payload.line_number}</Text>
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>lot:</Text>
-              <Text style={styles.fieldValue}>{payload.lot || '(empty)'}</Text>
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>pickedQty:</Text>
-              <Text style={styles.fieldValue}>{payload.pickedQty}</Text>
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>pickedBy:</Text>
-              <Text style={styles.fieldValue}>{payload.pickedBy || '(empty)'}</Text>
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>pickConfirmDate:</Text>
-              <Text style={styles.fieldValue}>{payload.pickConfirmDate}</Text>
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>pickConfirmStatus:</Text>
-              <Text style={styles.fieldValue}>{payload.pickConfirmStatus}</Text>
-            </View>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>instance:</Text>
-              <Text style={styles.fieldValue}>{payload.instance}</Text>
-            </View>
-          </ScrollView>
+              {/* JSON Preview */}
+              <View style={styles.jsonPreviewContainer}>
+                <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                <ScrollView style={styles.jsonScrollView}>
+                  <View style={styles.jsonCodeBlock}>
+                    <Text style={styles.jsonCodeText}>{jsonString}</Text>
+                  </View>
+                </ScrollView>
+              </View>
 
-          {/* Action Buttons */}
-          <View style={styles.confirmModalActions}>
-            <TouchableOpacity
-              style={styles.confirmModalCancelBtn}
-              onPress={onClose}
-              disabled={isProcessing}
-            >
-              <Text style={styles.confirmModalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.confirmModalConfirmBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
-              onPress={() => onConfirm(payload)}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-                  <Text style={styles.confirmModalConfirmText}>Confirm Pick</Text>
-                </>
+              {/* Collapsible Field Details */}
+              <TouchableOpacity
+                style={styles.detailsToggleBtn}
+                onPress={() => setShowDetails(!showDetails)}
+              >
+                <Text style={styles.detailsToggleText}>Field Mapping</Text>
+                <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
+              </TouchableOpacity>
+
+              {showDetails && (
+                <ScrollView style={styles.fieldDetailsScroll}>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>id:</Text>
+                    <Text style={styles.fieldValue}>{payload.id || '(empty)'}</Text>
+                  </View>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>line_number:</Text>
+                    <Text style={styles.fieldValue}>{payload.line_number}</Text>
+                  </View>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>lot:</Text>
+                    <Text style={styles.fieldValue}>{payload.lot || '(empty)'}</Text>
+                  </View>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>pickedQty:</Text>
+                    <Text style={styles.fieldValue}>{payload.pickedQty}</Text>
+                  </View>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>pickedBy:</Text>
+                    <Text style={styles.fieldValue}>{payload.pickedBy || '(empty)'}</Text>
+                  </View>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>pickConfirmDate:</Text>
+                    <Text style={styles.fieldValue}>{payload.pickConfirmDate}</Text>
+                  </View>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>pickConfirmStatus:</Text>
+                    <Text style={styles.fieldValue}>{payload.pickConfirmStatus}</Text>
+                  </View>
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>instance:</Text>
+                    <Text style={styles.fieldValue}>{payload.instance}</Text>
+                  </View>
+                </ScrollView>
               )}
-            </TouchableOpacity>
-          </View>
+
+              {/* Action Buttons for Step 1 */}
+              <View style={styles.confirmModalActions}>
+                <TouchableOpacity
+                  style={styles.confirmModalCancelBtn}
+                  onPress={handleClose}
+                  disabled={isProcessing}
+                >
+                  <Text style={styles.confirmModalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmModalConfirmBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
+                  onPress={handlePickConfirm}
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#FFF" />
+                      <Text style={styles.confirmModalConfirmText}>
+                        {isStoreTransaction ? 'Pick Confirm (1/2)' : 'Confirm Pick'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {/* Step 2: Ship Confirm (Store transactions only) */}
+          {currentStep === 2 && isStoreTransaction && (
+            <>
+              {/* Success message for Pick */}
+              <View style={styles.stepSuccessBanner}>
+                <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                <View style={styles.stepSuccessText}>
+                  <Text style={styles.stepSuccessTitle}>Pick Confirmed!</Text>
+                  <Text style={styles.stepSuccessSubtitle}>Now proceed to Ship Confirm</Text>
+                </View>
+              </View>
+
+              {/* API Endpoint Info for Ship */}
+              <View style={styles.apiEndpointInfo}>
+                <View style={[styles.apiMethodBadge, { backgroundColor: '#9C27B0' }]}>
+                  <Text style={styles.apiMethodText}>POST</Text>
+                </View>
+                <Text style={styles.apiEndpointText} numberOfLines={2}>
+                  /trip/processs2vauto/{linesId || 'lines_id'}
+                </Text>
+              </View>
+
+              {/* Ship Info */}
+              <View style={styles.shipInfoContainer}>
+                <View style={styles.shipInfoRow}>
+                  <Text style={styles.shipInfoLabel}>Lines ID:</Text>
+                  <Text style={styles.shipInfoValue}>{linesId || 'N/A'}</Text>
+                </View>
+                <View style={styles.shipInfoRow}>
+                  <Text style={styles.shipInfoLabel}>Quantity:</Text>
+                  <Text style={styles.shipInfoValue}>{item.qty || '0'}</Text>
+                </View>
+              </View>
+
+              {/* Action Buttons for Step 2 */}
+              <View style={styles.confirmModalActions}>
+                <TouchableOpacity
+                  style={styles.confirmModalCancelBtn}
+                  onPress={handleClose}
+                  disabled={isProcessing}
+                >
+                  <Text style={styles.confirmModalCancelText}>Skip & Close</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.shipConfirmModalBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
+                  onPress={handleShipConfirm}
+                  disabled={isProcessing || !linesId}
+                >
+                  {isProcessing ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="airplane" size={20} color="#FFF" />
+                      <Text style={styles.confirmModalConfirmText}>Ship Confirm (2/2)</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -965,26 +1095,29 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         </View>
       )}
 
-      {/* Ship Action Buttons - show when picked but not shipped */}
+      {/* Ship Action Buttons - show when picked but not shipped, only for Store transactions */}
       {showShipButtons && (
         <View style={styles.actionButtonsRow}>
-          <TouchableOpacity
-            style={styles.shipConfirmButton}
-            onPress={() => onShipConfirm(item, linesId)}
-            disabled={isShipping || !linesId}
-          >
-            {isShipping ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="airplane" size={20} color="#FFF" />
-                <Text style={styles.shipConfirmButtonText}>Ship Confirm</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {/* Ship Confirm button only for Store transactions */}
+          {isStoreTransfer && (
+            <TouchableOpacity
+              style={styles.shipConfirmButton}
+              onPress={() => onShipConfirm(item, linesId)}
+              disabled={isShipping || !linesId}
+            >
+              {isShipping ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="airplane" size={20} color="#FFF" />
+                  <Text style={styles.shipConfirmButtonText}>Ship Confirm</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
-            style={styles.undoPickButton}
+            style={[styles.undoPickButton, !isStoreTransfer && { flex: 1 }]}
             onPress={() => onUndoPick(item)}
             disabled={isUndoing}
           >
@@ -1476,10 +1609,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           setConfirmPickItem(null);
         }}
         onConfirm={executeConfirmPick}
+        onShipConfirm={handleShipConfirm}
         item={confirmPickItem}
         pickerName={pickerName}
         instance={user?.instance || 'PROD'}
         isProcessing={isConfirmingPick}
+        transactionType={order?.transaction_type}
       />
 
       {/* API Response Modal */}
@@ -1527,8 +1662,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             <Ionicons name="qr-code" size={18} color="#FFF" />
             <Text style={styles.printQRButtonText}>Print QR</Text>
           </TouchableOpacity>
-          {/* Ship Confirm All Button */}
-          {summary.pickedLines > 0 && (
+          {/* Ship Confirm All Button - Only for Store transactions */}
+          {summary.pickedLines > 0 && (order?.transaction_type || '').toLowerCase().includes('store') && (
             <TouchableOpacity style={styles.shipAllButton} onPress={handleOpenBulkShipConfirm}>
               <Ionicons name="airplane" size={18} color="#FFF" />
               <Text style={styles.shipAllButtonText}>Ship All</Text>
@@ -2498,6 +2633,134 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
+  },
+  // Step Indicator Styles
+  stepIndicatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: '#F8F9FA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  stepIndicator: {
+    alignItems: 'center',
+  },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  stepCircleActive: {
+    backgroundColor: '#1565C0',
+  },
+  stepCircleCompleted: {
+    backgroundColor: '#4CAF50',
+  },
+  stepNumber: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999',
+  },
+  stepNumberActive: {
+    color: '#FFF',
+  },
+  stepLabel: {
+    fontSize: 11,
+    color: '#999',
+    fontWeight: '500',
+  },
+  stepLabelActive: {
+    color: '#1565C0',
+    fontWeight: '600',
+  },
+  stepLine: {
+    width: 50,
+    height: 2,
+    backgroundColor: '#E0E0E0',
+    marginHorizontal: 10,
+    marginBottom: 18,
+  },
+  stepLineActive: {
+    backgroundColor: '#4CAF50',
+  },
+  // Details Toggle Button
+  detailsToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  detailsToggleText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
+  },
+  // Ship Confirm Modal Button
+  shipConfirmModalBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    backgroundColor: '#9C27B0',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  // Step Success Banner
+  stepSuccessBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  stepSuccessText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  stepSuccessTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2E7D32',
+  },
+  stepSuccessSubtitle: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginTop: 2,
+  },
+  // Ship Info Container
+  shipInfoContainer: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  shipInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  shipInfoLabel: {
+    fontSize: 13,
+    color: '#666',
+  },
+  shipInfoValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
   },
   // API Response Modal Styles - Centered
   apiModalOverlay: {
