@@ -654,7 +654,7 @@ const WMSHomeScreen = ({ navigation }) => {
   const [queryFromDate, setQueryFromDate] = useState('');
   const [queryToDate, setQueryToDate] = useState('');
   const [searchText, setSearchText] = useState('');
-  const [showPendingOnly, setShowPendingOnly] = useState(false);
+  const [showPendingOnly, setShowPendingOnly] = useState(true); // Default to Pending
 
   // Get picker name from user data
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
