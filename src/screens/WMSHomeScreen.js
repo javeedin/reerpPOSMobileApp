@@ -653,6 +653,7 @@ const WMSHomeScreen = ({ navigation }) => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date()); // Single date picker
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showOverview, setShowOverview] = useState(false); // Overview collapsed by default
   const [searchText, setSearchText] = useState('');
   const [showPendingOnly, setShowPendingOnly] = useState(true); // Default to Pending
 
@@ -950,25 +951,42 @@ const WMSHomeScreen = ({ navigation }) => {
             )}
           </View>
 
-          {/* Overview Cards - Sales and Store Transactions */}
+          {/* Overview Cards - Sales and Store Transactions (Collapsible) */}
           <View style={styles.overviewSection}>
-            <Text style={styles.sectionTitle}>Overview</Text>
-            <View style={styles.overviewCardsContainer}>
-              <OverviewCard
-                title="Sales"
-                icon="cart"
-                color="#2196F3"
-                kpis={kpis.salesKPIs || { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 }}
-                onPress={() => setSelectedFilter('Sales Orders')}
-              />
-              <OverviewCard
-                title="Store Transfers"
-                icon="swap-horizontal"
-                color="#FF9800"
-                kpis={kpis.storeKPIs || { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 }}
-                onPress={() => setSelectedFilter('Store Transfers')}
-              />
-            </View>
+            <TouchableOpacity
+              style={styles.overviewHeader}
+              onPress={() => setShowOverview(!showOverview)}
+            >
+              <Text style={styles.sectionTitle}>Overview</Text>
+              <View style={styles.overviewHeaderRight}>
+                <Text style={styles.overviewSummaryText}>
+                  {(kpis.salesKPIs?.orders || 0) + (kpis.storeKPIs?.orders || 0)} orders
+                </Text>
+                <Ionicons
+                  name={showOverview ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color="#666"
+                />
+              </View>
+            </TouchableOpacity>
+            {showOverview && (
+              <View style={styles.overviewCardsContainer}>
+                <OverviewCard
+                  title="Sales"
+                  icon="cart"
+                  color="#2196F3"
+                  kpis={kpis.salesKPIs || { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 }}
+                  onPress={() => setSelectedFilter('Sales Orders')}
+                />
+                <OverviewCard
+                  title="Store Transfers"
+                  icon="swap-horizontal"
+                  color="#FF9800"
+                  kpis={kpis.storeKPIs || { orders: 0, pendingLines: 0, pickedLines: 0, shippedLines: 0 }}
+                  onPress={() => setSelectedFilter('Store Transfers')}
+                />
+              </View>
+            )}
           </View>
 
           {/* Search Filter */}
@@ -1286,9 +1304,36 @@ const styles = StyleSheet.create({
   },
   overviewSection: {
     marginTop: 16,
+    backgroundColor: '#FFF',
+    marginHorizontal: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  overviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  overviewHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  overviewSummaryText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
   },
   overviewCardsContainer: {
     paddingHorizontal: 16,
+    paddingBottom: 12,
   },
   overviewCard: {
     backgroundColor: '#FFF',
