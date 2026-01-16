@@ -654,6 +654,7 @@ const WMSHomeScreen = ({ navigation }) => {
   const [queryFromDate, setQueryFromDate] = useState('');
   const [queryToDate, setQueryToDate] = useState('');
   const [searchText, setSearchText] = useState('');
+  const [showPendingOnly, setShowPendingOnly] = useState(false);
 
   // Get picker name from user data
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
@@ -753,6 +754,11 @@ const WMSHomeScreen = ({ navigation }) => {
   // Filter shipments
   const getFilteredShipments = () => {
     let filtered = [...shipments];
+
+    // Filter by pending only switch (orders not picked)
+    if (showPendingOnly) {
+      filtered = filtered.filter(s => s.pick_confirm_status !== 'YES');
+    }
 
     // Filter by search text (customer name or order number)
     if (searchText.trim()) {
@@ -932,11 +938,40 @@ const WMSHomeScreen = ({ navigation }) => {
             </ScrollView>
           </View>
 
-          {/* View Mode Toggle */}
+          {/* Pending/All Switch and View Mode Toggle */}
           <View style={styles.viewModeSection}>
             <Text style={styles.resultCount}>
               {filteredShipments.length} orders
             </Text>
+
+            {/* Pending/All Switch */}
+            <View style={styles.pendingSwitch}>
+              <TouchableOpacity
+                style={[
+                  styles.pendingSwitchOption,
+                  !showPendingOnly && styles.pendingSwitchOptionActive
+                ]}
+                onPress={() => setShowPendingOnly(false)}
+              >
+                <Text style={[
+                  styles.pendingSwitchText,
+                  !showPendingOnly && styles.pendingSwitchTextActive
+                ]}>All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.pendingSwitchOption,
+                  showPendingOnly && styles.pendingSwitchOptionActivePending
+                ]}
+                onPress={() => setShowPendingOnly(true)}
+              >
+                <Text style={[
+                  styles.pendingSwitchText,
+                  showPendingOnly && styles.pendingSwitchTextActive
+                ]}>Pending</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.viewModeToggle}>
               {VIEW_MODES.map(mode => (
                 <TouchableOpacity
@@ -1229,6 +1264,33 @@ const styles = StyleSheet.create({
   },
   viewModeButtonActive: {
     backgroundColor: '#1565C0',
+  },
+  // Pending/All Switch
+  pendingSwitch: {
+    flexDirection: 'row',
+    backgroundColor: '#E0E0E0',
+    borderRadius: 8,
+    padding: 2,
+    marginRight: 12,
+  },
+  pendingSwitchOption: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  pendingSwitchOptionActive: {
+    backgroundColor: '#1565C0',
+  },
+  pendingSwitchOptionActivePending: {
+    backgroundColor: '#FF9800',
+  },
+  pendingSwitchText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  pendingSwitchTextActive: {
+    color: '#FFF',
   },
   // Orders Section
   ordersSection: {
