@@ -646,7 +646,7 @@ const WMSHomeScreen = ({ navigation }) => {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [expandedLorries, setExpandedLorries] = useState([]);
   const [expandedDates, setExpandedDates] = useState([]);
-  const [viewMode, setViewMode] = useState('grouped'); // 'grouped', 'date', or 'list'
+  const [viewMode, setViewMode] = useState('list'); // 'grouped', 'date', or 'list'
   const [showQueryModal, setShowQueryModal] = useState(false);
   const [showReportsModal, setShowReportsModal] = useState(false);
   const [showPerformanceModal, setShowPerformanceModal] = useState(false);
