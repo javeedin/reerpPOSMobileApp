@@ -651,8 +651,8 @@ const WMSHomeScreen = ({ navigation }) => {
   const [showReportsModal, setShowReportsModal] = useState(false);
   const [showPerformanceModal, setShowPerformanceModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [queryFromDate, setQueryFromDate] = useState('');
-  const [queryToDate, setQueryToDate] = useState('');
+  const [selectedDate, setSelectedDate] = useState(new Date()); // Single date picker
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [showPendingOnly, setShowPendingOnly] = useState(true); // Default to Pending
 
@@ -668,23 +668,14 @@ const WMSHomeScreen = ({ navigation }) => {
     await logout();
   };
 
-  const loadData = useCallback(async (showLoading = true, fromDate = null, toDate = null) => {
+  const loadData = useCallback(async (showLoading = true, date = null) => {
     if (showLoading) setLoading(true);
 
     try {
-      // Use custom dates or default to TODAY only
-      const today = new Date();
-      const defaultFrom = new Date(today); // Today
-      const defaultTo = new Date(today);   // Today
+      // Use provided date or default to selectedDate
+      const queryDate = date || selectedDate;
 
-      const from = fromDate || defaultFrom;
-      const to = toDate || defaultTo;
-
-      // Update query dates for display
-      setQueryFromDate(formatDateForAPI(from));
-      setQueryToDate(formatDateForAPI(to));
-
-      const result = await fetchShipmentsSummary(pickerName, from, to, null);
+      const result = await fetchShipmentsSummary(pickerName, queryDate, queryDate, null);
 
       if (result.success && result.data?.items) {
         setShipments(result.data.items);
@@ -710,7 +701,7 @@ const WMSHomeScreen = ({ navigation }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [pickerName]);
+  }, [pickerName, selectedDate]);
 
   useFocusEffect(
     useCallback(() => {
@@ -724,11 +715,17 @@ const WMSHomeScreen = ({ navigation }) => {
     loadData(false);
   };
 
+  const handleDateChange = (newDate) => {
+    setSelectedDate(newDate);
+    setShowDatePicker(false);
+    loadData(true, newDate);
+  };
+
   const handleQuery = (fromDate, toDate) => {
     setShowQueryModal(false);
     const from = new Date(fromDate);
-    const to = new Date(toDate);
-    loadData(true, from, to);
+    setSelectedDate(from);
+    loadData(true, from);
   };
 
   const toggleLorry = (lorryNumber) => {
@@ -806,7 +803,7 @@ const WMSHomeScreen = ({ navigation }) => {
           <View style={styles.headerText}>
             <Text style={styles.headerTitle}>WMS 1.0.0</Text>
             <Text style={styles.headerSubtitle}>
-              {pickerName || 'Not Set'} | {queryFromDate} to {queryToDate}
+              {pickerName || 'Not Set'}
             </Text>
           </View>
           {isPicker && (
@@ -822,8 +819,8 @@ const WMSHomeScreen = ({ navigation }) => {
         visible={showQueryModal}
         onClose={() => setShowQueryModal(false)}
         onQuery={handleQuery}
-        initialFromDate={queryFromDate}
-        initialToDate={queryToDate}
+        initialFromDate={formatDateForAPI(selectedDate)}
+        initialToDate={formatDateForAPI(selectedDate)}
       />
 
       {/* Reports Modal */}
@@ -864,6 +861,95 @@ const WMSHomeScreen = ({ navigation }) => {
           }
           showsVerticalScrollIndicator={false}
         >
+          {/* Date Picker Section */}
+          <View style={styles.datePickerSection}>
+            <TouchableOpacity
+              style={styles.datePickerButton}
+              onPress={() => setShowDatePicker(!showDatePicker)}
+            >
+              <Ionicons name="calendar" size={20} color="#1565C0" />
+              <Text style={styles.datePickerText}>
+                {selectedDate.toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                })}
+              </Text>
+              <Ionicons name={showDatePicker ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
+            </TouchableOpacity>
+
+            {/* Quick Date Buttons */}
+            <View style={styles.quickDateButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.quickDateBtn,
+                  formatDateForAPI(selectedDate) === formatDateForAPI(new Date(Date.now() - 86400000)) && styles.quickDateBtnActive
+                ]}
+                onPress={() => handleDateChange(new Date(Date.now() - 86400000))}
+              >
+                <Text style={[
+                  styles.quickDateBtnText,
+                  formatDateForAPI(selectedDate) === formatDateForAPI(new Date(Date.now() - 86400000)) && styles.quickDateBtnTextActive
+                ]}>Yesterday</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.quickDateBtn,
+                  formatDateForAPI(selectedDate) === formatDateForAPI(new Date()) && styles.quickDateBtnActive
+                ]}
+                onPress={() => handleDateChange(new Date())}
+              >
+                <Text style={[
+                  styles.quickDateBtnText,
+                  formatDateForAPI(selectedDate) === formatDateForAPI(new Date()) && styles.quickDateBtnTextActive
+                ]}>Today</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.quickDateBtn,
+                  formatDateForAPI(selectedDate) === formatDateForAPI(new Date(Date.now() + 86400000)) && styles.quickDateBtnActive
+                ]}
+                onPress={() => handleDateChange(new Date(Date.now() + 86400000))}
+              >
+                <Text style={[
+                  styles.quickDateBtnText,
+                  formatDateForAPI(selectedDate) === formatDateForAPI(new Date(Date.now() + 86400000)) && styles.quickDateBtnTextActive
+                ]}>Tomorrow</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Date Picker Dropdown */}
+            {showDatePicker && (
+              <View style={styles.datePickerDropdown}>
+                <View style={styles.datePickerInputRow}>
+                  <Text style={styles.datePickerLabel}>Select Date:</Text>
+                  <TextInput
+                    style={styles.datePickerInput}
+                    value={formatDateForAPI(selectedDate)}
+                    onChangeText={(text) => {
+                      const parsed = new Date(text);
+                      if (!isNaN(parsed.getTime())) {
+                        setSelectedDate(parsed);
+                      }
+                    }}
+                    placeholder="YYYY-MM-DD"
+                  />
+                </View>
+                <TouchableOpacity
+                  style={styles.datePickerApplyBtn}
+                  onPress={() => {
+                    setShowDatePicker(false);
+                    loadData(true, selectedDate);
+                  }}
+                >
+                  <Ionicons name="checkmark" size={18} color="#FFF" />
+                  <Text style={styles.datePickerApplyText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
           {/* Overview Cards - Sales and Store Transactions */}
           <View style={styles.overviewSection}>
             <Text style={styles.sectionTitle}>Overview</Text>
@@ -1111,6 +1197,93 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   // Overview Section with Sales and Store Cards
+  // Date Picker Section
+  datePickerSection: {
+    backgroundColor: '#FFF',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  datePickerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginHorizontal: 10,
+  },
+  quickDateButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 8,
+  },
+  quickDateBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F0F0F0',
+  },
+  quickDateBtnActive: {
+    backgroundColor: '#1565C0',
+  },
+  quickDateBtnText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  quickDateBtnTextActive: {
+    color: '#FFF',
+  },
+  datePickerDropdown: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  datePickerInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  datePickerLabel: {
+    fontSize: 13,
+    color: '#666',
+    marginRight: 10,
+  },
+  datePickerInput: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#333',
+  },
+  datePickerApplyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1565C0',
+    borderRadius: 8,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  datePickerApplyText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  },
   overviewSection: {
     marginTop: 16,
   },
