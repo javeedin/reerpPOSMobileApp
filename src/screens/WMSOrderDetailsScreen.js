@@ -582,7 +582,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
   const discPer = item.disc_per || '';
-  const isSalesOrder = (transactionType || '').toLowerCase().includes('sales');
+  const isStoreTransfer = (transactionType || '').toLowerCase().includes('store');
 
   // Show Confirm and Cancel buttons only when picked_qty = 0
   const showPickButtons = pickedQty === 0;
@@ -672,7 +672,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
       <View style={styles.barcodeRow}>
         <Ionicons name="barcode-outline" size={14} color="#666" />
         <Text style={styles.barcodeText}>Barcode: {item.barcode || 'N/A'}</Text>
-        {!isSalesOrder && discPer && (
+        {!isStoreTransfer && discPer && (
           <Text style={styles.discPerText}>Disc: {discPer}</Text>
         )}
       </View>
