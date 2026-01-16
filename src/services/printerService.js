@@ -320,6 +320,37 @@ class PrinterService {
     }
   }
 
+  // Print to IP with detailed logging
+  async printToIPWithLogs(ipAddress, port, orderData, addLog) {
+    try {
+      addLog(`Attempting connection to ${ipAddress}:${port || DEFAULT_PRINTER_PORT}...`, 'info');
+
+      await this.connectToPrinter(ipAddress, port || DEFAULT_PRINTER_PORT);
+      addLog('Connected to printer successfully', 'success');
+
+      addLog('Creating print commands...', 'info');
+      const commands = this.createLabelCommands(orderData);
+      addLog(`Print data size: ${commands.length} bytes`, 'info');
+
+      addLog('Sending data to printer...', 'info');
+      await this.sendData(commands);
+      addLog('Data sent to printer', 'success');
+
+      addLog('Waiting for printer to process...', 'info');
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      addLog('Disconnecting...', 'info');
+      await this.disconnect();
+      addLog('Disconnected', 'info');
+
+      return { success: true, message: 'Label printed successfully!' };
+    } catch (error) {
+      addLog(`Connection/Print error: ${error.message}`, 'error');
+      await this.disconnect();
+      return { success: false, message: error.message };
+    }
+  }
+
   // Validate IP address format
   isValidIPAddress(ip) {
     const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;

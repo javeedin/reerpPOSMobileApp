@@ -533,12 +533,15 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
   );
 };
 
-// QR Code Print Modal Component - Compact Version with Scanner
+// QR Code Print Modal Component - Compact Version with Scanner and Log
 const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [showLog, setShowLog] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
+  const [logs, setLogs] = useState([]);
+  const [printSuccess, setPrintSuccess] = useState(false);
 
   const orderNumber = order?.source_order_number || order?.order_number || 'N/A';
   const orderDate = order?.assignment_date
@@ -557,6 +560,11 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
     lorry: lorryNumber,
   };
 
+  const addLog = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, { timestamp, message, type }]);
+  };
+
   const handleOpenScanner = async () => {
     if (!permission?.granted) {
       const result = await requestPermission();
@@ -566,42 +574,50 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
       }
     }
     setScanned(false);
+    setLogs([]);
+    setPrintSuccess(false);
     setShowScanner(true);
   };
 
   const handleBarCodeScanned = async ({ data }) => {
     if (scanned) return;
     setScanned(true);
+    setShowScanner(false);
+    setShowLog(true);
+    setIsPrinting(true);
+
+    addLog(`Barcode scanned: ${data}`, 'info');
 
     const parsed = printerService.parseIPFromBarcode(data);
 
     if (parsed) {
-      setShowScanner(false);
-      setIsPrinting(true);
+      addLog(`IP Address: ${parsed.ipAddress}`, 'info');
+      addLog(`Port: ${parsed.port}`, 'info');
+      addLog('Connecting to printer...', 'info');
 
       try {
-        const result = await printerService.printToIP(parsed.ipAddress, parsed.port, orderData);
+        const result = await printerService.printToIPWithLogs(parsed.ipAddress, parsed.port, orderData, addLog);
 
         if (result.success) {
-          Alert.alert('Success', `Printed to ${parsed.ipAddress}`);
+          addLog('Print job completed successfully!', 'success');
+          setPrintSuccess(true);
         } else {
-          Alert.alert('Print Error', result.message);
+          addLog(`Print failed: ${result.message}`, 'error');
         }
       } catch (error) {
-        Alert.alert('Error', error.message || 'Failed to print');
+        addLog(`Error: ${error.message || 'Unknown error'}`, 'error');
       } finally {
         setIsPrinting(false);
       }
     } else {
-      Alert.alert(
-        'Invalid Barcode',
-        `Scanned: "${data}"\n\nExpected: IP address (e.g., 192.168.1.100)`,
-        [
-          { text: 'Try Again', onPress: () => setScanned(false) },
-          { text: 'Cancel', onPress: () => setShowScanner(false) },
-        ]
-      );
+      addLog(`Invalid barcode format: "${data}"`, 'error');
+      addLog('Expected format: IP address (e.g., 192.168.1.100)', 'error');
     }
+  };
+
+  const closeLog = () => {
+    setShowLog(false);
+    setLogs([]);
   };
 
   // Scanner view
@@ -647,6 +663,80 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
             <Text style={styles.scannerCancelText}>Cancel</Text>
           </TouchableOpacity>
         </SafeAreaView>
+      </Modal>
+    );
+  }
+
+  // Log view - shows after scanning
+  if (showLog) {
+    return (
+      <Modal visible={visible} animationType="fade" transparent>
+        <View style={styles.qrModalOverlay}>
+          <View style={styles.logModalContainer}>
+            {/* Header */}
+            <View style={styles.logModalHeader}>
+              <View style={styles.logHeaderLeft}>
+                {isPrinting ? (
+                  <ActivityIndicator size="small" color="#1565C0" />
+                ) : printSuccess ? (
+                  <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                ) : (
+                  <Ionicons name="alert-circle" size={24} color="#FF5252" />
+                )}
+                <Text style={styles.logModalTitle}>
+                  {isPrinting ? 'Printing...' : printSuccess ? 'Success' : 'Print Log'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={closeLog}>
+                <Ionicons name="close" size={22} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Log Content */}
+            <ScrollView style={styles.logContent}>
+              {logs.map((log, index) => (
+                <View key={index} style={styles.logEntry}>
+                  <Text style={styles.logTimestamp}>{log.timestamp}</Text>
+                  <Text style={[
+                    styles.logMessage,
+                    log.type === 'error' && styles.logError,
+                    log.type === 'success' && styles.logSuccess,
+                  ]}>
+                    {log.type === 'error' ? '❌ ' : log.type === 'success' ? '✅ ' : '• '}
+                    {log.message}
+                  </Text>
+                </View>
+              ))}
+              {isPrinting && (
+                <View style={styles.logEntry}>
+                  <ActivityIndicator size="small" color="#1565C0" />
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={styles.logActions}>
+              {!isPrinting && !printSuccess && (
+                <TouchableOpacity
+                  style={styles.logRetryButton}
+                  onPress={() => {
+                    setShowLog(false);
+                    handleOpenScanner();
+                  }}
+                >
+                  <Ionicons name="refresh" size={18} color="#FFF" />
+                  <Text style={styles.logRetryText}>Try Again</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.logCloseButton, !isPrinting && printSuccess && { flex: 1 }]}
+                onPress={closeLog}
+              >
+                <Text style={styles.logCloseText}>{printSuccess ? 'Done' : 'Close'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     );
   }
@@ -2806,6 +2896,92 @@ const styles = StyleSheet.create({
   scannerCancelText: {
     color: '#FFF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  // Log modal styles
+  logModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    overflow: 'hidden',
+  },
+  logModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+    backgroundColor: '#F5F5F5',
+  },
+  logHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  logModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+  logContent: {
+    padding: 12,
+    maxHeight: 300,
+  },
+  logEntry: {
+    marginBottom: 8,
+  },
+  logTimestamp: {
+    fontSize: 10,
+    color: '#999',
+    fontFamily: 'monospace',
+  },
+  logMessage: {
+    fontSize: 13,
+    color: '#333',
+    fontFamily: 'monospace',
+  },
+  logError: {
+    color: '#D32F2F',
+  },
+  logSuccess: {
+    color: '#388E3C',
+  },
+  logActions: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  logRetryButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF9800',
+    borderRadius: 8,
+    padding: 12,
+    gap: 6,
+  },
+  logRetryText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  logCloseButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1565C0',
+    borderRadius: 8,
+    padding: 12,
+  },
+  logCloseText: {
+    color: '#FFF',
+    fontSize: 14,
     fontWeight: '600',
   },
 });
