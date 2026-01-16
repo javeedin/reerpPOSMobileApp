@@ -153,37 +153,42 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, pi
           {/* Step 1: Pick Confirm */}
           {currentStep === 1 && (
             <>
-              {/* API Endpoint Info */}
-              <View style={styles.apiEndpointInfo}>
-                <View style={styles.apiMethodBadge}>
-                  <Text style={styles.apiMethodText}>POST</Text>
-                </View>
-                <Text style={styles.apiEndpointText} numberOfLines={2}>
-                  /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
-                </Text>
-              </View>
-
-              {/* JSON Preview */}
-              <View style={styles.jsonPreviewContainer}>
-                <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
-                <ScrollView style={styles.jsonScrollView}>
-                  <View style={styles.jsonCodeBlock}>
-                    <Text style={styles.jsonCodeText}>{jsonString}</Text>
-                  </View>
-                </ScrollView>
-              </View>
-
-              {/* Collapsible Field Details */}
+              {/* Collapsible Technical Details */}
               <TouchableOpacity
                 style={styles.detailsToggleBtn}
                 onPress={() => setShowDetails(!showDetails)}
               >
-                <Text style={styles.detailsToggleText}>Field Mapping</Text>
+                <View style={styles.detailsToggleLeft}>
+                  <Ionicons name="code-slash" size={16} color="#666" />
+                  <Text style={styles.detailsToggleText}>API Details</Text>
+                </View>
                 <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
               </TouchableOpacity>
 
               {showDetails && (
-                <ScrollView style={styles.fieldDetailsScroll}>
+                <View style={styles.technicalDetailsContainer}>
+                  {/* API Endpoint Info */}
+                  <View style={styles.apiEndpointInfo}>
+                    <View style={styles.apiMethodBadge}>
+                      <Text style={styles.apiMethodText}>POST</Text>
+                    </View>
+                    <Text style={styles.apiEndpointText} numberOfLines={2}>
+                      /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
+                    </Text>
+                  </View>
+
+                  {/* JSON Preview */}
+                  <View style={styles.jsonPreviewContainer}>
+                    <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                    <ScrollView style={styles.jsonScrollView} nestedScrollEnabled>
+                      <View style={styles.jsonCodeBlock}>
+                        <Text style={styles.jsonCodeText}>{jsonString}</Text>
+                      </View>
+                    </ScrollView>
+                  </View>
+
+                  {/* Field Mapping */}
+                  <Text style={styles.fieldDetailsTitle}>Field Mapping:</Text>
                   <View style={styles.fieldRow}>
                     <Text style={styles.fieldLabel}>id:</Text>
                     <Text style={styles.fieldValue}>{payload.id || '(empty)'}</Text>
@@ -216,7 +221,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, pi
                     <Text style={styles.fieldLabel}>instance:</Text>
                     <Text style={styles.fieldValue}>{payload.instance}</Text>
                   </View>
-                </ScrollView>
+                </View>
               )}
 
               {/* Action Buttons for Step 1 */}
@@ -2705,6 +2710,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
     fontWeight: '500',
+    marginLeft: 6,
+  },
+  detailsToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  technicalDetailsContainer: {
+    backgroundColor: '#F9F9F9',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
   },
   // Ship Confirm Modal Button
   shipConfirmModalBtn: {
