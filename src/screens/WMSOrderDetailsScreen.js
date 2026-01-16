@@ -576,11 +576,13 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
 };
 
 // Line Item Card Component
-const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing }) => {
+const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing }) => {
   const isPicked = item.pick_confirm_status === 'YES';
   const isShipped = item.shipped_status === 'YES';
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
+  const discPer = item.disc_per || '';
+  const isSalesOrder = (transactionType || '').toLowerCase().includes('sales');
 
   // Show Confirm and Cancel buttons only when picked_qty = 0
   const showPickButtons = pickedQty === 0;
@@ -670,6 +672,9 @@ const LineItemCard = ({ item, onConfirmPick, onCancelPick, onShipConfirm, onUndo
       <View style={styles.barcodeRow}>
         <Ionicons name="barcode-outline" size={14} color="#666" />
         <Text style={styles.barcodeText}>Barcode: {item.barcode || 'N/A'}</Text>
+        {!isSalesOrder && discPer && (
+          <Text style={styles.discPerText}>Disc: {discPer}</Text>
+        )}
       </View>
 
       {/* Pick Action Buttons - show when picked_qty = 0 */}
@@ -1395,6 +1400,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               <LineItemCard
                 key={`line-${item.delivery_detail_id || item.line_number || index}-${index}`}
                 item={item}
+                transactionType={order?.transaction_type}
                 onConfirmPick={handleConfirmPick}
                 onCancelPick={handleCancelPick}
                 onShipConfirm={handleShipConfirm}
@@ -1780,6 +1786,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginLeft: 8,
+    flex: 1,
+  },
+  discPerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E65100',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   // Action Buttons
   actionButtonsRow: {
