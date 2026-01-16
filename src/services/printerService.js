@@ -1,8 +1,9 @@
-import { Platform, PermissionsAndroid } from 'react-native';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BleManager } from 'react-native-ble-plx';
+import TcpSocket from 'react-native-tcp-socket';
 
 const PRINTER_STORAGE_KEY = '@fcpos_printer_settings';
+const DEFAULT_PRINTER_PORT = 9100; // Standard RAW printing port
 
 // ESC/POS Commands
 const ESC = 0x1B;
@@ -11,24 +12,7 @@ const LF = 0x0A;
 
 class PrinterService {
   constructor() {
-    this.bleManager = null;
-    this.connectedDevice = null;
-    this.writeCharacteristic = null;
-  }
-
-  initialize() {
-    if (!this.bleManager) {
-      this.bleManager = new BleManager();
-    }
-  }
-
-  destroy() {
-    if (this.bleManager) {
-      this.bleManager.destroy();
-      this.bleManager = null;
-    }
-    this.connectedDevice = null;
-    this.writeCharacteristic = null;
+    this.socket = null;
   }
 
   async getSavedPrinter() {
@@ -44,102 +28,93 @@ class PrinterService {
     }
   }
 
-  async requestPermissions() {
-    if (Platform.OS === 'android') {
-      try {
-        const apiLevel = Platform.Version;
-
-        if (apiLevel >= 31) {
-          const results = await PermissionsAndroid.requestMultiple([
-            PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-            PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          ]);
-
-          return Object.values(results).every(
-            result => result === PermissionsAndroid.RESULTS.GRANTED
-          );
-        } else {
-          const granted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-          );
-          return granted === PermissionsAndroid.RESULTS.GRANTED;
-        }
-      } catch (error) {
-        console.error('Permission error:', error);
-        return false;
-      }
+  async savePrinter(printerData) {
+    try {
+      const data = {
+        ...printerData,
+        savedAt: new Date().toISOString(),
+      };
+      await AsyncStorage.setItem(PRINTER_STORAGE_KEY, JSON.stringify(data));
+      return true;
+    } catch (error) {
+      console.error('Error saving printer:', error);
+      return false;
     }
-    return true;
   }
 
-  async connectToSavedPrinter() {
-    this.initialize();
-
-    const hasPermission = await this.requestPermissions();
-    if (!hasPermission) {
-      throw new Error('Bluetooth permissions not granted');
-    }
-
-    const savedPrinter = await this.getSavedPrinter();
-    if (!savedPrinter) {
-      throw new Error('No saved printer found. Please configure a printer in Settings.');
-    }
-
+  async removeSavedPrinter() {
     try {
-      // Connect to device
-      this.connectedDevice = await this.bleManager.connectToDevice(savedPrinter.id);
-      await this.connectedDevice.discoverAllServicesAndCharacteristics();
+      await AsyncStorage.removeItem(PRINTER_STORAGE_KEY);
+      return true;
+    } catch (error) {
+      console.error('Error removing printer:', error);
+      return false;
+    }
+  }
 
-      // Find writable characteristic
-      const services = await this.connectedDevice.services();
-      for (const service of services) {
-        const characteristics = await service.characteristics();
-        for (const char of characteristics) {
-          if (char.isWritableWithResponse || char.isWritableWithoutResponse) {
-            this.writeCharacteristic = char;
-            break;
+  // Connect to printer via TCP/IP
+  connectToPrinter(ipAddress, port = DEFAULT_PRINTER_PORT) {
+    return new Promise((resolve, reject) => {
+      try {
+        this.socket = TcpSocket.createConnection(
+          {
+            host: ipAddress,
+            port: port,
+            timeout: 5000,
+          },
+          () => {
+            console.log('Connected to printer:', ipAddress);
+            resolve(true);
           }
-        }
-        if (this.writeCharacteristic) break;
-      }
+        );
 
-      if (!this.writeCharacteristic) {
-        throw new Error('Could not find writable characteristic on printer');
-      }
+        this.socket.on('error', (error) => {
+          console.error('Socket error:', error);
+          reject(new Error(`Connection failed: ${error.message}`));
+        });
 
-      return true;
-    } catch (error) {
-      console.error('Connection error:', error);
-      throw new Error(`Failed to connect to printer: ${error.message}`);
-    }
-  }
+        this.socket.on('timeout', () => {
+          console.error('Socket timeout');
+          this.socket.destroy();
+          reject(new Error('Connection timed out'));
+        });
 
-  async disconnect() {
-    if (this.connectedDevice) {
-      try {
-        await this.connectedDevice.cancelConnection();
+        this.socket.on('close', () => {
+          console.log('Socket closed');
+        });
       } catch (error) {
-        console.error('Disconnect error:', error);
+        reject(new Error(`Failed to connect: ${error.message}`));
       }
-      this.connectedDevice = null;
-      this.writeCharacteristic = null;
-    }
+    });
   }
 
-  async printData(data) {
-    if (!this.writeCharacteristic) {
-      throw new Error('Not connected to printer');
-    }
+  // Disconnect from printer
+  disconnect() {
+    return new Promise((resolve) => {
+      if (this.socket) {
+        this.socket.destroy();
+        this.socket = null;
+      }
+      resolve(true);
+    });
+  }
 
-    try {
-      const base64Data = Buffer.from(data).toString('base64');
-      await this.writeCharacteristic.writeWithResponse(base64Data);
-      return true;
-    } catch (error) {
-      console.error('Print error:', error);
-      throw new Error(`Failed to print: ${error.message}`);
-    }
+  // Send data to printer
+  sendData(data) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        reject(new Error('Not connected to printer'));
+        return;
+      }
+
+      try {
+        this.socket.write(Buffer.from(data), () => {
+          resolve(true);
+        });
+      } catch (error) {
+        reject(new Error(`Failed to send data: ${error.message}`));
+      }
+    });
   }
 
   // Create ESC/POS commands for label with QR code
@@ -161,10 +136,10 @@ class PrinterService {
     // QR Code: Select model (model 2)
     commands.push(GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);
 
-    // QR Code: Set size (6 = medium-large)
+    // QR Code: Set size (8 = large for better scanning)
     commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x08);
 
-    // QR Code: Set error correction level (L = 48, M = 49, Q = 50, H = 51)
+    // QR Code: Set error correction level (M = 49)
     commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31);
 
     // QR Code: Store data
@@ -180,7 +155,7 @@ class PrinterService {
     commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30);
 
     // Line feed after QR
-    commands.push(LF);
+    commands.push(LF, LF);
 
     // Left alignment for text
     commands.push(ESC, 0x61, 0x00);
@@ -202,7 +177,11 @@ class PrinterService {
     }
 
     if (orderData.accountName) {
-      this.addText(commands, `Customer: ${orderData.accountName}`);
+      // Truncate long customer names
+      const customerName = orderData.accountName.length > 28
+        ? orderData.accountName.substring(0, 25) + '...'
+        : orderData.accountName;
+      this.addText(commands, `Customer: ${customerName}`);
       commands.push(LF);
     }
 
@@ -212,7 +191,7 @@ class PrinterService {
     }
 
     if (orderData.loadingBy) {
-      this.addText(commands, `Loading By: ${orderData.loadingBy}`);
+      this.addText(commands, `Bay: ${orderData.loadingBy}`);
       commands.push(LF);
     }
 
@@ -234,6 +213,50 @@ class PrinterService {
     return new Uint8Array(commands);
   }
 
+  // Create test label
+  createTestLabelCommands() {
+    const commands = [];
+
+    // Initialize printer
+    commands.push(ESC, 0x40);
+
+    // Center alignment
+    commands.push(ESC, 0x61, 0x01);
+
+    // Bold on
+    commands.push(ESC, 0x45, 0x01);
+    this.addText(commands, 'FCPos Test Print');
+    commands.push(LF);
+    commands.push(ESC, 0x45, 0x00);
+
+    // Separator
+    this.addText(commands, '------------------------');
+    commands.push(LF);
+
+    // Date/time
+    this.addText(commands, `Date: ${new Date().toLocaleString()}`);
+    commands.push(LF);
+
+    // Test QR code
+    const qrData = 'FCPOS-TEST-OK';
+    commands.push(GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);
+    commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06);
+    const qrLen = qrData.length + 3;
+    commands.push(GS, 0x28, 0x6B, qrLen & 0xFF, (qrLen >> 8) & 0xFF, 0x31, 0x50, 0x30);
+    for (let i = 0; i < qrData.length; i++) {
+      commands.push(qrData.charCodeAt(i));
+    }
+    commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30);
+
+    // Line feeds
+    commands.push(LF, LF, LF);
+
+    // Cut paper
+    commands.push(GS, 0x56, 0x01);
+
+    return new Uint8Array(commands);
+  }
+
   addText(commands, text) {
     for (let i = 0; i < text.length; i++) {
       commands.push(text.charCodeAt(i));
@@ -243,19 +266,75 @@ class PrinterService {
   // Main function to print order label
   async printOrderLabel(orderData) {
     try {
-      await this.connectToSavedPrinter();
+      const savedPrinter = await this.getSavedPrinter();
+      if (!savedPrinter || !savedPrinter.ipAddress) {
+        throw new Error('No printer configured. Please scan printer barcode in Settings.');
+      }
+
+      await this.connectToPrinter(savedPrinter.ipAddress, savedPrinter.port || DEFAULT_PRINTER_PORT);
       const commands = this.createLabelCommands(orderData);
-      await this.printData(commands);
+      await this.sendData(commands);
+
+      // Small delay before disconnect to ensure data is sent
+      await new Promise(resolve => setTimeout(resolve, 500));
       await this.disconnect();
+
       return { success: true, message: 'Label printed successfully!' };
     } catch (error) {
       await this.disconnect();
       return { success: false, message: error.message };
     }
   }
+
+  // Print test label
+  async printTestLabel(ipAddress, port = DEFAULT_PRINTER_PORT) {
+    try {
+      await this.connectToPrinter(ipAddress, port);
+      const commands = this.createTestLabelCommands();
+      await this.sendData(commands);
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await this.disconnect();
+
+      return { success: true, message: 'Test label printed!' };
+    } catch (error) {
+      await this.disconnect();
+      return { success: false, message: error.message };
+    }
+  }
+
+  // Validate IP address format
+  isValidIPAddress(ip) {
+    const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+    return ipRegex.test(ip);
+  }
+
+  // Extract IP from scanned barcode (may contain IP:PORT or just IP)
+  parseIPFromBarcode(barcode) {
+    if (!barcode) return null;
+
+    const trimmed = barcode.trim();
+
+    // Check if it contains port (IP:PORT format)
+    if (trimmed.includes(':')) {
+      const parts = trimmed.split(':');
+      const ip = parts[0];
+      const port = parseInt(parts[1], 10);
+
+      if (this.isValidIPAddress(ip) && port > 0 && port <= 65535) {
+        return { ipAddress: ip, port: port };
+      }
+    }
+
+    // Check if it's just an IP
+    if (this.isValidIPAddress(trimmed)) {
+      return { ipAddress: trimmed, port: DEFAULT_PRINTER_PORT };
+    }
+
+    return null;
+  }
 }
 
 // Export singleton instance
 export const printerService = new PrinterService();
-
 export default printerService;

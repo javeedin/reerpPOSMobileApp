@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,380 +8,155 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
-  Platform,
-  PermissionsAndroid,
-  FlatList,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BleManager } from 'react-native-ble-plx';
-
-const PRINTER_STORAGE_KEY = '@fcpos_printer_settings';
-
-// ESC/POS Commands
-const ESC = 0x1B;
-const GS = 0x1D;
-const LF = 0x0A;
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import printerService from '../services/printerService';
 
 const PrinterSettingsScreen = () => {
   const navigation = useNavigation();
-  const bleManagerRef = useRef(null);
 
-  const [isScanning, setIsScanning] = useState(false);
-  const [devices, setDevices] = useState([]);
   const [savedPrinter, setSavedPrinter] = useState(null);
-  const [connectedDevice, setConnectedDevice] = useState(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [ipAddress, setIpAddress] = useState('');
+  const [port, setPort] = useState('9100');
   const [isPrinting, setIsPrinting] = useState(false);
-  const [bluetoothState, setBluetoothState] = useState('Unknown');
+  const [isSaving, setIsSaving] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanned, setScanned] = useState(false);
 
   useEffect(() => {
-    // Initialize BLE Manager
-    bleManagerRef.current = new BleManager();
-
-    // Monitor Bluetooth state
-    const subscription = bleManagerRef.current.onStateChange((state) => {
-      setBluetoothState(state);
-    }, true);
-
-    // Load saved printer
     loadSavedPrinter();
-
-    return () => {
-      subscription.remove();
-      if (bleManagerRef.current) {
-        bleManagerRef.current.destroy();
-      }
-    };
   }, []);
 
   const loadSavedPrinter = async () => {
-    try {
-      const savedData = await AsyncStorage.getItem(PRINTER_STORAGE_KEY);
-      if (savedData) {
-        const printer = JSON.parse(savedData);
-        setSavedPrinter(printer);
-      }
-    } catch (error) {
-      console.error('Error loading saved printer:', error);
+    const printer = await printerService.getSavedPrinter();
+    if (printer) {
+      setSavedPrinter(printer);
+      setIpAddress(printer.ipAddress || '');
+      setPort(printer.port?.toString() || '9100');
     }
   };
 
-  const savePrinter = async (device) => {
+  const handleSavePrinter = async () => {
+    if (!ipAddress.trim()) {
+      Alert.alert('Error', 'Please enter an IP address');
+      return;
+    }
+
+    if (!printerService.isValidIPAddress(ipAddress.trim())) {
+      Alert.alert('Invalid IP', 'Please enter a valid IP address (e.g., 192.168.1.100)');
+      return;
+    }
+
+    const portNum = parseInt(port, 10) || 9100;
+    if (portNum < 1 || portNum > 65535) {
+      Alert.alert('Invalid Port', 'Port must be between 1 and 65535');
+      return;
+    }
+
+    setIsSaving(true);
     try {
       const printerData = {
-        id: device.id,
-        name: device.name || 'Unknown Printer',
-        savedAt: new Date().toISOString(),
+        ipAddress: ipAddress.trim(),
+        port: portNum,
+        name: `Printer @ ${ipAddress.trim()}`,
       };
-      await AsyncStorage.setItem(PRINTER_STORAGE_KEY, JSON.stringify(printerData));
-      setSavedPrinter(printerData);
-      Alert.alert('Success', `Printer "${printerData.name}" saved as default`);
-    } catch (error) {
-      console.error('Error saving printer:', error);
-      Alert.alert('Error', 'Failed to save printer settings');
-    }
-  };
 
-  const removeSavedPrinter = async () => {
-    try {
-      await AsyncStorage.removeItem(PRINTER_STORAGE_KEY);
-      setSavedPrinter(null);
-      Alert.alert('Success', 'Saved printer removed');
-    } catch (error) {
-      console.error('Error removing printer:', error);
-    }
-  };
-
-  const requestPermissions = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        const apiLevel = Platform.Version;
-
-        if (apiLevel >= 31) {
-          // Android 12+
-          const results = await PermissionsAndroid.requestMultiple([
-            PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-            PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          ]);
-
-          const allGranted = Object.values(results).every(
-            result => result === PermissionsAndroid.RESULTS.GRANTED
-          );
-
-          return allGranted;
-        } else {
-          // Android 11 and below
-          const granted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-          );
-          return granted === PermissionsAndroid.RESULTS.GRANTED;
-        }
-      } catch (error) {
-        console.error('Permission error:', error);
-        return false;
+      const success = await printerService.savePrinter(printerData);
+      if (success) {
+        setSavedPrinter(printerData);
+        Alert.alert('Success', 'Printer saved successfully!');
+      } else {
+        Alert.alert('Error', 'Failed to save printer');
       }
-    }
-    return true;
-  };
-
-  const startScan = async () => {
-    const hasPermission = await requestPermissions();
-    if (!hasPermission) {
-      Alert.alert('Permission Required', 'Bluetooth permissions are required to scan for printers');
-      return;
-    }
-
-    if (bluetoothState !== 'PoweredOn') {
-      Alert.alert('Bluetooth Required', 'Please enable Bluetooth to scan for printers');
-      return;
-    }
-
-    setIsScanning(true);
-    setDevices([]);
-
-    try {
-      bleManagerRef.current.startDeviceScan(null, null, (error, device) => {
-        if (error) {
-          console.error('Scan error:', error);
-          setIsScanning(false);
-          return;
-        }
-
-        if (device && device.name) {
-          // Filter for likely printer devices
-          const name = device.name.toLowerCase();
-          const isPrinter = name.includes('printer') ||
-                          name.includes('print') ||
-                          name.includes('pos') ||
-                          name.includes('thermal') ||
-                          name.includes('epson') ||
-                          name.includes('zebra') ||
-                          name.includes('brother') ||
-                          name.includes('star') ||
-                          name.includes('bixolon') ||
-                          name.includes('xp-') ||
-                          name.includes('pt-') ||
-                          name.includes('mpt') ||
-                          name.includes('bt-') ||
-                          name.includes('spp') ||
-                          !name.includes('phone') && !name.includes('watch') && !name.includes('band');
-
-          if (isPrinter || true) { // Show all named devices for now
-            setDevices(prevDevices => {
-              const exists = prevDevices.find(d => d.id === device.id);
-              if (!exists) {
-                return [...prevDevices, device];
-              }
-              return prevDevices;
-            });
-          }
-        }
-      });
-
-      // Stop scanning after 10 seconds
-      setTimeout(() => {
-        stopScan();
-      }, 10000);
     } catch (error) {
-      console.error('Start scan error:', error);
-      setIsScanning(false);
-      Alert.alert('Error', 'Failed to start scanning');
-    }
-  };
-
-  const stopScan = () => {
-    if (bleManagerRef.current) {
-      bleManagerRef.current.stopDeviceScan();
-    }
-    setIsScanning(false);
-  };
-
-  const connectToDevice = async (device) => {
-    setIsConnecting(true);
-    stopScan();
-
-    try {
-      const connected = await bleManagerRef.current.connectToDevice(device.id);
-      await connected.discoverAllServicesAndCharacteristics();
-      setConnectedDevice(connected);
-      Alert.alert('Connected', `Connected to ${device.name || 'printer'}`);
-    } catch (error) {
-      console.error('Connection error:', error);
-      Alert.alert('Connection Failed', 'Could not connect to the printer. Make sure it is turned on and in pairing mode.');
+      Alert.alert('Error', error.message);
     } finally {
-      setIsConnecting(false);
+      setIsSaving(false);
     }
   };
 
-  const disconnectDevice = async () => {
-    if (connectedDevice) {
-      try {
-        await connectedDevice.cancelConnection();
-        setConnectedDevice(null);
-        Alert.alert('Disconnected', 'Printer disconnected');
-      } catch (error) {
-        console.error('Disconnect error:', error);
-      }
-    }
+  const handleRemovePrinter = async () => {
+    Alert.alert(
+      'Remove Printer',
+      'Are you sure you want to remove the saved printer?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            await printerService.removeSavedPrinter();
+            setSavedPrinter(null);
+            setIpAddress('');
+            setPort('9100');
+            Alert.alert('Success', 'Printer removed');
+          },
+        },
+      ]
+    );
   };
 
-  const printTestLabel = async () => {
-    if (!connectedDevice) {
-      Alert.alert('Not Connected', 'Please connect to a printer first');
+  const handleTestPrint = async () => {
+    if (!ipAddress.trim() || !printerService.isValidIPAddress(ipAddress.trim())) {
+      Alert.alert('Error', 'Please enter a valid IP address first');
       return;
     }
 
     setIsPrinting(true);
-
     try {
-      // Discover services and characteristics
-      const services = await connectedDevice.services();
-      let writeCharacteristic = null;
+      const portNum = parseInt(port, 10) || 9100;
+      const result = await printerService.printTestLabel(ipAddress.trim(), portNum);
 
-      for (const service of services) {
-        const characteristics = await service.characteristics();
-        for (const char of characteristics) {
-          if (char.isWritableWithResponse || char.isWritableWithoutResponse) {
-            writeCharacteristic = char;
-            break;
-          }
-        }
-        if (writeCharacteristic) break;
+      if (result.success) {
+        Alert.alert('Success', result.message);
+      } else {
+        Alert.alert('Print Error', result.message);
       }
-
-      if (!writeCharacteristic) {
-        Alert.alert('Error', 'Could not find writable characteristic on printer');
-        return;
-      }
-
-      // Create test label data
-      const testLabelCommands = createTestLabelCommands();
-
-      // Convert to base64 and send
-      const base64Data = Buffer.from(testLabelCommands).toString('base64');
-      await writeCharacteristic.writeWithResponse(base64Data);
-
-      Alert.alert('Success', 'Test label printed!');
     } catch (error) {
-      console.error('Print error:', error);
-      Alert.alert('Print Error', 'Failed to print test label. Please check the printer connection.');
+      Alert.alert('Error', error.message);
     } finally {
       setIsPrinting(false);
     }
   };
 
-  const createTestLabelCommands = () => {
-    // ESC/POS commands for test label
-    const commands = [];
-
-    // Initialize printer
-    commands.push(ESC, 0x40);
-
-    // Center alignment
-    commands.push(ESC, 0x61, 0x01);
-
-    // Bold on
-    commands.push(ESC, 0x45, 0x01);
-
-    // Add text
-    const text1 = 'FCPos Test Print\n';
-    for (let i = 0; i < text1.length; i++) {
-      commands.push(text1.charCodeAt(i));
+  const openScanner = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permission Required', 'Camera permission is required to scan barcodes');
+        return;
+      }
     }
-
-    // Bold off
-    commands.push(ESC, 0x45, 0x00);
-
-    // Add separator line
-    const line = '------------------------\n';
-    for (let i = 0; i < line.length; i++) {
-      commands.push(line.charCodeAt(i));
-    }
-
-    // Add date/time
-    const dateText = `Date: ${new Date().toLocaleString()}\n`;
-    for (let i = 0; i < dateText.length; i++) {
-      commands.push(dateText.charCodeAt(i));
-    }
-
-    // Add QR code (model 2, size 6)
-    commands.push(GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00); // QR model
-    commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06); // QR size
-
-    const qrData = 'FCPOS-TEST-OK';
-    const qrLen = qrData.length + 3;
-    commands.push(GS, 0x28, 0x6B, qrLen & 0xFF, (qrLen >> 8) & 0xFF, 0x31, 0x50, 0x30);
-    for (let i = 0; i < qrData.length; i++) {
-      commands.push(qrData.charCodeAt(i));
-    }
-    commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30); // Print QR
-
-    // Line feeds
-    commands.push(LF, LF, LF);
-
-    // Cut paper (partial)
-    commands.push(GS, 0x56, 0x01);
-
-    return new Uint8Array(commands);
+    setScanned(false);
+    setScannerVisible(true);
   };
 
-  const renderDeviceItem = ({ item }) => {
-    const isConnected = connectedDevice?.id === item.id;
-    const isSaved = savedPrinter?.id === item.id;
+  const handleBarCodeScanned = ({ data }) => {
+    if (scanned) return;
+    setScanned(true);
 
-    return (
-      <View style={styles.deviceItem}>
-        <View style={styles.deviceInfo}>
-          <View style={styles.deviceNameRow}>
-            <Ionicons
-              name={isConnected ? "bluetooth-outline" : "print-outline"}
-              size={24}
-              color={isConnected ? "#4CAF50" : "#2196F3"}
-            />
-            <Text style={styles.deviceName}>{item.name || 'Unknown Device'}</Text>
-            {isSaved && (
-              <View style={styles.savedBadge}>
-                <Text style={styles.savedBadgeText}>Saved</Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.deviceId}>ID: {item.id}</Text>
-        </View>
-        <View style={styles.deviceActions}>
-          {isConnected ? (
-            <>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.disconnectButton]}
-                onPress={disconnectDevice}
-              >
-                <Text style={styles.actionButtonText}>Disconnect</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.saveButton]}
-                onPress={() => savePrinter(item)}
-              >
-                <Ionicons name="save-outline" size={16} color="#FFF" />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.connectButton]}
-              onPress={() => connectToDevice(item)}
-              disabled={isConnecting}
-            >
-              {isConnecting ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <Text style={styles.actionButtonText}>Connect</Text>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
+    const parsed = printerService.parseIPFromBarcode(data);
+
+    if (parsed) {
+      setIpAddress(parsed.ipAddress);
+      setPort(parsed.port.toString());
+      setScannerVisible(false);
+      Alert.alert('Scanned', `IP Address: ${parsed.ipAddress}:${parsed.port}`);
+    } else {
+      Alert.alert(
+        'Invalid Barcode',
+        `Scanned: "${data}"\n\nExpected format: IP address (e.g., 192.168.1.100 or 192.168.1.100:9100)`,
+        [
+          { text: 'Try Again', onPress: () => setScanned(false) },
+          { text: 'Cancel', onPress: () => setScannerVisible(false) },
+        ]
+      );
+    }
   };
 
   return (
@@ -396,131 +171,165 @@ const PrinterSettingsScreen = () => {
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Bluetooth Status Card */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusRow}>
-            <Ionicons
-              name="bluetooth"
-              size={24}
-              color={bluetoothState === 'PoweredOn' ? '#4CAF50' : '#FF5252'}
-            />
-            <View style={styles.statusInfo}>
-              <Text style={styles.statusLabel}>Bluetooth Status</Text>
-              <Text style={[
-                styles.statusValue,
-                { color: bluetoothState === 'PoweredOn' ? '#4CAF50' : '#FF5252' }
-              ]}>
-                {bluetoothState === 'PoweredOn' ? 'Enabled' : bluetoothState}
-              </Text>
-            </View>
-          </View>
-        </View>
-
         {/* Saved Printer Card */}
         {savedPrinter && (
           <View style={styles.savedPrinterCard}>
             <View style={styles.savedPrinterHeader}>
-              <Ionicons name="print" size={24} color="#1565C0" />
-              <Text style={styles.savedPrinterTitle}>Default Printer</Text>
+              <Ionicons name="print" size={24} color="#4CAF50" />
+              <Text style={styles.savedPrinterTitle}>Saved Printer</Text>
             </View>
             <View style={styles.savedPrinterInfo}>
-              <Text style={styles.savedPrinterName}>{savedPrinter.name}</Text>
-              <Text style={styles.savedPrinterId}>ID: {savedPrinter.id}</Text>
+              <Text style={styles.savedPrinterIP}>{savedPrinter.ipAddress}:{savedPrinter.port}</Text>
               <Text style={styles.savedPrinterDate}>
                 Saved: {new Date(savedPrinter.savedAt).toLocaleDateString()}
               </Text>
             </View>
-            <View style={styles.savedPrinterActions}>
-              <TouchableOpacity
-                style={styles.removePrinterButton}
-                onPress={removeSavedPrinter}
-              >
-                <Ionicons name="trash-outline" size={18} color="#FF5252" />
-                <Text style={styles.removePrinterText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.removeButton} onPress={handleRemovePrinter}>
+              <Ionicons name="trash-outline" size={18} color="#FF5252" />
+              <Text style={styles.removeButtonText}>Remove</Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Scan Section */}
-        <View style={styles.scanSection}>
-          <Text style={styles.sectionTitle}>Find Printers</Text>
+        {/* Scan Barcode Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Scan Printer Barcode</Text>
+          <Text style={styles.sectionDescription}>
+            Scan the barcode on your printer to automatically capture its IP address
+          </Text>
+          <TouchableOpacity style={styles.scanButton} onPress={openScanner}>
+            <Ionicons name="barcode-outline" size={24} color="#FFF" />
+            <Text style={styles.scanButtonText}>Scan Printer Barcode</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Manual Entry Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Or Enter Manually</Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>IP Address</Text>
+            <TextInput
+              style={styles.input}
+              value={ipAddress}
+              onChangeText={setIpAddress}
+              placeholder="192.168.1.100"
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Port (default: 9100)</Text>
+            <TextInput
+              style={styles.input}
+              value={port}
+              onChangeText={setPort}
+              placeholder="9100"
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+            />
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
           <TouchableOpacity
-            style={[styles.scanButton, isScanning && styles.scanButtonActive]}
-            onPress={isScanning ? stopScan : startScan}
+            style={[styles.saveButton, isSaving && styles.buttonDisabled]}
+            onPress={handleSavePrinter}
+            disabled={isSaving}
           >
-            {isScanning ? (
-              <>
-                <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 8 }} />
-                <Text style={styles.scanButtonText}>Scanning... (Tap to Stop)</Text>
-              </>
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#FFF" />
             ) : (
               <>
-                <Ionicons name="search" size={20} color="#FFF" style={{ marginRight: 8 }} />
-                <Text style={styles.scanButtonText}>Scan for Printers</Text>
+                <Ionicons name="save-outline" size={20} color="#FFF" />
+                <Text style={styles.saveButtonText}>Save Printer</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.testButton, isPrinting && styles.buttonDisabled]}
+            onPress={handleTestPrint}
+            disabled={isPrinting}
+          >
+            {isPrinting ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="print-outline" size={20} color="#FFF" />
+                <Text style={styles.testButtonText}>Test Print</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
-
-        {/* Devices List */}
-        {devices.length > 0 && (
-          <View style={styles.devicesSection}>
-            <Text style={styles.sectionTitle}>Available Devices ({devices.length})</Text>
-            {devices.map((device, index) => (
-              <View key={device.id || index}>
-                {renderDeviceItem({ item: device })}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Test Print Section */}
-        {connectedDevice && (
-          <View style={styles.testSection}>
-            <Text style={styles.sectionTitle}>Test Printer</Text>
-            <TouchableOpacity
-              style={styles.testButton}
-              onPress={printTestLabel}
-              disabled={isPrinting}
-            >
-              {isPrinting ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <>
-                  <Ionicons name="print-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
-                  <Text style={styles.testButtonText}>Print Test Label</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* Instructions */}
         <View style={styles.instructionsCard}>
           <Text style={styles.instructionsTitle}>How to Connect</Text>
           <View style={styles.instructionStep}>
             <Text style={styles.stepNumber}>1</Text>
-            <Text style={styles.stepText}>Turn on your Bluetooth thermal printer</Text>
+            <Text style={styles.stepText}>Ensure your printer is on the same network as your device</Text>
           </View>
           <View style={styles.instructionStep}>
             <Text style={styles.stepNumber}>2</Text>
-            <Text style={styles.stepText}>Enable Bluetooth on your phone</Text>
+            <Text style={styles.stepText}>Scan the printer's IP barcode or enter IP manually</Text>
           </View>
           <View style={styles.instructionStep}>
             <Text style={styles.stepNumber}>3</Text>
-            <Text style={styles.stepText}>Tap "Scan for Printers" to find nearby devices</Text>
+            <Text style={styles.stepText}>Tap "Test Print" to verify connection</Text>
           </View>
           <View style={styles.instructionStep}>
             <Text style={styles.stepNumber}>4</Text>
-            <Text style={styles.stepText}>Select your printer and tap "Connect"</Text>
-          </View>
-          <View style={styles.instructionStep}>
-            <Text style={styles.stepNumber}>5</Text>
-            <Text style={styles.stepText}>Tap the save icon to set as default printer</Text>
+            <Text style={styles.stepText}>Tap "Save Printer" to use for label printing</Text>
           </View>
         </View>
       </ScrollView>
+
+      {/* Barcode Scanner Modal */}
+      <Modal visible={scannerVisible} animationType="slide">
+        <SafeAreaView style={styles.scannerContainer}>
+          <View style={styles.scannerHeader}>
+            <Text style={styles.scannerTitle}>Scan Printer Barcode</Text>
+            <TouchableOpacity
+              style={styles.scannerCloseButton}
+              onPress={() => setScannerVisible(false)}
+            >
+              <Ionicons name="close" size={28} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr', 'code128', 'code39', 'ean13', 'ean8', 'datamatrix'],
+            }}
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          >
+            <View style={styles.scannerOverlay}>
+              <View style={styles.scannerFrame}>
+                <View style={[styles.cornerTL, styles.corner]} />
+                <View style={[styles.cornerTR, styles.corner]} />
+                <View style={[styles.cornerBL, styles.corner]} />
+                <View style={[styles.cornerBR, styles.corner]} />
+              </View>
+              <Text style={styles.scannerHint}>
+                Point camera at printer's IP barcode
+              </Text>
+            </View>
+          </CameraView>
+
+          <TouchableOpacity
+            style={styles.cancelScanButton}
+            onPress={() => setScannerVisible(false)}
+          >
+            <Text style={styles.cancelScanText}>Cancel</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -557,39 +366,13 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 16,
   },
-  statusCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusInfo: {
-    marginLeft: 12,
-  },
-  statusLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  statusValue: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
   savedPrinterCard: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#E8F5E9',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#1565C0',
+    borderColor: '#4CAF50',
   },
   savedPrinterHeader: {
     flexDirection: 'row',
@@ -599,156 +382,119 @@ const styles = StyleSheet.create({
   savedPrinterTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1565C0',
+    color: '#2E7D32',
     marginLeft: 8,
   },
   savedPrinterInfo: {
     marginBottom: 12,
   },
-  savedPrinterName: {
-    fontSize: 18,
+  savedPrinterIP: {
+    fontSize: 20,
     fontWeight: '600',
     color: '#333',
-  },
-  savedPrinterId: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
+    fontFamily: 'monospace',
   },
   savedPrinterDate: {
     fontSize: 12,
     color: '#666',
-    marginTop: 2,
+    marginTop: 4,
   },
-  savedPrinterActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  removePrinterButton: {
+  removeButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
+    alignSelf: 'flex-end',
   },
-  removePrinterText: {
+  removeButtonText: {
     color: '#FF5252',
     marginLeft: 4,
     fontSize: 14,
   },
-  scanSection: {
+  section: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  sectionDescription: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 16,
   },
   scanButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#2196F3',
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 16,
-  },
-  scanButtonActive: {
-    backgroundColor: '#FF9800',
+    gap: 10,
   },
   scanButtonText: {
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
   },
-  devicesSection: {
+  inputGroup: {
     marginBottom: 16,
   },
-  deviceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFF',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 10,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-  },
-  deviceInfo: {
-    flex: 1,
-  },
-  deviceNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  deviceName: {
-    fontSize: 15,
-    fontWeight: '600',
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
     color: '#333',
-    marginLeft: 10,
+    marginBottom: 8,
   },
-  deviceId: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 4,
-    marginLeft: 34,
-  },
-  savedBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginLeft: 8,
-  },
-  savedBadgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  deviceActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actionButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  input: {
+    backgroundColor: '#F5F5F5',
     borderRadius: 8,
-    minWidth: 80,
-    alignItems: 'center',
+    padding: 14,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    fontFamily: 'monospace',
   },
-  connectButton: {
-    backgroundColor: '#2196F3',
-  },
-  disconnectButton: {
-    backgroundColor: '#FF5252',
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
   },
   saveButton: {
-    backgroundColor: '#4CAF50',
-    minWidth: 40,
-  },
-  actionButtonText: {
-    color: '#FFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  testSection: {
-    marginBottom: 16,
-  },
-  testButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#4CAF50',
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 16,
+    gap: 8,
+  },
+  saveButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  testButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF9800',
+    borderRadius: 10,
+    padding: 16,
+    gap: 8,
   },
   testButtonText: {
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   instructionsCard: {
     backgroundColor: '#FFF',
@@ -784,6 +530,86 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     lineHeight: 22,
+  },
+  // Scanner styles
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#1565C0',
+  },
+  scannerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  scannerCloseButton: {
+    padding: 4,
+  },
+  camera: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  scannerFrame: {
+    width: 250,
+    height: 250,
+    position: 'relative',
+  },
+  corner: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderColor: '#4CAF50',
+  },
+  cornerTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+  },
+  cornerTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+  },
+  cornerBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+  },
+  cornerBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+  },
+  scannerHint: {
+    color: '#FFF',
+    fontSize: 16,
+    marginTop: 30,
+    textAlign: 'center',
+  },
+  cancelScanButton: {
+    backgroundColor: '#FF5252',
+    padding: 16,
+    alignItems: 'center',
+  },
+  cancelScanText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
