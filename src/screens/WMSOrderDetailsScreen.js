@@ -166,62 +166,62 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, pi
               </TouchableOpacity>
 
               {showDetails && (
-                <View style={styles.technicalDetailsContainer}>
-                  {/* API Endpoint Info */}
-                  <View style={styles.apiEndpointInfo}>
-                    <View style={styles.apiMethodBadge}>
-                      <Text style={styles.apiMethodText}>POST</Text>
+                <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
+                  <View style={styles.technicalDetailsContainer}>
+                    {/* API Endpoint Info */}
+                    <View style={styles.apiEndpointInfo}>
+                      <View style={styles.apiMethodBadge}>
+                        <Text style={styles.apiMethodText}>POST</Text>
+                      </View>
+                      <Text style={styles.apiEndpointText} numberOfLines={2}>
+                        /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
+                      </Text>
                     </View>
-                    <Text style={styles.apiEndpointText} numberOfLines={2}>
-                      /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
-                    </Text>
-                  </View>
 
-                  {/* JSON Preview */}
-                  <View style={styles.jsonPreviewContainer}>
-                    <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
-                    <ScrollView style={styles.jsonScrollView} nestedScrollEnabled>
+                    {/* JSON Preview */}
+                    <View style={styles.jsonPreviewContainer}>
+                      <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
                       <View style={styles.jsonCodeBlock}>
                         <Text style={styles.jsonCodeText}>{jsonString}</Text>
                       </View>
-                    </ScrollView>
-                  </View>
+                    </View>
 
-                  {/* Field Mapping */}
-                  <Text style={styles.fieldDetailsTitle}>Field Mapping:</Text>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>id:</Text>
-                    <Text style={styles.fieldValue}>{payload.id || '(empty)'}</Text>
+                    {/* Field Mapping */}
+                    <Text style={styles.fieldDetailsTitle}>Field Mapping:</Text>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>id:</Text>
+                      <Text style={styles.fieldValue}>{payload.id || '(empty)'}</Text>
+                    </View>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>line_number:</Text>
+                      <Text style={styles.fieldValue}>{payload.line_number}</Text>
+                    </View>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>lot:</Text>
+                      <Text style={styles.fieldValue}>{payload.lot || '(empty)'}</Text>
+                    </View>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>pickedQty:</Text>
+                      <Text style={styles.fieldValue}>{payload.pickedQty}</Text>
+                    </View>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>pickedBy:</Text>
+                      <Text style={styles.fieldValue}>{payload.pickedBy || '(empty)'}</Text>
+                    </View>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>pickConfirmDate:</Text>
+                      <Text style={styles.fieldValue}>{payload.pickConfirmDate}</Text>
+                    </View>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>pickConfirmStatus:</Text>
+                      <Text style={styles.fieldValue}>{payload.pickConfirmStatus}</Text>
+                    </View>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>instance:</Text>
+                      <Text style={styles.fieldValue}>{payload.instance}</Text>
+                    </View>
                   </View>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>line_number:</Text>
-                    <Text style={styles.fieldValue}>{payload.line_number}</Text>
-                  </View>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>lot:</Text>
-                    <Text style={styles.fieldValue}>{payload.lot || '(empty)'}</Text>
-                  </View>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>pickedQty:</Text>
-                    <Text style={styles.fieldValue}>{payload.pickedQty}</Text>
-                  </View>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>pickedBy:</Text>
-                    <Text style={styles.fieldValue}>{payload.pickedBy || '(empty)'}</Text>
-                  </View>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>pickConfirmDate:</Text>
-                    <Text style={styles.fieldValue}>{payload.pickConfirmDate}</Text>
-                  </View>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>pickConfirmStatus:</Text>
-                    <Text style={styles.fieldValue}>{payload.pickConfirmStatus}</Text>
-                  </View>
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>instance:</Text>
-                    <Text style={styles.fieldValue}>{payload.instance}</Text>
-                  </View>
-                </View>
+                </ScrollView>
               )}
 
               {/* Action Buttons for Step 1 */}
@@ -2716,11 +2716,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  technicalDetailsScroll: {
+    maxHeight: 250,
+    marginTop: 8,
+  },
   technicalDetailsContainer: {
     backgroundColor: '#F9F9F9',
     borderRadius: 8,
     padding: 12,
-    marginTop: 8,
   },
   // Ship Confirm Modal Button
   shipConfirmModalBtn: {
