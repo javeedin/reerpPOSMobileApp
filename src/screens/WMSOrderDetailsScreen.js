@@ -529,90 +529,40 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
   );
 };
 
-// QR Code Print Modal Component
+// QR Code Print Modal Component - Compact Version
 const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const orderNumber = order?.source_order_number || order?.order_number || 'N/A';
   const orderDate = order?.assignment_date
-    ? new Date(order.assignment_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    ? new Date(order.assignment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : 'N/A';
   const accountName = order?.account_name || order?.customer_name || 'N/A';
   const loadingBay = order?.loading_bay || 'N/A';
   const lorryNumber = order?.lorry_number || 'N/A';
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="fade" transparent>
       <View style={styles.qrModalOverlay}>
         <View style={styles.qrModalContainer}>
-          {/* Header */}
+          {/* Header with close */}
           <View style={styles.qrModalHeader}>
-            <View style={styles.modalHeaderLeft}>
-              <Ionicons name="qr-code-outline" size={24} color="#1565C0" />
-              <Text style={styles.modalTitle}>Order QR Label</Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
-              <Ionicons name="close" size={24} color="#666" />
+            <Text style={styles.qrModalTitle}>Print QR Label</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={22} color="#666" />
             </TouchableOpacity>
           </View>
 
-          {/* QR Code Section */}
+          {/* QR Code */}
           <View style={styles.qrCodeSection}>
-            <View style={styles.qrCodeWrapper}>
-              <QRCode
-                value={orderNumber}
-                size={180}
-                backgroundColor="white"
-                color="black"
-              />
-            </View>
-            <Text style={styles.qrOrderNumber}>{orderNumber}</Text>
+            <QRCode value={orderNumber} size={120} backgroundColor="white" color="black" />
           </View>
 
-          {/* Labels Section */}
-          <View style={styles.qrLabelsSection}>
-            <View style={styles.qrLabelRow}>
-              <View style={styles.qrLabelItem}>
-                <Ionicons name="calendar-outline" size={16} color="#666" />
-                <Text style={styles.qrLabelTitle}>Order Date</Text>
-                <Text style={styles.qrLabelValue}>{orderDate}</Text>
-              </View>
-              <View style={styles.qrLabelItem}>
-                <Ionicons name="document-text-outline" size={16} color="#666" />
-                <Text style={styles.qrLabelTitle}>Order #</Text>
-                <Text style={styles.qrLabelValue}>{orderNumber}</Text>
-              </View>
-            </View>
-            <View style={styles.qrLabelRow}>
-              <View style={styles.qrLabelItem}>
-                <Ionicons name="business-outline" size={16} color="#666" />
-                <Text style={styles.qrLabelTitle}>Customer</Text>
-                <Text style={styles.qrLabelValue} numberOfLines={1}>{accountName}</Text>
-              </View>
-              <View style={styles.qrLabelItem}>
-                <Ionicons name="person-outline" size={16} color="#666" />
-                <Text style={styles.qrLabelTitle}>Picker</Text>
-                <Text style={styles.qrLabelValue}>{pickerName || 'N/A'}</Text>
-              </View>
-            </View>
-            <View style={styles.qrLabelRow}>
-              <View style={styles.qrLabelItem}>
-                <Ionicons name="location-outline" size={16} color="#666" />
-                <Text style={styles.qrLabelTitle}>Loading Bay</Text>
-                <Text style={styles.qrLabelValue}>{loadingBay}</Text>
-              </View>
-              <View style={styles.qrLabelItem}>
-                <Ionicons name="car-outline" size={16} color="#666" />
-                <Text style={styles.qrLabelTitle}>Lorry</Text>
-                <Text style={styles.qrLabelValue}>{lorryNumber}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Print Info */}
-          <View style={styles.qrPrintInfo}>
-            <Ionicons name="print-outline" size={18} color="#FF9800" />
-            <Text style={styles.qrPrintInfoText}>
-              Scan this QR code with your scan-to-print device to print the label
-            </Text>
+          {/* Simple Labels */}
+          <View style={styles.qrLabelsSimple}>
+            <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Order:</Text> {orderNumber}</Text>
+            <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Date:</Text> {orderDate}</Text>
+            <Text style={styles.qrLabelLine} numberOfLines={1}><Text style={styles.qrLabelKey}>Customer:</Text> {accountName}</Text>
+            <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Picker:</Text> {pickerName || 'N/A'}</Text>
+            <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Bay:</Text> {loadingBay}  |  <Text style={styles.qrLabelKey}>Lorry:</Text> {lorryNumber}</Text>
           </View>
 
           {/* Close Button */}
@@ -2510,111 +2460,59 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
   },
-  // QR Code Modal Styles
+  // QR Code Modal Styles - Compact
   qrModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 30,
   },
   qrModalContainer: {
     backgroundColor: '#FFF',
-    borderRadius: 16,
+    borderRadius: 12,
     width: '100%',
-    maxWidth: 400,
-    overflow: 'hidden',
+    maxWidth: 300,
+    padding: 16,
   },
   qrModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-    backgroundColor: '#F5F5F5',
+    marginBottom: 12,
+  },
+  qrModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
   },
   qrCodeSection: {
     alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    backgroundColor: '#FFF',
+    paddingVertical: 12,
   },
-  qrCodeWrapper: {
-    padding: 16,
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+  qrLabelsSimple: {
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
   },
-  qrOrderNumber: {
-    fontSize: 18,
+  qrLabelLine: {
+    fontSize: 13,
+    color: '#333',
+    marginVertical: 3,
+  },
+  qrLabelKey: {
     fontWeight: '700',
     color: '#1565C0',
-    marginTop: 16,
-    letterSpacing: 1,
-  },
-  qrLabelsSection: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  qrLabelRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  qrLabelItem: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-    padding: 12,
-    borderRadius: 8,
-    marginHorizontal: 4,
-    alignItems: 'center',
-  },
-  qrLabelTitle: {
-    fontSize: 10,
-    color: '#666',
-    marginTop: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  qrLabelValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#333',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  qrPrintInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF3E0',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginHorizontal: 16,
-    borderRadius: 8,
-    marginBottom: 16,
-    gap: 8,
-  },
-  qrPrintInfoText: {
-    fontSize: 12,
-    color: '#E65100',
-    flex: 1,
-    textAlign: 'center',
   },
   qrCloseButton: {
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginTop: 12,
     backgroundColor: '#1565C0',
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderRadius: 6,
+    paddingVertical: 10,
     alignItems: 'center',
   },
   qrCloseButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
   },
