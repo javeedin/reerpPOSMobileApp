@@ -716,9 +716,10 @@ const WMSHomeScreen = ({ navigation }) => {
     loadData(false);
   };
 
-  const handleDateChange = (newDate) => {
+  const handleDateChange = async (newDate) => {
     setSelectedDate(newDate);
     setShowDatePicker(false);
+    await clearWMSCache(); // Clear cache to force fresh data fetch
     loadData(true, newDate);
   };
 
