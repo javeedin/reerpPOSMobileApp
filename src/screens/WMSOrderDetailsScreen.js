@@ -582,7 +582,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   const isShipped = item.shipped_status === 'YES';
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
-  const discPer = item.disc_per || '';
+  const discPer = item.disc_per != null ? String(item.disc_per) : '';
   const isStoreTransfer = (transactionType || '').toLowerCase().includes('store');
 
   // Check if discount is 50% (handle both "50%" and "50" formats)
