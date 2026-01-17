@@ -57,7 +57,7 @@ const formatDateForAPI = (date) => {
 };
 
 // Confirm Pick Modal Component - Shows JSON payload preview with two-step process for Store
-const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, pickerName, instance, isProcessing, transactionType }) => {
+const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, order, pickerName, instance, isProcessing, transactionType }) => {
   const [showDetails, setShowDetails] = useState(false);
   const [currentStep, setCurrentStep] = useState(1); // 1 = Pick, 2 = Ship
   const [pickCompleted, setPickCompleted] = useState(false);
@@ -73,6 +73,9 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, pi
   const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
   const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
 
+  // Get account_code from item or order
+  const accountCode = item.account_code || item.ACCOUNT_CODE || order?.account_code || order?.ACCOUNT_CODE || '';
+
   const payload = {
     id: String(rawId),
     line_number: String(item.line_number || '1'),
@@ -82,6 +85,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, pi
     pickConfirmDate: formatDateTimeForAPI(new Date()),
     pickConfirmStatus: 'YES',
     instance: instance || 'PROD',
+    account_code: accountCode,
   };
 
   const jsonString = JSON.stringify(payload, null, 2);
@@ -219,6 +223,10 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, pi
                     <View style={styles.fieldRow}>
                       <Text style={styles.fieldLabel}>instance:</Text>
                       <Text style={styles.fieldValue}>{payload.instance}</Text>
+                    </View>
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>account_code:</Text>
+                      <Text style={styles.fieldValue}>{payload.account_code || '(empty)'}</Text>
                     </View>
                   </View>
                 </ScrollView>
@@ -1616,6 +1624,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         onConfirm={executeConfirmPick}
         onShipConfirm={handleShipConfirm}
         item={confirmPickItem}
+        order={order}
         pickerName={pickerName}
         instance={user?.instance || 'PROD'}
         isProcessing={isConfirmingPick}
