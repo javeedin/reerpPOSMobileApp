@@ -1260,6 +1260,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // QR Code Modal state
   const [qrModalVisible, setQrModalVisible] = useState(false);
 
+  // Report Preview Modal state
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
 
@@ -1294,62 +1297,81 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     loadOrderLines();
   };
 
-  // Generate and share summary report
-  const handlePrintReport = async () => {
+  // Open report preview modal
+  const handlePrintReport = () => {
+    setReportModalVisible(true);
+  };
+
+  // Get report data for preview and sharing
+  const getReportData = () => {
+    const orderNum = order?.delivery_name || order?.order_number || 'N/A';
+    const accountCode = order?.account_code || order?.ACCOUNT_CODE || 'N/A';
+    const accountName = order?.account_name || order?.customer_name || '';
+    const transType = order?.transaction_type || 'N/A';
+
+    const pickedItems = lines.filter(item => {
+      const pickedQty = parseInt(item.picked_qty) || 0;
+      return pickedQty > 0;
+    });
+
+    const pendingItems = lines.filter(item => {
+      const pickedQty = parseInt(item.picked_qty) || 0;
+      return pickedQty === 0;
+    });
+
+    return {
+      orderNum,
+      accountCode,
+      accountName,
+      transType,
+      pickedItems,
+      pendingItems,
+      totalLines: lines.length,
+      pickedCount: pickedItems.length,
+      pendingCount: pendingItems.length,
+    };
+  };
+
+  // Share report as text
+  const handleShareReport = async () => {
     try {
-      const orderNumber = order?.delivery_name || order?.order_number || 'N/A';
-      const accountCode = order?.account_code || order?.ACCOUNT_CODE || 'N/A';
-      const accountName = order?.account_name || order?.customer_name || '';
-      const transType = order?.transaction_type || 'N/A';
+      const data = getReportData();
 
-      // Get picked items only
-      const pickedItems = lines.filter(item => {
-        const pickedQty = parseInt(item.picked_qty) || 0;
-        return pickedQty > 0;
-      });
-
-      // Build report text
       let reportText = '═══════════════════════════════════\n';
       reportText += '        PICK SUMMARY REPORT\n';
       reportText += '═══════════════════════════════════\n\n';
-
-      reportText += `Order #: ${orderNumber}\n`;
-      reportText += `Account: ${accountCode}`;
-      if (accountName) reportText += ` - ${accountName}`;
+      reportText += `Order #: ${data.orderNum}\n`;
+      reportText += `Account: ${data.accountCode}`;
+      if (data.accountName) reportText += ` - ${data.accountName}`;
       reportText += '\n';
-      reportText += `Type: ${transType}\n`;
+      reportText += `Type: ${data.transType}\n`;
       reportText += `Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n`;
       reportText += '\n───────────────────────────────────\n';
       reportText += 'PICKED ITEMS\n';
       reportText += '───────────────────────────────────\n\n';
 
-      if (pickedItems.length === 0) {
+      if (data.pickedItems.length === 0) {
         reportText += '(No items picked yet)\n';
       } else {
-        pickedItems.forEach((item, index) => {
+        data.pickedItems.forEach((item, index) => {
           const desc = item.description || item.item_number || 'Unknown';
           const pickedQty = parseInt(item.picked_qty) || 0;
-          const truncDesc = desc.length > 25 ? desc.substring(0, 25) + '...' : desc;
-          reportText += `${index + 1}. ${truncDesc}\n`;
-          reportText += `   Qty Picked: ${pickedQty}\n\n`;
+          reportText += `${index + 1}. ${desc}\n`;
+          reportText += `   Qty: ${pickedQty}\n\n`;
         });
       }
 
       reportText += '───────────────────────────────────\n';
-      reportText += `Total Lines: ${lines.length}\n`;
-      reportText += `Picked Lines: ${pickedItems.length}\n`;
-      reportText += `Pending Lines: ${lines.length - pickedItems.length}\n`;
-      reportText += '═══════════════════════════════════\n';
-      reportText += '         Powered by ReERP WMS\n';
+      reportText += `Total: ${data.totalLines} | Picked: ${data.pickedCount} | Pending: ${data.pendingCount}\n`;
       reportText += '═══════════════════════════════════\n';
 
       await Share.share({
         message: reportText,
-        title: `Pick Report - ${orderNumber}`,
+        title: `Pick Report - ${data.orderNum}`,
       });
     } catch (error) {
       if (error.message !== 'User did not share') {
-        Alert.alert('Error', 'Failed to generate report');
+        Alert.alert('Error', 'Failed to share report');
       }
     }
   };
@@ -1776,6 +1798,105 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         pickerName={pickerName}
       />
 
+      {/* Report Preview Modal */}
+      <Modal visible={reportModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
+            {/* Header */}
+            <View style={styles.reportModalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <Ionicons name="document-text" size={24} color="#1565C0" />
+                <Text style={styles.modalTitle}>Pick Summary Report</Text>
+              </View>
+              <TouchableOpacity onPress={() => setReportModalVisible(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Report Content */}
+            <ScrollView style={styles.reportContent} showsVerticalScrollIndicator={false}>
+              {/* Order Header Info */}
+              <View style={styles.reportHeaderSection}>
+                <View style={styles.reportHeaderRow}>
+                  <Text style={styles.reportHeaderLabel}>Order #</Text>
+                  <Text style={styles.reportHeaderValue}>{getReportData().orderNum}</Text>
+                </View>
+                <View style={styles.reportHeaderRow}>
+                  <Text style={styles.reportHeaderLabel}>Account</Text>
+                  <Text style={styles.reportHeaderValue}>
+                    {getReportData().accountCode}
+                    {getReportData().accountName ? ` - ${getReportData().accountName}` : ''}
+                  </Text>
+                </View>
+                <View style={styles.reportHeaderRow}>
+                  <Text style={styles.reportHeaderLabel}>Type</Text>
+                  <Text style={styles.reportHeaderValue}>{getReportData().transType}</Text>
+                </View>
+              </View>
+
+              {/* Summary Stats */}
+              <View style={styles.reportStatsRow}>
+                <View style={styles.reportStatBox}>
+                  <Text style={styles.reportStatValue}>{getReportData().totalLines}</Text>
+                  <Text style={styles.reportStatLabel}>Total</Text>
+                </View>
+                <View style={[styles.reportStatBox, { borderColor: '#4CAF50' }]}>
+                  <Text style={[styles.reportStatValue, { color: '#4CAF50' }]}>{getReportData().pickedCount}</Text>
+                  <Text style={styles.reportStatLabel}>Picked</Text>
+                </View>
+                <View style={[styles.reportStatBox, { borderColor: '#FF9800' }]}>
+                  <Text style={[styles.reportStatValue, { color: '#FF9800' }]}>{getReportData().pendingCount}</Text>
+                  <Text style={styles.reportStatLabel}>Pending</Text>
+                </View>
+              </View>
+
+              {/* Picked Items List */}
+              <View style={styles.reportSection}>
+                <Text style={styles.reportSectionTitle}>
+                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> Picked Items
+                </Text>
+                {getReportData().pickedItems.length === 0 ? (
+                  <Text style={styles.reportEmptyText}>No items picked yet</Text>
+                ) : (
+                  getReportData().pickedItems.map((item, index) => (
+                    <View key={`picked-${index}`} style={styles.reportItemRow}>
+                      <Text style={styles.reportItemNum}>{index + 1}.</Text>
+                      <View style={styles.reportItemDetails}>
+                        <Text style={styles.reportItemDesc} numberOfLines={2}>
+                          {item.description || item.item_number || 'Unknown'}
+                        </Text>
+                        <Text style={styles.reportItemCode}>{item.item_number}</Text>
+                      </View>
+                      <View style={styles.reportItemQty}>
+                        <Text style={styles.reportItemQtyValue}>{parseInt(item.picked_qty) || 0}</Text>
+                        <Text style={styles.reportItemQtyLabel}>Qty</Text>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+            </ScrollView>
+
+            {/* Action Buttons */}
+            <View style={styles.reportActions}>
+              <TouchableOpacity
+                style={styles.reportCloseBtn}
+                onPress={() => setReportModalVisible(false)}
+              >
+                <Text style={styles.reportCloseBtnText}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.reportShareBtn}
+                onPress={handleShareReport}
+              >
+                <Ionicons name="share-outline" size={20} color="#FFF" />
+                <Text style={styles.reportShareBtnText}>Share</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <LinearGradient colors={['#1565C0', '#0D47A1']} style={styles.header}>
         <View style={styles.headerContent}>
@@ -2044,6 +2165,163 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#1565C0',
     fontWeight: '600',
+  },
+  // Report Modal Styles
+  reportModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+    backgroundColor: '#F8F9FA',
+  },
+  reportContent: {
+    flex: 1,
+    padding: 16,
+  },
+  reportHeaderSection: {
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  reportHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  reportHeaderLabel: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
+  },
+  reportHeaderValue: {
+    fontSize: 13,
+    color: '#1565C0',
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
+  },
+  reportStatsRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 8,
+  },
+  reportStatBox: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1565C0',
+  },
+  reportStatValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1565C0',
+  },
+  reportStatLabel: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  reportSection: {
+    marginBottom: 16,
+  },
+  reportSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  reportEmptyText: {
+    fontSize: 13,
+    color: '#999',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  reportItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#E8F5E9',
+  },
+  reportItemNum: {
+    fontSize: 12,
+    color: '#999',
+    width: 24,
+  },
+  reportItemDetails: {
+    flex: 1,
+    marginRight: 8,
+  },
+  reportItemDesc: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '500',
+  },
+  reportItemCode: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  reportItemQty: {
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  reportItemQtyValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#4CAF50',
+  },
+  reportItemQtyLabel: {
+    fontSize: 10,
+    color: '#666',
+  },
+  reportActions: {
+    flexDirection: 'row',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    gap: 12,
+  },
+  reportCloseBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  reportCloseBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  reportShareBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    backgroundColor: '#1565C0',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  reportShareBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
   },
   // Summary Container
   summaryContainer: {
