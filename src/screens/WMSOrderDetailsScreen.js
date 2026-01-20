@@ -65,24 +65,21 @@ const getItemId = (item) => {
 // Confirm Pick Modal Component - Shows JSON payload preview with two-step process for Store
 const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, order, pickerName, instance, isProcessing, transactionType }) => {
   const [showDetails, setShowDetails] = useState(false);
-  const [currentStep, setCurrentStep] = useState(1); // 1 = Pick, 2 = Ship
+  const [currentStep, setCurrentStep] = useState(0); // 0 = not started, 1 = Pick, 2 = Ship
   const [pickCompleted, setPickCompleted] = useState(false);
   const [shipCompleted, setShipCompleted] = useState(false);
   const [isRunningSequence, setIsRunningSequence] = useState(false);
   const [sequenceError, setSequenceError] = useState(null);
+  const [allCompleted, setAllCompleted] = useState(false);
 
   if (!item) return null;
 
   const isStoreTransaction = (transactionType || '').toLowerCase().includes('store');
-  const totalSteps = isStoreTransaction ? 2 : 1;
   const modalTitle = isStoreTransaction ? 'Pick & Ship Confirm' : 'Confirm Pick';
 
   // Build the JSON payload
-  // Use the "id" field directly as-is
   const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
   const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
-
-  // Get account_code from item or order
   const accountCode = item.account_code || item.ACCOUNT_CODE || order?.account_code || order?.ACCOUNT_CODE || '';
 
   const payload = {
@@ -102,44 +99,38 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
   // For Store transactions: Run Pick Confirm then Ship Confirm automatically
   const handlePickConfirm = async () => {
     if (isStoreTransaction) {
-      // Run both Pick and Ship Confirm in sequence
       setIsRunningSequence(true);
       setSequenceError(null);
+      setAllCompleted(false);
 
       try {
         // Step 1: Pick Confirm
         setCurrentStep(1);
-        const pickResult = await onConfirm(payload, true); // true = silent mode (no alert)
+        const pickResult = await onConfirm(payload, true);
 
         if (pickResult && pickResult.success) {
           setPickCompleted(true);
-          setCurrentStep(2);
 
           // Step 2: Ship Confirm (automatically)
+          setCurrentStep(2);
           if (linesId) {
-            const shipResult = await onShipConfirm(item, linesId, true); // true = silent mode
+            const shipResult = await onShipConfirm(item, linesId, true);
 
             if (shipResult && shipResult.success) {
               setShipCompleted(true);
-              // Both completed successfully
-              Alert.alert('Success', 'Pick and Ship confirmed successfully', [
-                { text: 'OK', onPress: handleClose }
-              ]);
+              setAllCompleted(true);
+              // Don't show alert - let user see the ticks and click Done
             } else {
               setSequenceError(shipResult?.error || 'Ship confirm failed');
-              Alert.alert('Error', `Pick confirmed but Ship failed: ${shipResult?.error || 'Unknown error'}`);
             }
           } else {
             setSequenceError('No Lines ID available for Ship Confirm');
-            Alert.alert('Warning', 'Pick confirmed but no Lines ID available for Ship Confirm');
           }
         } else {
           setSequenceError(pickResult?.error || 'Pick confirm failed');
-          Alert.alert('Error', pickResult?.error || 'Failed to confirm pick');
         }
       } catch (error) {
         setSequenceError(error.message || 'Unknown error');
-        Alert.alert('Error', error.message || 'Failed to process');
       } finally {
         setIsRunningSequence(false);
       }
@@ -149,58 +140,60 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
     }
   };
 
-  const handleShipConfirm = async () => {
-    if (onShipConfirm && linesId) {
-      await onShipConfirm(item, linesId);
-    }
-  };
-
   const handleClose = () => {
-    setCurrentStep(1);
+    setCurrentStep(0);
     setPickCompleted(false);
     setShipCompleted(false);
     setIsRunningSequence(false);
     setSequenceError(null);
+    setAllCompleted(false);
     setShowDetails(false);
     onClose();
   };
 
+  // Render status row for each step
+  const renderStatusRow = (stepNumber, label, isActive, isCompleted, isCurrentlyProcessing) => (
+    <View style={styles.sequenceStatusRow}>
+      <View style={[
+        styles.sequenceStatusCircle,
+        isCompleted && styles.sequenceStatusCircleCompleted,
+        isCurrentlyProcessing && styles.sequenceStatusCircleProcessing,
+      ]}>
+        {isCompleted ? (
+          <Ionicons name="checkmark" size={20} color="#FFF" />
+        ) : isCurrentlyProcessing ? (
+          <ActivityIndicator size="small" color="#FFF" />
+        ) : (
+          <Text style={styles.sequenceStatusNumber}>{stepNumber}</Text>
+        )}
+      </View>
+      <View style={styles.sequenceStatusTextContainer}>
+        <Text style={[
+          styles.sequenceStatusLabel,
+          isCompleted && styles.sequenceStatusLabelCompleted,
+          isCurrentlyProcessing && styles.sequenceStatusLabelProcessing,
+        ]}>
+          {label}
+        </Text>
+        {isCompleted && <Text style={styles.sequenceStatusSuccess}>✓ Completed</Text>}
+        {isCurrentlyProcessing && <Text style={styles.sequenceStatusProcessing}>Processing...</Text>}
+      </View>
+    </View>
+  );
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContainer, { maxHeight: '85%' }]}>
+        <View style={[styles.modalContainer, { maxHeight: '85%', minHeight: isStoreTransaction ? 350 : 'auto' }]}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <Ionicons name="code-slash-outline" size={24} color="#1565C0" />
               <Text style={styles.modalTitle}>{modalTitle}</Text>
             </View>
-            <TouchableOpacity onPress={handleClose} style={styles.modalCloseBtn} disabled={isProcessing}>
+            <TouchableOpacity onPress={handleClose} style={styles.modalCloseBtn} disabled={isRunningSequence}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
-
-          {/* Step Indicator - only show for Store transactions */}
-          {isStoreTransaction && (
-            <View style={styles.stepIndicatorContainer}>
-              <View style={styles.stepIndicator}>
-                <View style={[styles.stepCircle, currentStep >= 1 && styles.stepCircleActive, pickCompleted && styles.stepCircleCompleted]}>
-                  {pickCompleted ? (
-                    <Ionicons name="checkmark" size={14} color="#FFF" />
-                  ) : (
-                    <Text style={[styles.stepNumber, currentStep >= 1 && styles.stepNumberActive]}>1</Text>
-                  )}
-                </View>
-                <Text style={[styles.stepLabel, currentStep >= 1 && styles.stepLabelActive]}>Pick Confirm</Text>
-              </View>
-              <View style={[styles.stepLine, pickCompleted && styles.stepLineActive]} />
-              <View style={styles.stepIndicator}>
-                <View style={[styles.stepCircle, currentStep >= 2 && styles.stepCircleActive]}>
-                  <Text style={[styles.stepNumber, currentStep >= 2 && styles.stepNumberActive]}>2</Text>
-                </View>
-                <Text style={[styles.stepLabel, currentStep >= 2 && styles.stepLabelActive]}>Ship Confirm</Text>
-              </View>
-            </View>
-          )}
 
           {/* Item Info */}
           <View style={styles.modalItemInfo}>
@@ -208,9 +201,67 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
             <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
           </View>
 
-          {/* Step 1: Pick Confirm */}
-          {currentStep === 1 && (
+          {/* Processing Status View - Show when running sequence for Store orders */}
+          {isStoreTransaction && (isRunningSequence || pickCompleted || shipCompleted || sequenceError) ? (
+            <View style={styles.sequenceStatusContainer}>
+              {/* Pick Confirm Status */}
+              {renderStatusRow(
+                1,
+                'Pick Confirm',
+                currentStep >= 1,
+                pickCompleted,
+                currentStep === 1 && !pickCompleted && isRunningSequence
+              )}
+
+              {/* Connecting Line */}
+              <View style={[
+                styles.sequenceStatusLine,
+                pickCompleted && styles.sequenceStatusLineCompleted
+              ]} />
+
+              {/* Ship Confirm Status */}
+              {renderStatusRow(
+                2,
+                'Ship Confirm',
+                currentStep >= 2,
+                shipCompleted,
+                currentStep === 2 && !shipCompleted && isRunningSequence
+              )}
+
+              {/* Error Message */}
+              {sequenceError && (
+                <View style={styles.sequenceErrorContainer}>
+                  <Ionicons name="alert-circle" size={20} color="#F44336" />
+                  <Text style={styles.sequenceErrorText}>{sequenceError}</Text>
+                </View>
+              )}
+
+              {/* Success Message */}
+              {allCompleted && (
+                <View style={styles.sequenceSuccessContainer}>
+                  <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                  <Text style={styles.sequenceSuccessText}>All steps completed successfully!</Text>
+                </View>
+              )}
+
+              {/* Done Button - Show when completed or error */}
+              {(allCompleted || sequenceError) && !isRunningSequence && (
+                <View style={styles.confirmModalActions}>
+                  <TouchableOpacity
+                    style={[styles.confirmModalConfirmBtn, allCompleted && { backgroundColor: '#4CAF50' }]}
+                    onPress={handleClose}
+                  >
+                    <Ionicons name={allCompleted ? "checkmark-done" : "close"} size={20} color="#FFF" />
+                    <Text style={styles.confirmModalConfirmText}>
+                      {allCompleted ? 'Done' : 'Close'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ) : (
             <>
+              {/* Normal View - Before processing starts */}
               {/* Collapsible Technical Details */}
               <TouchableOpacity
                 style={styles.detailsToggleBtn}
@@ -226,7 +277,6 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
               {showDetails && (
                 <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
                   <View style={styles.technicalDetailsContainer}>
-                    {/* API Endpoint Info */}
                     <View style={styles.apiEndpointInfo}>
                       <View style={styles.apiMethodBadge}>
                         <Text style={styles.apiMethodText}>POST</Text>
@@ -236,7 +286,6 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
                       </Text>
                     </View>
 
-                    {/* JSON Preview */}
                     <View style={styles.jsonPreviewContainer}>
                       <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
                       <View style={styles.jsonCodeBlock}>
@@ -244,7 +293,6 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
                       </View>
                     </View>
 
-                    {/* Field Mapping */}
                     <Text style={styles.fieldDetailsTitle}>Field Mapping:</Text>
                     <View style={styles.fieldRow}>
                       <Text style={styles.fieldLabel}>id:</Text>
@@ -286,29 +334,22 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
                 </ScrollView>
               )}
 
-              {/* Action Buttons for Step 1 */}
+              {/* Action Buttons */}
               <View style={styles.confirmModalActions}>
                 <TouchableOpacity
                   style={styles.confirmModalCancelBtn}
                   onPress={handleClose}
-                  disabled={isProcessing || isRunningSequence}
+                  disabled={isProcessing}
                 >
                   <Text style={styles.confirmModalCancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.confirmModalConfirmBtn, (isProcessing || isRunningSequence) && styles.confirmModalConfirmBtnDisabled]}
+                  style={[styles.confirmModalConfirmBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
                   onPress={handlePickConfirm}
-                  disabled={isProcessing || isRunningSequence}
+                  disabled={isProcessing}
                 >
-                  {(isProcessing || isRunningSequence) ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <ActivityIndicator size="small" color="#FFF" />
-                      {isRunningSequence && (
-                        <Text style={styles.confirmModalConfirmText}>
-                          {pickCompleted ? 'Ship Confirming...' : 'Pick Confirming...'}
-                        </Text>
-                      )}
-                    </View>
+                  {isProcessing ? (
+                    <ActivityIndicator size="small" color="#FFF" />
                   ) : (
                     <>
                       <Ionicons name="checkmark-circle" size={20} color="#FFF" />
@@ -321,7 +362,6 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
               </View>
             </>
           )}
-
         </View>
       </View>
     </Modal>
@@ -2721,6 +2761,98 @@ const styles = StyleSheet.create({
   },
   stepLineActive: {
     backgroundColor: '#4CAF50',
+  },
+  // Sequence Status Styles (for Pick & Ship progress)
+  sequenceStatusContainer: {
+    padding: 20,
+    minHeight: 180,
+  },
+  sequenceStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  sequenceStatusCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E0E0E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  sequenceStatusCircleCompleted: {
+    backgroundColor: '#4CAF50',
+  },
+  sequenceStatusCircleProcessing: {
+    backgroundColor: '#1565C0',
+  },
+  sequenceStatusNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#999',
+  },
+  sequenceStatusTextContainer: {
+    flex: 1,
+  },
+  sequenceStatusLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  sequenceStatusLabelCompleted: {
+    color: '#4CAF50',
+  },
+  sequenceStatusLabelProcessing: {
+    color: '#1565C0',
+  },
+  sequenceStatusSuccess: {
+    fontSize: 13,
+    color: '#4CAF50',
+    marginTop: 2,
+  },
+  sequenceStatusProcessing: {
+    fontSize: 13,
+    color: '#1565C0',
+    marginTop: 2,
+  },
+  sequenceStatusLine: {
+    width: 2,
+    height: 24,
+    backgroundColor: '#E0E0E0',
+    marginLeft: 19,
+  },
+  sequenceStatusLineCompleted: {
+    backgroundColor: '#4CAF50',
+  },
+  sequenceErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  sequenceErrorText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#D32F2F',
+    marginLeft: 8,
+  },
+  sequenceSuccessContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  sequenceSuccessText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#2E7D32',
+    marginLeft: 8,
+    fontWeight: '500',
   },
   // Details Toggle Button
   detailsToggleBtn: {
