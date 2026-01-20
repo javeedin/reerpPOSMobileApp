@@ -980,12 +980,14 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
 
 // Line Item Card Component
 const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing }) => {
+  const [showDetails, setShowDetails] = useState(false);
   const isPicked = item.pick_confirm_status === 'YES';
   const isShipped = item.shipped_status === 'YES';
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
   const discPer = item.disc_per != null ? String(item.disc_per) : '';
   const isStoreTransfer = (transactionType || '').toLowerCase().includes('store');
+  const hasStatusInfo = pickedQty > 0 || isShipped;
 
   // Check if discount is 50% (handle both "50%" and "50" formats)
   const discValue = parseFloat(discPer.replace('%', '')) || 0;
@@ -1170,23 +1172,54 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         </View>
       )}
 
-      {/* Already Picked Info - shows when picked_qty > 0 */}
-      {pickedQty > 0 && (
-        <View style={styles.pickedInfo}>
-          <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-          <Text style={styles.pickedInfoText}>
-            Picked: {pickedQty} | By {item.pick_confirm_by || item.picker_name || 'Unknown'} on{' '}
-            {item.pick_confirm_date ? new Date(item.pick_confirm_date).toLocaleDateString() : 'N/A'}
-          </Text>
-        </View>
+      {/* Collapsible Status Info - shows when picked or shipped */}
+      {hasStatusInfo && (
+        <TouchableOpacity
+          style={styles.statusInfoToggle}
+          onPress={() => setShowDetails(!showDetails)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.statusBadges}>
+            {pickedQty > 0 && (
+              <View style={styles.statusBadgePicked}>
+                <Ionicons name="checkmark-circle" size={12} color="#4CAF50" />
+                <Text style={styles.statusBadgeText}>Picked</Text>
+              </View>
+            )}
+            {isShipped && (
+              <View style={styles.statusBadgeShipped}>
+                <Ionicons name="checkmark-done-circle" size={12} color="#9C27B0" />
+                <Text style={styles.statusBadgeTextShipped}>Shipped</Text>
+              </View>
+            )}
+          </View>
+          <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={16} color="#666" />
+        </TouchableOpacity>
       )}
 
-      {isShipped && (
-        <View style={styles.shippedInfo}>
-          <Ionicons name="checkmark-done-circle" size={16} color="#9C27B0" />
-          <Text style={styles.shippedInfoText}>
-            Shipped on {item.shipped_date ? new Date(item.shipped_date).toLocaleDateString() : 'N/A'}
-          </Text>
+      {/* Expanded Status Details */}
+      {hasStatusInfo && showDetails && (
+        <View style={styles.statusDetailsExpanded}>
+          {pickedQty > 0 && (
+            <View style={styles.statusDetailRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+              <Text style={styles.statusDetailText}>
+                Picked: {pickedQty} by {item.pick_confirm_by || item.picker_name || 'Unknown'}
+              </Text>
+              <Text style={styles.statusDetailDate}>
+                {item.pick_confirm_date ? new Date(item.pick_confirm_date).toLocaleDateString() : ''}
+              </Text>
+            </View>
+          )}
+          {isShipped && (
+            <View style={styles.statusDetailRow}>
+              <Ionicons name="checkmark-done-circle" size={14} color="#9C27B0" />
+              <Text style={styles.statusDetailText}>Shipped</Text>
+              <Text style={styles.statusDetailDate}>
+                {item.shipped_date ? new Date(item.shipped_date).toLocaleDateString() : ''}
+              </Text>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -2734,6 +2767,70 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   // Picked/Shipped Info
+  // Collapsible Status Toggle
+  statusInfoToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 6,
+    marginTop: 6,
+  },
+  statusBadges: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statusBadgePicked: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+    gap: 3,
+  },
+  statusBadgeShipped: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3E5F5',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+    gap: 3,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  statusBadgeTextShipped: {
+    fontSize: 10,
+    color: '#9C27B0',
+    fontWeight: '600',
+  },
+  statusDetailsExpanded: {
+    backgroundColor: '#FAFAFA',
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 4,
+  },
+  statusDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    gap: 6,
+  },
+  statusDetailText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#666',
+  },
+  statusDetailDate: {
+    fontSize: 11,
+    color: '#999',
+  },
   pickedInfo: {
     flexDirection: 'row',
     alignItems: 'center',
