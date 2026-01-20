@@ -1800,8 +1800,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
       {/* Report Preview Modal */}
       <Modal visible={reportModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
+        <View style={styles.reportModalOverlay}>
+          <View style={styles.reportModalContainer}>
             {/* Header */}
             <View style={styles.reportModalHeader}>
               <View style={styles.modalHeaderLeft}>
@@ -2167,6 +2167,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   // Report Modal Styles
+  reportModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  reportModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    width: '100%',
+    maxHeight: '95%',
+    minHeight: '70%',
+  },
   reportModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2175,6 +2189,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
     backgroundColor: '#F8F9FA',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   reportContent: {
     flex: 1,
