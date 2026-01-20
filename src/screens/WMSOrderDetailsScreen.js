@@ -14,6 +14,7 @@ import {
   TextInput,
   FlatList,
   Animated,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1293,6 +1294,66 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     loadOrderLines();
   };
 
+  // Generate and share summary report
+  const handlePrintReport = async () => {
+    try {
+      const orderNumber = order?.delivery_name || order?.order_number || 'N/A';
+      const accountCode = order?.account_code || order?.ACCOUNT_CODE || 'N/A';
+      const accountName = order?.account_name || order?.customer_name || '';
+      const transType = order?.transaction_type || 'N/A';
+
+      // Get picked items only
+      const pickedItems = lines.filter(item => {
+        const pickedQty = parseInt(item.picked_qty) || 0;
+        return pickedQty > 0;
+      });
+
+      // Build report text
+      let reportText = '═══════════════════════════════════\n';
+      reportText += '        PICK SUMMARY REPORT\n';
+      reportText += '═══════════════════════════════════\n\n';
+
+      reportText += `Order #: ${orderNumber}\n`;
+      reportText += `Account: ${accountCode}`;
+      if (accountName) reportText += ` - ${accountName}`;
+      reportText += '\n';
+      reportText += `Type: ${transType}\n`;
+      reportText += `Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n`;
+      reportText += '\n───────────────────────────────────\n';
+      reportText += 'PICKED ITEMS\n';
+      reportText += '───────────────────────────────────\n\n';
+
+      if (pickedItems.length === 0) {
+        reportText += '(No items picked yet)\n';
+      } else {
+        pickedItems.forEach((item, index) => {
+          const desc = item.description || item.item_number || 'Unknown';
+          const pickedQty = parseInt(item.picked_qty) || 0;
+          const truncDesc = desc.length > 25 ? desc.substring(0, 25) + '...' : desc;
+          reportText += `${index + 1}. ${truncDesc}\n`;
+          reportText += `   Qty Picked: ${pickedQty}\n\n`;
+        });
+      }
+
+      reportText += '───────────────────────────────────\n';
+      reportText += `Total Lines: ${lines.length}\n`;
+      reportText += `Picked Lines: ${pickedItems.length}\n`;
+      reportText += `Pending Lines: ${lines.length - pickedItems.length}\n`;
+      reportText += '═══════════════════════════════════\n';
+      reportText += '         Powered by ReERP WMS\n';
+      reportText += '═══════════════════════════════════\n';
+
+      await Share.share({
+        message: reportText,
+        title: `Pick Report - ${orderNumber}`,
+      });
+    } catch (error) {
+      if (error.message !== 'User did not share') {
+        Alert.alert('Error', 'Failed to generate report');
+      }
+    }
+  };
+
   // Filter items based on search text
   const filteredLines = filterText.trim()
     ? lines.filter(item =>
@@ -1757,22 +1818,26 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           }
           showsVerticalScrollIndicator={false}
         >
-          {/* Order Info Card */}
-          <View style={styles.orderInfoCard}>
-            <View style={styles.orderInfoRow}>
-              <View style={styles.orderInfoItem}>
-                <Text style={styles.orderInfoLabel}>Lorry</Text>
-                <Text style={styles.orderInfoValue}>{order?.lorry_number || 'N/A'}</Text>
-              </View>
-              <View style={styles.orderInfoItem}>
-                <Text style={styles.orderInfoLabel}>Bay</Text>
-                <Text style={styles.orderInfoValue}>{order?.loading_bay || 'N/A'}</Text>
-              </View>
-              <View style={styles.orderInfoItem}>
-                <Text style={styles.orderInfoLabel}>Priority</Text>
-                <Text style={styles.orderInfoValue}>{order?.order_priority || 'N/A'}</Text>
-              </View>
+          {/* Order Info Card - Compact with Print Button */}
+          <View style={styles.orderInfoCardCompact}>
+            <View style={styles.orderInfoCompactRow}>
+              <Text style={styles.orderInfoCompactItem}>
+                <Text style={styles.orderInfoCompactLabel}>Lorry: </Text>
+                {order?.lorry_number || 'N/A'}
+              </Text>
+              <Text style={styles.orderInfoCompactItem}>
+                <Text style={styles.orderInfoCompactLabel}>Bay: </Text>
+                {order?.loading_bay || 'N/A'}
+              </Text>
+              <Text style={styles.orderInfoCompactItem}>
+                <Text style={styles.orderInfoCompactLabel}>Priority: </Text>
+                {order?.order_priority || 'N/A'}
+              </Text>
             </View>
+            <TouchableOpacity style={styles.printReportButton} onPress={handlePrintReport}>
+              <Ionicons name="document-text-outline" size={18} color="#1565C0" />
+              <Text style={styles.printReportButtonText}>Report</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Summary Stats */}
@@ -1940,6 +2005,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#333',
+  },
+  // Compact Order Info Card with Print Button
+  orderInfoCardCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFF',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  orderInfoCompactRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    flex: 1,
+    gap: 12,
+  },
+  orderInfoCompactItem: {
+    fontSize: 12,
+    color: '#333',
+  },
+  orderInfoCompactLabel: {
+    color: '#666',
+    fontWeight: '500',
+  },
+  printReportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    gap: 4,
+  },
+  printReportButtonText: {
+    fontSize: 12,
+    color: '#1565C0',
+    fontWeight: '600',
   },
   // Summary Container
   summaryContainer: {
