@@ -1,0 +1,1570 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  TextInput,
+  StatusBar,
+  Alert,
+  ScrollView,
+  Platform,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import colors from '../theme/colors';
+import { calculateLineTotal, calculateOrderTotals, createOrder, ORDER_STATUS } from '../services/orderService';
+import { useAuth } from '../context/AuthContext';
+import { getOnhand, getBogoForItem, calculateBogoQty } from '../services/syncService';
+import { getAllLocalAdjustments } from '../services/onhandService';
+
+// Format number with commas (e.g., 1,250.00) - safely handles strings and undefined
+const formatNumber = (num) => {
+  const value = parseFloat(num) || 0;
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+};
+
+// Totals Flow Component - Shows Gross → Discount → Tax as visual pipeline
+const TotalsFlow = ({ totals, currency, menuConfig }) => {
+  const flowItems = [
+    {
+      label: 'Gross',
+      value: totals.totalGross,
+      icon: 'cube',
+      color: colors.accent,
+      operator: null,
+    },
+    menuConfig?.allowDiscount && totals.totalDiscount > 0 && {
+      label: 'Discount',
+      value: totals.totalDiscount,
+      icon: 'pricetag',
+      color: colors.accentGreen || '#4CAF50',
+      operator: '-',
+    },
+    menuConfig?.allowTax && totals.totalTax > 0 && {
+      label: 'Tax',
+      value: totals.totalTax,
+      icon: 'receipt',
+      color: colors.accentOrange || '#FF9800',
+      operator: '+',
+    },
+  ].filter(Boolean);
+
+  return (
+    <View style={styles.totalsFlowContainer}>
+      {/* Flow Steps */}
+      <View style={styles.flowSteps}>
+        {flowItems.map((item, index) => (
+          <React.Fragment key={item.label}>
+            {item.operator && (
+              <View style={styles.flowOperator}>
+                <Text style={[styles.operatorText, { color: item.color }]}>{item.operator}</Text>
+              </View>
+            )}
+            <View style={[styles.flowStep, { borderColor: item.color }]}>
+              <View style={[styles.flowStepIcon, { backgroundColor: item.color + '20' }]}>
+                <Ionicons name={item.icon} size={14} color={item.color} />
+              </View>
+              <Text style={styles.flowStepLabel}>{item.label}</Text>
+              <Text style={[styles.flowStepValue, { color: item.color }]}>
+                {formatNumber(item.value)}
+              </Text>
+            </View>
+          </React.Fragment>
+        ))}
+      </View>
+
+      {/* Items Count Badge */}
+      <View style={styles.itemsCountBadge}>
+        <Ionicons name="cart" size={12} color={colors.accent} />
+        <Text style={styles.itemsCountText}>{totals.totalItems} items</Text>
+      </View>
+    </View>
+  );
+};
+
+const OrderLineCard = ({ item, index, menuConfig, onIncrease, onDecrease, onRemove, onDiscountChange, currency, onhandQty }) => {
+  const [editDiscount, setEditDiscount] = useState(false);
+  const [discountValue, setDiscountValue] = useState(item.discount?.toString() || '0');
+  const lineTotals = calculateLineTotal(item, menuConfig);
+  const discountPercent = item.discount || 0;
+
+  // Check if quantity exceeds available stock
+  const exceedsStock = onhandQty !== undefined && item.quantity > onhandQty;
+  const canIncrease = onhandQty === undefined || item.quantity < onhandQty;
+
+  const handleSaveDiscount = () => {
+    const discount = parseFloat(discountValue) || 0;
+    onDiscountChange(index, discount, 'percent'); // Save as percent
+    setEditDiscount(false);
+  };
+
+  // Get stock status color
+  const getStockColor = (qty) => {
+    if (qty <= 0) return colors.accentRed || '#E53935';
+    if (qty < 10) return colors.accentOrange || '#FF9800';
+    return colors.accentGreen || '#4CAF50';
+  };
+
+  return (
+    <View style={[styles.orderLineCard, exceedsStock && styles.orderLineCardWarning]}>
+      {/* Header Row - Item Name and Delete */}
+      <View style={styles.lineHeader}>
+        <View style={[styles.lineNumberBadge, exceedsStock && styles.lineNumberBadgeWarning]}>
+          <Text style={styles.lineNumberText}>{index + 1}</Text>
+        </View>
+        <View style={styles.lineHeaderInfo}>
+          <Text style={styles.lineName} numberOfLines={2}>{item.itemDesc || item.itemNumber}</Text>
+          <View style={styles.lineCodeRow}>
+            <Text style={styles.lineCode}>{item.itemNumber}</Text>
+            {onhandQty !== undefined && (
+              <View style={[styles.qohBadge, { backgroundColor: getStockColor(onhandQty) + '20' }]}>
+                <Ionicons name="cube-outline" size={10} color={getStockColor(onhandQty)} />
+                <Text style={[styles.qohText, { color: getStockColor(onhandQty) }]}>
+                  QOH: {onhandQty}
+                </Text>
+              </View>
+            )}
+          </View>
+          {/* Tax & Discount Badges */}
+          <View style={styles.lineBadgesRow}>
+            <View style={[styles.lineTaxBadge, lineTotals.taxRate > 0 ? styles.lineTaxBadgeActive : styles.lineTaxBadgeZero]}>
+              <Ionicons name="receipt-outline" size={10} color={lineTotals.taxRate > 0 ? colors.accentOrange || '#FF9800' : colors.textMuted} />
+              <Text style={[styles.lineTaxBadgeText, lineTotals.taxRate > 0 ? styles.lineTaxBadgeTextActive : styles.lineTaxBadgeTextZero]}>
+                {lineTotals.taxRate > 0 ? `${lineTotals.taxRate}%` : '0% Tax'}
+              </Text>
+            </View>
+            <View style={[styles.lineDiscBadge, lineTotals.canApplyDiscount ? styles.lineDiscBadgeYes : styles.lineDiscBadgeNo]}>
+              <Ionicons
+                name={lineTotals.canApplyDiscount ? "pricetag-outline" : "close-circle-outline"}
+                size={10}
+                color={lineTotals.canApplyDiscount ? colors.accentGreen || '#4CAF50' : colors.textMuted}
+              />
+              <Text style={[styles.lineDiscBadgeText, lineTotals.canApplyDiscount ? styles.lineDiscBadgeTextYes : styles.lineDiscBadgeTextNo]}>
+                {lineTotals.canApplyDiscount ? 'Disc' : 'No Disc'}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.deleteBtn} onPress={() => onRemove(index)}>
+          <Ionicons name="trash-outline" size={18} color={colors.accentRed || '#E53935'} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Stock Warning */}
+      {exceedsStock && (
+        <View style={styles.stockWarning}>
+          <Ionicons name="warning" size={14} color={colors.accentRed || '#E53935'} />
+          <Text style={styles.stockWarningText}>
+            Quantity ({item.quantity}) exceeds available stock ({onhandQty})
+          </Text>
+        </View>
+      )}
+
+      {/* Details Row */}
+      <View style={styles.lineDetails}>
+        {/* Qty Control */}
+        <View style={styles.qtySection}>
+          <Text style={styles.detailLabel}>Qty</Text>
+          <View style={styles.qtyControls}>
+            <TouchableOpacity style={styles.qtyBtn} onPress={() => onDecrease(index)}>
+              <Ionicons name="remove" size={16} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={[styles.qtyValue, exceedsStock && styles.qtyValueWarning]}>{item.quantity}</Text>
+            <TouchableOpacity
+              style={[styles.qtyBtn, styles.qtyBtnAdd, !canIncrease && styles.qtyBtnDisabled]}
+              onPress={() => canIncrease && onIncrease(index)}
+              disabled={!canIncrease}
+            >
+              <Ionicons name="add" size={16} color={canIncrease ? "#FFFFFF" : colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Unit Price */}
+        <View style={styles.priceSection}>
+          <Text style={styles.detailLabel}>Unit Price</Text>
+          <Text style={styles.priceValue}>{formatNumber(lineTotals.unitPrice)}</Text>
+        </View>
+
+        {/* Gross */}
+        <View style={styles.grossSection}>
+          <Text style={styles.detailLabel}>Gross</Text>
+          <Text style={styles.grossValue}>{formatNumber(lineTotals.gross)}</Text>
+        </View>
+      </View>
+
+      {/* Discount & Tax Row */}
+      {(menuConfig?.allowDiscount || menuConfig?.allowTax) && (
+        <View style={styles.lineExtras}>
+          {menuConfig?.allowDiscount && (
+            <View style={styles.discountSection}>
+              <View style={styles.discountLabelRow}>
+                <Text style={styles.detailLabel}>Discount %</Text>
+                {!lineTotals.canApplyDiscount && (
+                  <View style={styles.noDiscountBadge}>
+                    <Ionicons name="close-circle" size={10} color={colors.textMuted} />
+                    <Text style={styles.noDiscountText}>N/A</Text>
+                  </View>
+                )}
+              </View>
+              {lineTotals.canApplyDiscount ? (
+                editDiscount ? (
+                  <View style={styles.discountEdit}>
+                    <TextInput
+                      style={styles.discountInput}
+                      value={discountValue}
+                      onChangeText={setDiscountValue}
+                      keyboardType="numeric"
+                      placeholder="%"
+                      autoFocus
+                    />
+                    <TouchableOpacity style={styles.discountSaveBtn} onPress={handleSaveDiscount}>
+                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.discountTap} onPress={() => setEditDiscount(true)}>
+                    <Text style={[styles.discountPercent, discountPercent > 0 && styles.discountPercentActive]}>
+                      {discountPercent}%
+                    </Text>
+                    <Text style={[styles.discountAmount, lineTotals.discountAmount > 0 && styles.discountAmountActive]}>
+                      (-{formatNumber(lineTotals.discountAmount)})
+                    </Text>
+                    <Ionicons name="pencil" size={12} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )
+              ) : (
+                <Text style={styles.discountDisabled}>—</Text>
+              )}
+            </View>
+          )}
+          {menuConfig?.allowTax && (
+            <View style={styles.taxSection}>
+              <Text style={styles.detailLabel}>
+                Tax {lineTotals.taxRate > 0 ? `(${lineTotals.taxRate}%)` : '(0%)'}
+              </Text>
+              <Text style={[styles.taxValue, lineTotals.taxRate === 0 && styles.taxValueZero]}>
+                {lineTotals.taxRate > 0 ? formatNumber(lineTotals.taxAmount) : '—'}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Net Total */}
+      <View style={styles.lineTotal}>
+        <Text style={styles.lineTotalLabel}>Line Total</Text>
+        <Text style={styles.lineTotalValue}>{currency} {formatNumber(lineTotals.net)}</Text>
+      </View>
+    </View>
+  );
+};
+
+// BOGO Line Card Component - Shows promo items linked to main items
+const BogoLineCard = ({ item, index, menuConfig, currency, parentItemDesc }) => {
+  const lineTotals = calculateLineTotal(item, menuConfig);
+
+  return (
+    <View style={styles.bogoLineCard}>
+      {/* BOGO Header with Link Indicator */}
+      <View style={styles.bogoHeader}>
+        <View style={styles.bogoLinkIndicator}>
+          <Ionicons name="link" size={12} color={colors.secondary || '#FF6B6B'} />
+        </View>
+        <View style={styles.bogoPromoTag}>
+          <Ionicons name="gift" size={12} color="#FFFFFF" />
+          <Text style={styles.bogoPromoText}>{item.bogoPromoType || 'BOGO'}</Text>
+        </View>
+        <Text style={styles.bogoPromoName} numberOfLines={1}>{item.bogoPromoName}</Text>
+      </View>
+
+      {/* Item Info */}
+      <View style={styles.bogoItemInfo}>
+        <Text style={styles.bogoItemDesc} numberOfLines={2}>{item.itemDesc}</Text>
+        <Text style={styles.bogoItemCode}>{item.itemNumber}</Text>
+      </View>
+
+      {/* Parent Link Info */}
+      <View style={styles.bogoParentLink}>
+        <Ionicons name="arrow-undo" size={12} color={colors.textMuted} />
+        <Text style={styles.bogoParentText}>
+          Linked to: {parentItemDesc || item.bogoParentItemCode}
+        </Text>
+        <Text style={styles.bogoRuleText}>
+          (Buy {item.bogoBuyQty} → Get {item.bogoGetQty})
+        </Text>
+      </View>
+
+      {/* Details Row */}
+      <View style={styles.bogoDetails}>
+        <View style={styles.bogoQtyBox}>
+          <Text style={styles.bogoDetailLabel}>Qty</Text>
+          <Text style={styles.bogoQtyValue}>{item.quantity}</Text>
+        </View>
+        <View style={styles.bogoPriceBox}>
+          <Text style={styles.bogoDetailLabel}>Price</Text>
+          <Text style={styles.bogoPriceValue}>{formatNumber(lineTotals.unitPrice)}</Text>
+        </View>
+        <View style={styles.bogoTotalBox}>
+          <Text style={styles.bogoDetailLabel}>Total</Text>
+          <Text style={styles.bogoTotalValue}>{currency} {formatNumber(lineTotals.net)}</Text>
+        </View>
+      </View>
+
+      {/* Auto-calculated Note */}
+      <View style={styles.bogoAutoNote}>
+        <Ionicons name="sync" size={10} color={colors.textMuted} />
+        <Text style={styles.bogoAutoNoteText}>Auto-calculated based on main item quantity</Text>
+      </View>
+    </View>
+  );
+};
+
+const CheckoutScreen = ({ navigation, route }) => {
+  const { menuConfig, customer, cart: initialCart, saveAsDraft } = route.params || {};
+  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const [cart, setCart] = useState(initialCart || []);
+  const [bogoItems, setBogoItems] = useState([]);
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [onhandMap, setOnhandMap] = useState({});
+
+  // Combine cart with BOGO items for totals
+  const allItems = [...cart, ...bogoItems];
+  const totals = calculateOrderTotals(allItems, menuConfig);
+  const currency = cart[0]?.currency || 'MUR';
+
+  // Load onhand data on mount
+  useEffect(() => {
+    loadOnhandData();
+  }, []);
+
+  // Calculate BOGO items whenever cart changes
+  useEffect(() => {
+    calculateBogoItems();
+  }, [cart]);
+
+  // Calculate BOGO items based on cart contents
+  const calculateBogoItems = async () => {
+    console.log('=== BOGO CALCULATION START ===');
+    console.log('Cart items count:', cart.length);
+    console.log('Customer:', customer?.name, '| Account:', customer?.accountNumber);
+
+    try {
+      const customerNumber = customer?.accountNumber || 'ALL';
+      console.log('Using customerNumber for BOGO lookup:', customerNumber);
+      const newBogoItems = [];
+
+      for (const cartItem of cart) {
+        const mainItemCode = cartItem.itemNumber || cartItem.item_number;
+        console.log(`\n--- Processing cart item: ${mainItemCode} ---`);
+        console.log('Cart item details:', JSON.stringify(cartItem, null, 2));
+
+        if (!mainItemCode) {
+          console.log('SKIP: No item code found for this cart item');
+          continue;
+        }
+
+        // Get BOGO rules for this item
+        console.log(`Querying BOGO rules for item: ${mainItemCode}, customer: ${customerNumber}`);
+        const bogos = await getBogoForItem(mainItemCode, customerNumber);
+        console.log(`Found ${bogos.length} BOGO rules for ${mainItemCode}`);
+
+        if (bogos.length > 0) {
+          console.log('BOGO rules:', JSON.stringify(bogos, null, 2));
+        }
+
+        for (const bogo of bogos) {
+          console.log(`\nProcessing BOGO rule: ${bogo.promo_name}`);
+          console.log(`  Buy ${bogo.buy_qty} → Get ${bogo.get_qty}`);
+          console.log(`  Cart qty: ${cartItem.quantity}`);
+
+          const bogoQty = calculateBogoQty(cartItem.quantity, bogo.buy_qty, bogo.get_qty);
+          console.log(`  Calculated BOGO qty: ${bogoQty}`);
+
+          if (bogoQty > 0) {
+            const bogoItem = {
+              // Identification
+              itemNumber: bogo.promo_item_code,
+              itemDesc: bogo.promo_item_desc,
+              // Quantity and price
+              quantity: bogoQty,
+              unitPrice: parseFloat(bogo.promo_price) || 0,
+              basePrice: parseFloat(bogo.promo_price) || 0,
+              // BOGO metadata
+              isBogo: true,
+              bogoParentItemCode: mainItemCode,
+              bogoParentItemDesc: cartItem.itemDesc || cartItem.item_desc,
+              bogoPromoName: bogo.promo_name,
+              bogoPromoNumber: bogo.promo_number,
+              bogoPromoType: bogo.promo_type,
+              bogoBuyQty: bogo.buy_qty,
+              bogoGetQty: bogo.get_qty,
+              bogoLineId: bogo.line_id,
+              // Tax and discount rules from BOGO
+              allow_discount: bogo.is_discount_allowed,
+              tax_code: bogo.vat_code,
+              tax_rate: 0, // BOGO items typically don't have tax
+              // Currency (inherit from parent or default)
+              currency: cartItem.currency || currency || 'MUR',
+            };
+            console.log('  Adding BOGO item:', bogoItem.itemNumber, '| Qty:', bogoItem.quantity);
+            newBogoItems.push(bogoItem);
+          } else {
+            console.log('  SKIP: BOGO qty is 0 (not enough main items)');
+          }
+        }
+      }
+
+      console.log('\n=== BOGO CALCULATION COMPLETE ===');
+      console.log('Total BOGO items to add:', newBogoItems.length);
+      if (newBogoItems.length > 0) {
+        console.log('BOGO items:', newBogoItems.map(b => `${b.itemNumber} x${b.quantity}`).join(', '));
+      }
+
+      setBogoItems(newBogoItems);
+    } catch (error) {
+      console.error('=== BOGO CALCULATION ERROR ===');
+      console.error('Error calculating BOGO items:', error);
+      console.error('Stack:', error.stack);
+    }
+  };
+
+  // Get BOGO items for a specific main item
+  const getBogoItemsForParent = (parentItemCode) => {
+    const linked = bogoItems.filter(b => b.bogoParentItemCode === parentItemCode);
+    console.log(`[getBogoItemsForParent] Looking for parent: ${parentItemCode}, found: ${linked.length}`);
+    if (linked.length === 0 && bogoItems.length > 0) {
+      console.log(`[getBogoItemsForParent] Available BOGO parent codes:`, bogoItems.map(b => b.bogoParentItemCode).join(', '));
+    }
+    return linked;
+  };
+
+  const loadOnhandData = async () => {
+    try {
+      const onhandData = await getOnhand() || [];
+      const adjustments = await getAllLocalAdjustments() || {};
+
+      // Build a map of itemNumber -> available qty
+      const map = {};
+      onhandData.forEach(item => {
+        const itemNum = item.itemNumber;
+        if (itemNum) {
+          map[itemNum] = (map[itemNum] || 0) + (item.primaryQuantity || 0);
+        }
+      });
+
+      // Apply local adjustments
+      Object.keys(adjustments).forEach(itemNum => {
+        if (map[itemNum] !== undefined) {
+          map[itemNum] += adjustments[itemNum];
+        } else {
+          map[itemNum] = adjustments[itemNum];
+        }
+      });
+
+      setOnhandMap(map);
+    } catch (error) {
+      console.error('Load onhand error:', error);
+    }
+  };
+
+  // Get onhand qty for an item
+  const getOnhandQty = (item) => {
+    const itemNum = item.itemNumber || item.item_number;
+    const qty = onhandMap[itemNum];
+    return qty !== undefined ? Math.max(0, qty) : undefined;
+  };
+
+  // Check if any item exceeds stock
+  const hasStockIssues = cart.some(item => {
+    const onhandQty = getOnhandQty(item);
+    return onhandQty !== undefined && item.quantity > onhandQty;
+  });
+
+  const handleDiscountChange = (index, discount, discountType = 'percent') => {
+    const newCart = [...cart];
+    newCart[index] = { ...newCart[index], discount, discountType };
+    setCart(newCart);
+  };
+
+  const handleIncreaseQty = (index) => {
+    const item = cart[index];
+    const onhandQty = getOnhandQty(item);
+
+    // Check stock limit
+    if (onhandQty !== undefined && item.quantity >= onhandQty) {
+      Alert.alert('Stock Limit', `Only ${onhandQty} units available for ${item.itemDesc || item.itemNumber}.`);
+      return;
+    }
+
+    const newCart = [...cart];
+    newCart[index] = { ...newCart[index], quantity: newCart[index].quantity + 1 };
+    setCart(newCart);
+  };
+
+  const handleDecreaseQty = (index) => {
+    const newCart = [...cart];
+    if (newCart[index].quantity > 1) {
+      newCart[index] = { ...newCart[index], quantity: newCart[index].quantity - 1 };
+      setCart(newCart);
+    } else {
+      handleRemoveItem(index);
+    }
+  };
+
+  const handleRemoveItem = (index) => {
+    Alert.alert(
+      'Remove Item',
+      'Are you sure you want to remove this item?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            const newCart = cart.filter((_, i) => i !== index);
+            setCart(newCart);
+            if (newCart.length === 0) {
+              navigation.goBack();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSaveAsDraft = async () => {
+    if (cart.length === 0) {
+      Alert.alert('Empty Cart', 'No items to save.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
+      // Include BOGO items in the order
+      const allOrderLines = [...cart, ...bogoItems];
+      const result = await createOrder({
+        customer,
+        menuConfig,
+        lines: allOrderLines,
+        status: ORDER_STATUS.DRAFT,
+        notes,
+      }, userPrefix);
+
+      if (result.success) {
+        Alert.alert(
+          'Draft Saved',
+          `Order ${result.order.orderNumber} saved as draft.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('MainTabs'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to save draft');
+      }
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleProceedToPayment = () => {
+    if (cart.length === 0) {
+      Alert.alert('Empty Cart', 'No items to checkout.');
+      return;
+    }
+
+    // Check for stock issues
+    if (hasStockIssues) {
+      const itemsWithIssues = cart.filter(item => {
+        const onhandQty = getOnhandQty(item);
+        return onhandQty !== undefined && item.quantity > onhandQty;
+      });
+
+      const itemsList = itemsWithIssues.map(item => {
+        const onhandQty = getOnhandQty(item);
+        return `• ${item.itemDesc || item.itemNumber}: ${item.quantity} ordered, ${onhandQty} available`;
+      }).join('\n');
+
+      Alert.alert(
+        'Stock Issues',
+        `The following items exceed available stock:\n\n${itemsList}\n\nPlease adjust quantities before proceeding.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Include BOGO items with cart
+    const allOrderLines = [...cart, ...bogoItems];
+    const navParams = {
+      menuConfig,
+      customer,
+      cart: allOrderLines,
+      totals,
+      notes,
+      currency,
+    };
+
+    // Payment form types (for SALES/RETURNS transaction types):
+    // CASH = show payment form with payment methods
+    // CREDIT = show credit check form
+    // blank/other = direct order confirm (with user confirmation)
+    const paymentForm = (menuConfig?.paymentForm || '').toUpperCase();
+    const transactionType = (menuConfig?.transactionType || '').toUpperCase();
+    const isSalesOrReturns = transactionType === 'SALES' || transactionType === 'RETURNS';
+
+    // Check if signature is required first
+    if (menuConfig?.signatureRequired) {
+      // Go to signature first, then to appropriate next screen based on paymentForm
+      navigation.navigate('Signature', {
+        ...navParams,
+        paymentForm, // Pass the payment form type
+      });
+    } else if (isSalesOrReturns) {
+      // Apply payment form logic for SALES/RETURNS
+      if (paymentForm === 'CASH') {
+        // Show payment form with payment methods
+        navigation.navigate('Payment', navParams);
+      } else if (paymentForm === 'CREDIT') {
+        // Show credit check form
+        navigation.navigate('CreditCheck', navParams);
+      } else {
+        // Direct confirm with user confirmation prompt
+        handleDirectConfirmWithPrompt(allOrderLines);
+      }
+    } else {
+      // For other transaction types, go to payment by default
+      navigation.navigate('Payment', navParams);
+    }
+  };
+
+  // Direct confirm with user confirmation prompt
+  const handleDirectConfirmWithPrompt = (orderLines) => {
+    Alert.alert(
+      'Confirm Order',
+      `Are you sure you want to confirm this order?\n\nTotal: ${currency} ${formatNumber(totals.totalNet)}\nItems: ${orderLines.length}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          style: 'default',
+          onPress: () => handleDirectConfirm(orderLines),
+        },
+      ]
+    );
+  };
+
+  // Direct confirm order without payment screen (for cash/credit sales)
+  const handleDirectConfirm = async (orderLines) => {
+    setSaving(true);
+    try {
+      const userPrefix = user?.username?.substring(0, 3) || user?.name?.substring(0, 3) || 'USR';
+
+      // Create order with no payment (or default payment if needed)
+      const result = await createOrder({
+        customer,
+        menuConfig,
+        lines: orderLines,
+        status: ORDER_STATUS.CONFIRMED,
+        payments: [], // No payments for direct confirm
+        notes,
+      }, userPrefix);
+
+      if (result.success) {
+        Alert.alert(
+          'Order Confirmed',
+          `Order ${result.order.orderNumber} has been confirmed.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('MainTabs'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to confirm order');
+      }
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (saveAsDraft) {
+      handleSaveAsDraft();
+    }
+  }, [saveAsDraft]);
+
+  // Navigate back to add more items while preserving cart with discounts
+  const handleAddMoreItems = () => {
+    navigation.navigate('ItemSelection', {
+      menuConfig,
+      customer,
+      existingCart: cart, // Pass current cart with discounts preserved
+    });
+  };
+
+  // Handle home navigation with warning
+  const handleGoHome = () => {
+    Alert.alert(
+      'Leave Order?',
+      'Order is not confirmed and will be cleared. Do you want to continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Go Home',
+          style: 'destructive',
+          onPress: () => navigation.navigate('MainTabs'),
+        },
+      ]
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Order Preview</Text>
+          <Text style={styles.headerSubtitle}>{customer?.name || 'Walk-in Customer'}</Text>
+        </View>
+        <View style={styles.headerRightButtons}>
+          <TouchableOpacity onPress={handleGoHome} style={styles.headerIconBtn}>
+            <Ionicons name="home-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleAddMoreItems} style={styles.headerIconBtn}>
+            <Ionicons name="add-circle-outline" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Innovative Totals Flow */}
+        <TotalsFlow totals={totals} currency={currency} menuConfig={menuConfig} />
+
+        {/* Grand Total Card */}
+        <View style={styles.grandTotalCard}>
+          <View style={styles.grandTotalRow}>
+            <View>
+              <Text style={styles.grandTotalLabel}>Total Amount</Text>
+              <Text style={styles.grandTotalHint}>Ready for payment</Text>
+            </View>
+            <Text style={styles.grandTotalValue}>
+              {currency} {formatNumber(totals.totalNet)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Order Lines Header */}
+        <View style={styles.sectionHeader}>
+          <Ionicons name="list-outline" size={18} color={colors.textPrimary} />
+          <Text style={styles.sectionTitle}>Order Lines ({cart.length})</Text>
+          {bogoItems.length > 0 && (
+            <View style={styles.bogoCountBadge}>
+              <Ionicons name="gift" size={12} color={colors.secondary || '#FF6B6B'} />
+              <Text style={styles.bogoCountText}>+{bogoItems.length} BOGO</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Order Lines with BOGO items grouped */}
+        {cart.map((item, index) => {
+          const itemCode = item.itemNumber || item.item_number;
+          const linkedBogoItems = getBogoItemsForParent(itemCode);
+
+          return (
+            <View key={`line-group-${index}-${itemCode || ''}`}>
+              {/* Main Order Line */}
+              <OrderLineCard
+                item={item}
+                index={index}
+                menuConfig={menuConfig}
+                onIncrease={handleIncreaseQty}
+                onDecrease={handleDecreaseQty}
+                onRemove={handleRemoveItem}
+                onDiscountChange={handleDiscountChange}
+                currency={currency}
+                onhandQty={getOnhandQty(item)}
+              />
+
+              {/* BOGO items linked to this main item */}
+              {linkedBogoItems.map((bogoItem, bogoIndex) => (
+                <BogoLineCard
+                  key={`bogo-${index}-${bogoIndex}-${bogoItem.itemNumber || ''}`}
+                  item={bogoItem}
+                  index={bogoIndex}
+                  menuConfig={menuConfig}
+                  currency={currency}
+                  parentItemDesc={item.itemDesc || item.item_desc}
+                />
+              ))}
+            </View>
+          );
+        })}
+
+        {/* Notes */}
+        <View style={styles.notesContainer}>
+          <Text style={styles.notesLabel}>Order Notes</Text>
+          <TextInput
+            style={styles.notesInput}
+            placeholder="Add notes for this order..."
+            placeholderTextColor={colors.textMuted}
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            numberOfLines={3}
+          />
+        </View>
+
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
+
+      {/* Action Buttons - with safe area padding for bottom navigation */}
+      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
+        <TouchableOpacity
+          style={styles.draftBtn}
+          onPress={handleSaveAsDraft}
+          disabled={saving || cart.length === 0}
+        >
+          <Ionicons name="save-outline" size={20} color={colors.accent} />
+          <Text style={styles.draftBtnText}>Save Draft</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.paymentBtn,
+            cart.length === 0 && styles.paymentBtnDisabled,
+            hasStockIssues && styles.paymentBtnWarning
+          ]}
+          onPress={handleProceedToPayment}
+          disabled={saving || cart.length === 0}
+        >
+          {hasStockIssues && <Ionicons name="warning" size={18} color="#FFFFFF" />}
+          <Text style={styles.paymentBtnText}>
+            {hasStockIssues ? 'Stock Issues' : 'Proceed to Payment'}
+          </Text>
+          <Ionicons name={hasStockIssues ? "alert-circle" : "card-outline"} size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 16,
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerCenter: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+  },
+  headerRightButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerIconBtn: {
+    padding: 6,
+  },
+  content: {
+    flex: 1,
+  },
+  // Totals Flow Styles
+  totalsFlowContainer: {
+    padding: 12,
+    paddingBottom: 8,
+  },
+  flowSteps: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  flowOperator: {
+    paddingHorizontal: 4,
+  },
+  operatorText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  flowStep: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(255,255,255,0.8)',
+  },
+  flowStepIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  flowStepLabel: {
+    fontSize: 9,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  flowStepValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 2,
+  },
+  itemsCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accent + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginTop: 10,
+    gap: 5,
+  },
+  itemsCountText: {
+    fontSize: 11,
+    color: colors.accent,
+    fontWeight: '600',
+  },
+  grandTotalCard: {
+    backgroundColor: colors.accent,
+    marginHorizontal: 12,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  grandTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  grandTotalLabel: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  grandTotalHint: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 1,
+  },
+  grandTotalValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  orderLineCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 12,
+    marginBottom: 10,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  orderLineCardWarning: {
+    borderColor: colors.accentRed || '#E53935',
+    backgroundColor: (colors.accentRed || '#E53935') + '05',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  lineHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  lineNumberBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  lineNumberBadgeWarning: {
+    backgroundColor: colors.accentRed || '#E53935',
+  },
+  lineNumberText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  lineHeaderInfo: {
+    flex: 1,
+  },
+  lineName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    lineHeight: 18,
+    marginBottom: 2,
+  },
+  lineCode: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontFamily: 'monospace',
+  },
+  lineCodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  lineBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 6,
+  },
+  lineTaxBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
+  },
+  lineTaxBadgeActive: {
+    backgroundColor: (colors.accentOrange || '#FF9800') + '15',
+  },
+  lineTaxBadgeZero: {
+    backgroundColor: colors.surface,
+  },
+  lineTaxBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  lineTaxBadgeTextActive: {
+    color: colors.accentOrange || '#FF9800',
+  },
+  lineTaxBadgeTextZero: {
+    color: colors.textMuted,
+  },
+  lineDiscBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
+  },
+  lineDiscBadgeYes: {
+    backgroundColor: (colors.accentGreen || '#4CAF50') + '15',
+  },
+  lineDiscBadgeNo: {
+    backgroundColor: colors.surface,
+  },
+  lineDiscBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  lineDiscBadgeTextYes: {
+    color: colors.accentGreen || '#4CAF50',
+  },
+  lineDiscBadgeTextNo: {
+    color: colors.textMuted,
+  },
+  qohBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  qohText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  stockWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: (colors.accentRed || '#E53935') + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 10,
+    gap: 6,
+  },
+  stockWarningText: {
+    fontSize: 11,
+    color: colors.accentRed || '#E53935',
+    fontWeight: '500',
+    flex: 1,
+  },
+  deleteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: (colors.accentRed || '#E53935') + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  lineDetails: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
+    marginBottom: 8,
+  },
+  qtySection: {
+    flex: 1,
+  },
+  priceSection: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  grossSection: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  detailLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  qtyControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  qtyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qtyBtnAdd: {
+    backgroundColor: colors.secondary,
+  },
+  qtyValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginHorizontal: 12,
+    minWidth: 20,
+    textAlign: 'center',
+  },
+  qtyValueWarning: {
+    color: colors.accentRed || '#E53935',
+  },
+  qtyBtnDisabled: {
+    backgroundColor: colors.surface,
+  },
+  priceValue: {
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  grossValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textPrimary,
+  },
+  lineExtras: {
+    flexDirection: 'row',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.surface,
+  },
+  discountSection: {
+    flex: 1,
+  },
+  discountLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  noDiscountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+    gap: 2,
+  },
+  noDiscountText: {
+    fontSize: 8,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  discountDisabled: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  taxSection: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  taxValueZero: {
+    color: colors.textMuted,
+  },
+  discountTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  discountPercent: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  discountPercentActive: {
+    color: colors.accentGreen || '#4CAF50',
+  },
+  discountAmount: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  discountAmountActive: {
+    color: colors.accentGreen || '#4CAF50',
+  },
+  discountEdit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  discountInput: {
+    width: 60,
+    height: 28,
+    fontSize: 14,
+    padding: 4,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  discountSaveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: colors.accentGreen,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  taxValue: {
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  lineTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  lineTotalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  lineTotalValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.accent,
+  },
+  notesContainer: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 12,
+  },
+  notesLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 8,
+  },
+  notesInput: {
+    fontSize: 13,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  bottomSpacer: {
+    height: 100,
+  },
+  actionBar: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 10,
+  },
+  draftBtn: {
+    flex: 0.4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent + '15',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 6,
+  },
+  draftBtnText: {
+    color: colors.accent,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  paymentBtn: {
+    flex: 0.6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.secondary,
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 6,
+  },
+  paymentBtnDisabled: {
+    backgroundColor: colors.textMuted,
+  },
+  paymentBtnWarning: {
+    backgroundColor: colors.accentRed || '#E53935',
+  },
+  paymentBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // BOGO Count Badge in header
+  bogoCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: (colors.secondary || '#FF6B6B') + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginLeft: 8,
+    gap: 4,
+  },
+  bogoCountText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.secondary || '#FF6B6B',
+  },
+  // BOGO Line Card Styles
+  bogoLineCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 12,
+    marginTop: -4,
+    marginBottom: 10,
+    marginLeft: 28,
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.secondary || '#FF6B6B',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  bogoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  bogoLinkIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: (colors.secondary || '#FF6B6B') + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  bogoPromoTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.secondary || '#FF6B6B',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 4,
+    marginRight: 8,
+  },
+  bogoPromoText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+  },
+  bogoPromoName: {
+    fontSize: 11,
+    color: colors.textMuted,
+    flex: 1,
+  },
+  bogoItemInfo: {
+    marginBottom: 8,
+  },
+  bogoItemDesc: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  bogoItemCode: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontFamily: 'monospace',
+  },
+  bogoParentLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 8,
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  bogoParentText: {
+    fontSize: 10,
+    color: colors.textMuted,
+    flex: 1,
+  },
+  bogoRuleText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.secondary || '#FF6B6B',
+  },
+  bogoDetails: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 8,
+  },
+  bogoQtyBox: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  bogoPriceBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  bogoTotalBox: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  bogoDetailLabel: {
+    fontSize: 9,
+    color: colors.textMuted,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  bogoQtyValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.secondary || '#FF6B6B',
+  },
+  bogoPriceValue: {
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  bogoTotalValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.secondary || '#FF6B6B',
+  },
+  bogoAutoNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 4,
+  },
+  bogoAutoNoteText: {
+    fontSize: 9,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+});
+
+export default CheckoutScreen;
