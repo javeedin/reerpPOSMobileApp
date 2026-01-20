@@ -108,7 +108,19 @@ class PrinterService {
       }
 
       try {
-        this.socket.write(Buffer.from(data), () => {
+        // Convert Uint8Array to string for TCP socket
+        // react-native-tcp-socket can accept string or Uint8Array
+        let sendBuffer;
+        if (data instanceof Uint8Array) {
+          // Convert Uint8Array to array and then to string of bytes
+          sendBuffer = String.fromCharCode.apply(null, data);
+        } else if (typeof data === 'string') {
+          sendBuffer = data;
+        } else {
+          sendBuffer = String.fromCharCode.apply(null, new Uint8Array(data));
+        }
+
+        this.socket.write(sendBuffer, 'binary', () => {
           resolve(true);
         });
       } catch (error) {
