@@ -1019,7 +1019,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
 
   // Show Confirm and Cancel buttons only when picked_qty = 0
   const showPickButtons = pickedQty === 0;
-  // Show Ship Confirm and Undo Pick buttons when picked but not shipped
+  // Show Ship Confirm button when picked but not shipped (Store orders only)
   const showShipButtons = pickedQty > 0 && !isShipped;
 
   // Use the "id" field directly as-is
@@ -2746,21 +2746,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   shipConfirmButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF',
-    marginLeft: 6,
-  },
-  undoPickButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FF9800',
-    borderRadius: 8,
-    paddingVertical: 12,
-  },
-  undoPickButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
