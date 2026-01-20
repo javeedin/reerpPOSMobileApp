@@ -67,6 +67,9 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
   const [showDetails, setShowDetails] = useState(false);
   const [currentStep, setCurrentStep] = useState(1); // 1 = Pick, 2 = Ship
   const [pickCompleted, setPickCompleted] = useState(false);
+  const [shipCompleted, setShipCompleted] = useState(false);
+  const [isRunningSequence, setIsRunningSequence] = useState(false);
+  const [sequenceError, setSequenceError] = useState(null);
 
   if (!item) return null;
 
@@ -96,11 +99,53 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
 
   const jsonString = JSON.stringify(payload, null, 2);
 
+  // For Store transactions: Run Pick Confirm then Ship Confirm automatically
   const handlePickConfirm = async () => {
-    await onConfirm(payload);
     if (isStoreTransaction) {
-      setPickCompleted(true);
-      setCurrentStep(2);
+      // Run both Pick and Ship Confirm in sequence
+      setIsRunningSequence(true);
+      setSequenceError(null);
+
+      try {
+        // Step 1: Pick Confirm
+        setCurrentStep(1);
+        const pickResult = await onConfirm(payload, true); // true = silent mode (no alert)
+
+        if (pickResult && pickResult.success) {
+          setPickCompleted(true);
+          setCurrentStep(2);
+
+          // Step 2: Ship Confirm (automatically)
+          if (linesId) {
+            const shipResult = await onShipConfirm(item, linesId, true); // true = silent mode
+
+            if (shipResult && shipResult.success) {
+              setShipCompleted(true);
+              // Both completed successfully
+              Alert.alert('Success', 'Pick and Ship confirmed successfully', [
+                { text: 'OK', onPress: handleClose }
+              ]);
+            } else {
+              setSequenceError(shipResult?.error || 'Ship confirm failed');
+              Alert.alert('Error', `Pick confirmed but Ship failed: ${shipResult?.error || 'Unknown error'}`);
+            }
+          } else {
+            setSequenceError('No Lines ID available for Ship Confirm');
+            Alert.alert('Warning', 'Pick confirmed but no Lines ID available for Ship Confirm');
+          }
+        } else {
+          setSequenceError(pickResult?.error || 'Pick confirm failed');
+          Alert.alert('Error', pickResult?.error || 'Failed to confirm pick');
+        }
+      } catch (error) {
+        setSequenceError(error.message || 'Unknown error');
+        Alert.alert('Error', error.message || 'Failed to process');
+      } finally {
+        setIsRunningSequence(false);
+      }
+    } else {
+      // Non-Store: Just run Pick Confirm
+      await onConfirm(payload);
     }
   };
 
@@ -113,6 +158,9 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
   const handleClose = () => {
     setCurrentStep(1);
     setPickCompleted(false);
+    setShipCompleted(false);
+    setIsRunningSequence(false);
+    setSequenceError(null);
     setShowDetails(false);
     onClose();
   };
@@ -243,22 +291,29 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
                 <TouchableOpacity
                   style={styles.confirmModalCancelBtn}
                   onPress={handleClose}
-                  disabled={isProcessing}
+                  disabled={isProcessing || isRunningSequence}
                 >
                   <Text style={styles.confirmModalCancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.confirmModalConfirmBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
+                  style={[styles.confirmModalConfirmBtn, (isProcessing || isRunningSequence) && styles.confirmModalConfirmBtnDisabled]}
                   onPress={handlePickConfirm}
-                  disabled={isProcessing}
+                  disabled={isProcessing || isRunningSequence}
                 >
-                  {isProcessing ? (
-                    <ActivityIndicator size="small" color="#FFF" />
+                  {(isProcessing || isRunningSequence) ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <ActivityIndicator size="small" color="#FFF" />
+                      {isRunningSequence && (
+                        <Text style={styles.confirmModalConfirmText}>
+                          {pickCompleted ? 'Ship Confirming...' : 'Pick Confirming...'}
+                        </Text>
+                      )}
+                    </View>
                   ) : (
                     <>
                       <Ionicons name="checkmark-circle" size={20} color="#FFF" />
                       <Text style={styles.confirmModalConfirmText}>
-                        {isStoreTransaction ? 'Pick Confirm (1/2)' : 'Confirm Pick'}
+                        {isStoreTransaction ? 'Pick & Ship Confirm' : 'Confirm Pick'}
                       </Text>
                     </>
                   )}
@@ -267,66 +322,6 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
             </>
           )}
 
-          {/* Step 2: Ship Confirm (Store transactions only) */}
-          {currentStep === 2 && isStoreTransaction && (
-            <>
-              {/* Success message for Pick */}
-              <View style={styles.stepSuccessBanner}>
-                <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-                <View style={styles.stepSuccessText}>
-                  <Text style={styles.stepSuccessTitle}>Pick Confirmed!</Text>
-                  <Text style={styles.stepSuccessSubtitle}>Now proceed to Ship Confirm</Text>
-                </View>
-              </View>
-
-              {/* API Endpoint Info for Ship */}
-              <View style={styles.apiEndpointInfo}>
-                <View style={[styles.apiMethodBadge, { backgroundColor: '#9C27B0' }]}>
-                  <Text style={styles.apiMethodText}>POST</Text>
-                </View>
-                <Text style={styles.apiEndpointText} numberOfLines={2}>
-                  /trip/processs2vauto/{linesId || 'lines_id'}
-                </Text>
-              </View>
-
-              {/* Ship Info */}
-              <View style={styles.shipInfoContainer}>
-                <View style={styles.shipInfoRow}>
-                  <Text style={styles.shipInfoLabel}>Lines ID:</Text>
-                  <Text style={styles.shipInfoValue}>{linesId || 'N/A'}</Text>
-                </View>
-                <View style={styles.shipInfoRow}>
-                  <Text style={styles.shipInfoLabel}>Quantity:</Text>
-                  <Text style={styles.shipInfoValue}>{item.qty || '0'}</Text>
-                </View>
-              </View>
-
-              {/* Action Buttons for Step 2 */}
-              <View style={styles.confirmModalActions}>
-                <TouchableOpacity
-                  style={styles.confirmModalCancelBtn}
-                  onPress={handleClose}
-                  disabled={isProcessing}
-                >
-                  <Text style={styles.confirmModalCancelText}>Skip & Close</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.shipConfirmModalBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
-                  onPress={handleShipConfirm}
-                  disabled={isProcessing || !linesId}
-                >
-                  {isProcessing ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <>
-                      <Ionicons name="airplane" size={20} color="#FFF" />
-                      <Text style={styles.confirmModalConfirmText}>Ship Confirm (2/2)</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
         </View>
       </View>
     </Modal>
@@ -1292,7 +1287,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   };
 
   // Execute the confirm pick API call
-  const executeConfirmPick = async (payload) => {
+  // silentMode: if true, returns result without showing alert (used for chained operations)
+  const executeConfirmPick = async (payload, silentMode = false) => {
     setIsConfirmingPick(true);
     try {
       console.log('[WMSOrderDetails] Confirm Pick Payload:', JSON.stringify(payload, null, 2));
@@ -1301,36 +1297,51 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       const result = await confirmPickPending(payload);
 
       if (result.success) {
-        Alert.alert('Success', 'Pick confirmed successfully', [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Update local state to reflect the confirmed pick (only the selected item)
-              const confirmedItemId = getItemId(confirmPickItem);
-              setLines(prev =>
-                prev.map(line =>
-                  getItemId(line) === confirmedItemId && confirmedItemId !== ''
-                    ? {
-                        ...line,
-                        picked_qty: confirmPickItem.qty,
-                        pick_confirm_status: 'YES',
-                        pick_confirm_date: new Date().toISOString(),
-                        pick_confirm_by: pickerName,
-                      }
-                    : line
-                )
-              );
-              setConfirmPickModalVisible(false);
-              setConfirmPickItem(null);
+        // Update local state to reflect the confirmed pick (only the selected item)
+        const confirmedItemId = getItemId(confirmPickItem);
+        setLines(prev =>
+          prev.map(line =>
+            getItemId(line) === confirmedItemId && confirmedItemId !== ''
+              ? {
+                  ...line,
+                  picked_qty: confirmPickItem.qty,
+                  pick_confirm_status: 'YES',
+                  pick_confirm_date: new Date().toISOString(),
+                  pick_confirm_by: pickerName,
+                }
+              : line
+          )
+        );
+
+        if (silentMode) {
+          // Return result for chained operations (Store orders)
+          return { success: true };
+        } else {
+          // Show alert and close modal (non-Store orders)
+          Alert.alert('Success', 'Pick confirmed successfully', [
+            {
+              text: 'OK',
+              onPress: () => {
+                setConfirmPickModalVisible(false);
+                setConfirmPickItem(null);
+              }
             }
-          }
-        ]);
+          ]);
+        }
       } else {
-        Alert.alert('Error', result.error || 'Failed to confirm pick');
+        if (silentMode) {
+          return { success: false, error: result.error || 'Failed to confirm pick' };
+        } else {
+          Alert.alert('Error', result.error || 'Failed to confirm pick');
+        }
       }
     } catch (error) {
       console.error('[WMSOrderDetails] Error confirming pick:', error);
-      Alert.alert('Error', 'Failed to confirm pick: ' + (error.message || 'Unknown error'));
+      if (silentMode) {
+        return { success: false, error: error.message || 'Unknown error' };
+      } else {
+        Alert.alert('Error', 'Failed to confirm pick: ' + (error.message || 'Unknown error'));
+      }
     } finally {
       setIsConfirmingPick(false);
     }
@@ -1376,13 +1387,17 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   };
 
   // Handle Ship Confirm
-  const handleShipConfirm = async (item, linesId) => {
+  // silentMode: if true, returns result without showing modal (used for chained operations)
+  const handleShipConfirm = async (item, linesId, silentMode = false) => {
     setShippingId(item.delivery_detail_id);
-    setApiResponseTitle('Ship Confirm');
-    setApiResponseLoading(true);
-    setApiResponse(null);
-    setApiResponseSuccess(false);
-    setApiResponseModalVisible(true);
+
+    if (!silentMode) {
+      setApiResponseTitle('Ship Confirm');
+      setApiResponseLoading(true);
+      setApiResponse(null);
+      setApiResponseSuccess(false);
+      setApiResponseModalVisible(true);
+    }
 
     try {
       // Debug: Log all item fields to find the correct Lines_id field
@@ -1392,15 +1407,18 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
       const result = await shipConfirm(linesId);
 
-      setApiResponseLoading(false);
-      setApiResponse(result.data || { error: result.error });
-      setApiResponseSuccess(result.success);
+      if (!silentMode) {
+        setApiResponseLoading(false);
+        setApiResponse(result.data || { error: result.error });
+        setApiResponseSuccess(result.success);
+      }
 
       if (result.success) {
         // Update local state to reflect shipped status
+        const itemId = getItemId(item);
         setLines(prev =>
           prev.map(line =>
-            line.delivery_detail_id === item.delivery_detail_id
+            getItemId(line) === itemId && itemId !== ''
               ? {
                   ...line,
                   shipped_status: 'YES',
@@ -1410,11 +1428,20 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           )
         );
       }
+
+      if (silentMode) {
+        return { success: result.success, error: result.error };
+      }
     } catch (error) {
       console.error('[WMSOrderDetails] Error ship confirm:', error);
-      setApiResponseLoading(false);
-      setApiResponse({ error: error.message || 'Unknown error' });
-      setApiResponseSuccess(false);
+      if (!silentMode) {
+        setApiResponseLoading(false);
+        setApiResponse({ error: error.message || 'Unknown error' });
+        setApiResponseSuccess(false);
+      }
+      if (silentMode) {
+        return { success: false, error: error.message || 'Unknown error' };
+      }
     } finally {
       setShippingId(null);
     }
