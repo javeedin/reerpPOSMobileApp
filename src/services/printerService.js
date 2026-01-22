@@ -129,9 +129,56 @@ class PrinterService {
     });
   }
 
+  // Generate preview text for what will be printed
+  generatePreviewText(orderData) {
+    const lines = [];
+    const LINE_WIDTH = 24; // Characters that fit on narrow label
+    const separator = '-'.repeat(LINE_WIDTH);
+
+    lines.push('');
+    lines.push('      [QR CODE]');
+    lines.push(`   ${orderData.orderNumber || 'NO-ORDER'}`);
+    lines.push('');
+    lines.push(separator);
+    lines.push(this.truncateText(orderData.orderNumber || 'N/A', LINE_WIDTH));
+
+    if (orderData.orderDate) {
+      lines.push(this.truncateText(orderData.orderDate, LINE_WIDTH));
+    }
+
+    if (orderData.accountName) {
+      lines.push(this.truncateText(orderData.accountName, LINE_WIDTH));
+    }
+
+    if (orderData.picker) {
+      lines.push(this.truncateText(`Picker: ${orderData.picker}`, LINE_WIDTH));
+    }
+
+    if (orderData.loadingBy) {
+      lines.push(this.truncateText(`Bay: ${orderData.loadingBy}`, LINE_WIDTH));
+    }
+
+    if (orderData.lorry) {
+      lines.push(this.truncateText(`Lorry: ${orderData.lorry}`, LINE_WIDTH));
+    }
+
+    lines.push(separator);
+
+    return lines.join('\n');
+  }
+
+  // Truncate text to fit label width
+  truncateText(text, maxLength) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 2) + '..';
+  }
+
   // Create ESC/POS commands for label with QR code
   createLabelCommands(orderData) {
     const commands = [];
+    const LINE_WIDTH = 24; // Characters that fit on narrow label
+    const separator = '-'.repeat(LINE_WIDTH);
 
     // Initialize printer
     commands.push(ESC, 0x40);
@@ -148,8 +195,8 @@ class PrinterService {
     // QR Code: Select model (model 2)
     commands.push(GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);
 
-    // QR Code: Set size (8 = large for better scanning)
-    commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x08);
+    // QR Code: Set size (6 = medium for narrow label)
+    commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06);
 
     // QR Code: Set error correction level (M = 49)
     commands.push(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31);
@@ -173,47 +220,47 @@ class PrinterService {
     commands.push(ESC, 0x61, 0x01);
 
     // Add separator
-    this.addText(commands, '--------------------------------');
+    this.addText(commands, separator);
     commands.push(LF);
 
     // Bold on for order number
     commands.push(ESC, 0x45, 0x01);
-    this.addText(commands, `Order: ${orderData.orderNumber || 'N/A'}`);
+    this.addText(commands, this.truncateText(orderData.orderNumber || 'N/A', LINE_WIDTH));
     commands.push(LF);
     commands.push(ESC, 0x45, 0x00); // Bold off
 
-    // Order details
+    // Order date
     if (orderData.orderDate) {
-      this.addText(commands, `Date: ${orderData.orderDate}`);
+      this.addText(commands, this.truncateText(orderData.orderDate, LINE_WIDTH));
       commands.push(LF);
     }
 
+    // Customer name (full line, no prefix)
     if (orderData.accountName) {
-      // Truncate long customer names
-      const customerName = orderData.accountName.length > 28
-        ? orderData.accountName.substring(0, 25) + '...'
-        : orderData.accountName;
-      this.addText(commands, `Customer: ${customerName}`);
+      this.addText(commands, this.truncateText(orderData.accountName, LINE_WIDTH));
       commands.push(LF);
     }
 
+    // Picker
     if (orderData.picker) {
-      this.addText(commands, `Picker: ${orderData.picker}`);
+      this.addText(commands, this.truncateText(`Picker: ${orderData.picker}`, LINE_WIDTH));
       commands.push(LF);
     }
 
+    // Bay
     if (orderData.loadingBy) {
-      this.addText(commands, `Bay: ${orderData.loadingBy}`);
+      this.addText(commands, this.truncateText(`Bay: ${orderData.loadingBy}`, LINE_WIDTH));
       commands.push(LF);
     }
 
+    // Lorry
     if (orderData.lorry) {
-      this.addText(commands, `Lorry: ${orderData.lorry}`);
+      this.addText(commands, this.truncateText(`Lorry: ${orderData.lorry}`, LINE_WIDTH));
       commands.push(LF);
     }
 
     // Add separator
-    this.addText(commands, '--------------------------------');
+    this.addText(commands, separator);
     commands.push(LF);
 
     // Line feeds for paper advance

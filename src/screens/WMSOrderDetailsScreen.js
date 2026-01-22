@@ -15,6 +15,7 @@ import {
   FlatList,
   Animated,
   Share,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -727,6 +728,7 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [logs, setLogs] = useState([]);
   const [printSuccess, setPrintSuccess] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
 
   const orderNumber = order?.source_order_number || order?.order_number || 'N/A';
   const orderDate = order?.assignment_date
@@ -744,6 +746,9 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
     loadingBy: loadingBay,
     lorry: lorryNumber,
   };
+
+  // Generate preview text
+  const previewText = printerService.generatePreviewText(orderData);
 
   const addLog = (message, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
@@ -938,18 +943,20 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
             </TouchableOpacity>
           </View>
 
-          {/* QR Code */}
-          <View style={styles.qrCodeSection}>
-            <QRCode value={orderNumber} size={120} backgroundColor="white" color="black" />
-          </View>
-
-          {/* Simple Labels */}
-          <View style={styles.qrLabelsSimple}>
-            <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Order:</Text> {orderNumber}</Text>
-            <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Date:</Text> {orderDate}</Text>
-            <Text style={styles.qrLabelLine} numberOfLines={1}><Text style={styles.qrLabelKey}>Customer:</Text> {accountName}</Text>
-            <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Picker:</Text> {pickerName || 'N/A'}</Text>
-            <Text style={styles.qrLabelLine}><Text style={styles.qrLabelKey}>Bay:</Text> {loadingBay}  |  <Text style={styles.qrLabelKey}>Lorry:</Text> {lorryNumber}</Text>
+          {/* Print Preview Section */}
+          <View style={styles.printPreviewSection}>
+            <View style={styles.printPreviewHeader}>
+              <Ionicons name="print-outline" size={16} color="#666" />
+              <Text style={styles.printPreviewTitle}>Print Preview</Text>
+            </View>
+            <View style={styles.printPreviewContent}>
+              {/* QR Code representation */}
+              <View style={styles.previewQRBox}>
+                <QRCode value={orderNumber} size={80} backgroundColor="white" color="black" />
+              </View>
+              {/* Preview text */}
+              <Text style={styles.printPreviewText}>{previewText}</Text>
+            </View>
           </View>
 
           {/* Print to Label Button - Opens Scanner */}
@@ -3707,6 +3714,47 @@ const styles = StyleSheet.create({
   qrLabelKey: {
     fontWeight: '700',
     color: '#1565C0',
+  },
+  // Print Preview Styles
+  printPreviewSection: {
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    backgroundColor: '#FAFAFA',
+    overflow: 'hidden',
+  },
+  printPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#F0F0F0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#DDD',
+  },
+  printPreviewTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  printPreviewContent: {
+    alignItems: 'center',
+    padding: 12,
+  },
+  previewQRBox: {
+    backgroundColor: '#FFF',
+    padding: 8,
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  printPreviewText: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 11,
+    color: '#333',
+    textAlign: 'center',
+    lineHeight: 16,
   },
   qrPrintButton: {
     marginTop: 16,
