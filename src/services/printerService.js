@@ -140,6 +140,17 @@ class PrinterService {
     lines.push(`   ${orderData.orderNumber || 'NO-ORDER'}`);
     lines.push('');
     lines.push(separator);
+
+    // Lorry and Bay first (so they don't get cut off)
+    if (orderData.lorry) {
+      lines.push(this.truncateText(`Lorry: ${orderData.lorry}`, LINE_WIDTH));
+    }
+
+    if (orderData.loadingBy) {
+      lines.push(this.truncateText(`Bay: ${orderData.loadingBy}`, LINE_WIDTH));
+    }
+
+    // Order details
     lines.push(this.truncateText(orderData.orderNumber || 'N/A', LINE_WIDTH));
 
     if (orderData.orderDate) {
@@ -152,14 +163,6 @@ class PrinterService {
 
     if (orderData.picker) {
       lines.push(this.truncateText(`Picker: ${orderData.picker}`, LINE_WIDTH));
-    }
-
-    if (orderData.loadingBy) {
-      lines.push(this.truncateText(`Bay: ${orderData.loadingBy}`, LINE_WIDTH));
-    }
-
-    if (orderData.lorry) {
-      lines.push(this.truncateText(`Lorry: ${orderData.lorry}`, LINE_WIDTH));
     }
 
     lines.push(separator);
@@ -223,6 +226,17 @@ class PrinterService {
     this.addText(commands, separator);
     commands.push(LF);
 
+    // Lorry and Bay first (so they don't get cut off at bottom)
+    if (orderData.lorry) {
+      this.addText(commands, this.truncateText(`Lorry: ${orderData.lorry}`, LINE_WIDTH));
+      commands.push(LF);
+    }
+
+    if (orderData.loadingBy) {
+      this.addText(commands, this.truncateText(`Bay: ${orderData.loadingBy}`, LINE_WIDTH));
+      commands.push(LF);
+    }
+
     // Bold on for order number
     commands.push(ESC, 0x45, 0x01);
     this.addText(commands, this.truncateText(orderData.orderNumber || 'N/A', LINE_WIDTH));
@@ -244,18 +258,6 @@ class PrinterService {
     // Picker
     if (orderData.picker) {
       this.addText(commands, this.truncateText(`Picker: ${orderData.picker}`, LINE_WIDTH));
-      commands.push(LF);
-    }
-
-    // Bay
-    if (orderData.loadingBy) {
-      this.addText(commands, this.truncateText(`Bay: ${orderData.loadingBy}`, LINE_WIDTH));
-      commands.push(LF);
-    }
-
-    // Lorry
-    if (orderData.lorry) {
-      this.addText(commands, this.truncateText(`Lorry: ${orderData.lorry}`, LINE_WIDTH));
       commands.push(LF);
     }
 
