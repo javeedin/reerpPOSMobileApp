@@ -169,8 +169,8 @@ class PrinterService {
     // Line feed after QR
     commands.push(LF, LF);
 
-    // Left alignment for text
-    commands.push(ESC, 0x61, 0x00);
+    // Center alignment for text
+    commands.push(ESC, 0x61, 0x01);
 
     // Add separator
     this.addText(commands, '--------------------------------');
