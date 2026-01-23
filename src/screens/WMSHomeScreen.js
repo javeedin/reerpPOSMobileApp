@@ -803,7 +803,7 @@ const WMSHomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
           <View style={styles.headerText}>
-            <Text style={styles.headerTitle}>WMS 1.0.1</Text>
+            <Text style={styles.headerTitle}>WMS 1.0.2</Text>
             <Text style={styles.headerSubtitle}>
               {pickerName || 'Not Set'}
             </Text>
