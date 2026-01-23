@@ -136,18 +136,14 @@ class PrinterService {
     const separator = '-'.repeat(LINE_WIDTH);
 
     lines.push('');
-    lines.push('      [QR CODE]');
-    lines.push(`   ${orderData.orderNumber || 'NO-ORDER'}`);
-    lines.push('');
     lines.push(separator);
 
-    // Lorry and Bay first (so they don't get cut off)
-    if (orderData.lorry) {
-      lines.push(this.truncateText(`Lorry: ${orderData.lorry}`, LINE_WIDTH));
-    }
-
-    if (orderData.loadingBy) {
-      lines.push(this.truncateText(`Bay: ${orderData.loadingBy}`, LINE_WIDTH));
+    // Lorry and Bay combined on one line
+    const lorry = orderData.lorry || '';
+    const bay = orderData.loadingBy || '';
+    if (lorry || bay) {
+      const lorryBay = `Lorry: ${lorry} Bay: ${bay}`;
+      lines.push(this.truncateText(lorryBay, LINE_WIDTH));
     }
 
     // Order details
@@ -226,14 +222,12 @@ class PrinterService {
     this.addText(commands, separator);
     commands.push(LF);
 
-    // Lorry and Bay first (so they don't get cut off at bottom)
-    if (orderData.lorry) {
-      this.addText(commands, this.truncateText(`Lorry: ${orderData.lorry}`, LINE_WIDTH));
-      commands.push(LF);
-    }
-
-    if (orderData.loadingBy) {
-      this.addText(commands, this.truncateText(`Bay: ${orderData.loadingBy}`, LINE_WIDTH));
+    // Lorry and Bay combined on one line (so they don't get cut off at bottom)
+    const lorry = orderData.lorry || '';
+    const bay = orderData.loadingBy || '';
+    if (lorry || bay) {
+      const lorryBay = `Lorry: ${lorry} Bay: ${bay}`;
+      this.addText(commands, this.truncateText(lorryBay, LINE_WIDTH));
       commands.push(LF);
     }
 
