@@ -19,11 +19,14 @@ import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
+const INSTANCE_OPTIONS = ['TEST', 'PROD'];
+
 const LoginScreen = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [instance, setInstance] = useState('PROD');
+  const [instance, setInstance] = useState('TEST');
   const [showPassword, setShowPassword] = useState(false);
+  const [showInstancePicker, setShowInstancePicker] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -145,14 +148,54 @@ const LoginScreen = () => {
                   errors.password
                 )}
 
-                {renderInput(
-                  'server-outline',
-                  'Instance',
-                  instance,
-                  setInstance,
-                  false,
-                  errors.instance
-                )}
+                {/* Instance Selector */}
+                <View style={styles.inputWrapper}>
+                  <TouchableOpacity
+                    style={[styles.inputContainer, errors.instance && styles.inputError]}
+                    onPress={() => setShowInstancePicker(!showInstancePicker)}
+                  >
+                    <Ionicons name="server-outline" size={22} color={colors.textSecondary} style={styles.inputIcon} />
+                    <Text style={[styles.input, { paddingVertical: 0 }]}>
+                      {instance}
+                    </Text>
+                    <Ionicons
+                      name={showInstancePicker ? 'chevron-up' : 'chevron-down'}
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                  {showInstancePicker && (
+                    <View style={styles.instanceDropdown}>
+                      {INSTANCE_OPTIONS.map((opt) => (
+                        <TouchableOpacity
+                          key={opt}
+                          style={[
+                            styles.instanceOption,
+                            instance === opt && styles.instanceOptionActive,
+                          ]}
+                          onPress={() => {
+                            setInstance(opt);
+                            setShowInstancePicker(false);
+                            if (errors.instance) setErrors((prev) => ({ ...prev, instance: null }));
+                          }}
+                        >
+                          <Ionicons
+                            name={instance === opt ? 'radio-button-on' : 'radio-button-off'}
+                            size={18}
+                            color={instance === opt ? colors.accent : colors.textSecondary}
+                          />
+                          <Text style={[
+                            styles.instanceOptionText,
+                            instance === opt && styles.instanceOptionTextActive,
+                          ]}>
+                            {opt}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  {errors.instance && <Text style={styles.errorText}>{errors.instance}</Text>}
+                </View>
 
                 {/* Login Button */}
                 <TouchableOpacity
@@ -343,6 +386,32 @@ const styles = StyleSheet.create({
   secureText: {
     color: colors.accentGreen,
     fontSize: 12,
+  },
+  instanceDropdown: {
+    backgroundColor: colors.backgroundLight,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  instanceOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  instanceOptionActive: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+  },
+  instanceOptionText: {
+    color: colors.textSecondary,
+    fontSize: 15,
+  },
+  instanceOptionTextActive: {
+    color: colors.accent,
+    fontWeight: '600',
   },
 });
 

@@ -803,11 +803,14 @@ const WMSHomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
           <View style={styles.headerText}>
-            <Text style={styles.headerTitle}>WMS 1.0.2</Text>
+            <Text style={styles.headerTitle}>WMS 1.0.3</Text>
             <Text style={styles.headerSubtitle}>
               {pickerName || 'Not Set'}
             </Text>
           </View>
+          <TouchableOpacity onPress={() => navigation.navigate('APIList')} style={styles.headerProfileButton}>
+            <Ionicons name="code-slash-outline" size={24} color="#FFF" />
+          </TouchableOpacity>
           {isPicker && (
             <TouchableOpacity onPress={() => setShowProfileModal(true)} style={styles.headerProfileButton}>
               <Ionicons name="person-circle-outline" size={28} color="#FFF" />

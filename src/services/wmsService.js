@@ -694,8 +694,8 @@ export const processS2VShipment = async (sourceOrderNumber, instanceName = 'PROD
   }
 };
 
-// Fusion Cloud API configuration for onhand lookup
-const FUSION_BASE_URL = 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05';
+// Fusion Cloud API configuration for onhand lookup - dynamic based on instance
+import { getInstance, getFusionBaseUrl } from './api';
 const FUSION_CREDENTIALS = {
   username: 'shaik',
   password: 'fusion1234',
@@ -731,7 +731,9 @@ const base64Encode = (str) => {
  */
 export const fetchItemOnhand = async (organizationCode, subinventoryCode, itemNumber) => {
   try {
-    const url = `${FUSION_BASE_URL}/inventoryOnhandBalances?q=OrganizationCode=${encodeURIComponent(organizationCode)};SubinventoryCode=${encodeURIComponent(subinventoryCode)};ItemNumber=${encodeURIComponent(itemNumber)}`;
+    const currentInstance = await getInstance();
+    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+    const url = `${fusionBaseUrl}/inventoryOnhandBalances?q=OrganizationCode=${encodeURIComponent(organizationCode)};SubinventoryCode=${encodeURIComponent(subinventoryCode)};ItemNumber=${encodeURIComponent(itemNumber)}`;
 
     console.log('[WMSService] Fetching item onhand:', url);
 

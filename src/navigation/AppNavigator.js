@@ -68,6 +68,7 @@ const PickerStack = () => {
       <Stack.Screen name="WMSOrderDetails" component={WMSOrderDetailsScreen} />
       <Stack.Screen name="WMSPickerStats" component={WMSPickerStatsScreen} />
       <Stack.Screen name="PrinterSettings" component={PrinterSettingsScreen} />
+      <Stack.Screen name="APIList" component={APIListScreen} />
     </Stack.Navigator>
   );
 };

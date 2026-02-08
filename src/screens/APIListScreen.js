@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../theme/colors';
+import { getInstance, getFusionBaseUrl } from '../services/api';
 
 // API Documentation organized by Module and Page
 const API_DOCUMENTATION = [
@@ -407,6 +408,17 @@ const ModuleSection = ({ module, isExpanded, onToggle }) => {
 
 const APIListScreen = ({ navigation }) => {
   const [expandedModules, setExpandedModules] = useState({});
+  const [currentInstance, setCurrentInstance] = useState('TEST');
+  const [fusionUrl, setFusionUrl] = useState('');
+
+  useEffect(() => {
+    const loadInstance = async () => {
+      const inst = await getInstance();
+      setCurrentInstance(inst);
+      setFusionUrl(getFusionBaseUrl(inst));
+    };
+    loadInstance();
+  }, []);
 
   const toggleModule = (moduleName) => {
     setExpandedModules(prev => ({
@@ -484,15 +496,23 @@ const APIListScreen = ({ navigation }) => {
         <View style={styles.baseUrlsSection}>
           <Text style={styles.baseUrlsTitle}>Base URLs</Text>
           <View style={styles.baseUrlRow}>
-            <Text style={styles.baseUrlLabel}>ORDS (Oracle REST):</Text>
+            <Text style={styles.baseUrlLabel}>Instance:</Text>
+            <View style={styles.instanceBadgeRow}>
+              <View style={[styles.instanceBadge, { backgroundColor: currentInstance === 'PROD' ? '#4CAF50' : '#FF9800' }]}>
+                <Text style={styles.instanceBadgeText}>{currentInstance}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.baseUrlRow}>
+            <Text style={styles.baseUrlLabel}>ORDS / Apex (Oracle REST):</Text>
             <Text style={styles.baseUrlValue} numberOfLines={2}>
               https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP
             </Text>
           </View>
           <View style={styles.baseUrlRow}>
-            <Text style={styles.baseUrlLabel}>Fusion Cloud:</Text>
+            <Text style={styles.baseUrlLabel}>Fusion Cloud ({currentInstance}):</Text>
             <Text style={styles.baseUrlValue} numberOfLines={2}>
-              https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05
+              {fusionUrl || 'Loading...'}
             </Text>
           </View>
         </View>
@@ -720,6 +740,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#2196F3',
     fontFamily: 'monospace',
+  },
+  instanceBadgeRow: {
+    flexDirection: 'row',
+    marginTop: 2,
+  },
+  instanceBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  instanceBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 

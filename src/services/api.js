@@ -1,7 +1,42 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Apex (ORDS) base URL - same for both instances
 const BASE_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP';
+
+// Fusion Cloud base URLs by instance
+const FUSION_URLS = {
+  TEST: 'https://efmh-test.fa.em3.oraclecloud.com',
+  PROD: 'https://efmh.fa.em3.oraclecloud.com',
+};
+
+// Get current instance from stored user data
+const INSTANCE_KEY = 'app_instance';
+
+export const saveInstance = async (instance) => {
+  try {
+    await AsyncStorage.setItem(INSTANCE_KEY, instance);
+  } catch (error) {
+    console.error('Error saving instance:', error);
+  }
+};
+
+export const getInstance = async () => {
+  try {
+    const instance = await AsyncStorage.getItem(INSTANCE_KEY);
+    return instance || 'TEST';
+  } catch (error) {
+    console.error('Error getting instance:', error);
+    return 'TEST';
+  }
+};
+
+// Get the Fusion base URL for the current instance
+export const getFusionBaseUrl = (instance) => {
+  const inst = (instance || 'TEST').toUpperCase();
+  const host = FUSION_URLS[inst] || FUSION_URLS.TEST;
+  return `${host}/fscmRestApi/resources/11.13.18.05`;
+};
 
 const api = axios.create({
   baseURL: BASE_URL,

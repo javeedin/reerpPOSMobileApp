@@ -74,8 +74,9 @@ const getPriceListStorageKey = (priceListName) => {
   return `${PRICELIST_KEY_PREFIX}${sanitized}`;
 };
 
-// Fusion Cloud API configuration
-const FUSION_BASE_URL = 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05';
+// Fusion Cloud API configuration - dynamic based on instance
+import { getInstance, getFusionBaseUrl } from './api';
+// getFusionBaseUrl(instance) returns the correct Fusion URL for TEST or PROD
 const FUSION_CREDENTIALS = {
   username: 'shaik',
   password: 'fusion1234',
@@ -933,8 +934,10 @@ export const syncOnhand = async (onProgress, userWarehouse, userSubinventory) =>
       onProgress({ status: 'Connecting to Fusion Cloud...', fetched: 0 });
     }
 
-    // Build the query URL
-    const queryUrl = `${FUSION_BASE_URL}/inventoryOnhandBalances?q=OrganizationCode=${organizationCode};SubinventoryCode=${subinventoryCode}&limit=500`;
+    // Build the query URL - use dynamic Fusion URL based on instance
+    const currentInstance = await getInstance();
+    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+    const queryUrl = `${fusionBaseUrl}/inventoryOnhandBalances?q=OrganizationCode=${organizationCode};SubinventoryCode=${subinventoryCode}&limit=500`;
     console.log('Fetching onhand from:', queryUrl);
 
     // Create Basic Auth header (using cross-platform base64 encoding)

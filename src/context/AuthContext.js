@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { loginUser, getMenuOptions, saveUserData, getUserData, saveMenuData, getMenuData, clearAllData } from '../services/api';
+import { loginUser, getMenuOptions, saveUserData, getUserData, saveMenuData, getMenuData, clearAllData, saveInstance } from '../services/api';
 import { clearAllSyncData, getSyncMetadata, syncCustomers, syncOnhand, syncBogo, syncPaymentMethods } from '../services/syncService';
 import { clearAllOrders } from '../services/orderService';
 import { clearAdjustments } from '../services/onhandService';
@@ -43,6 +43,9 @@ export const AuthProvider = ({ children }) => {
     console.log('Attempting login for:', username);
     setIsLoading(true);
     try {
+      // Save instance for use by all services
+      await saveInstance(instance);
+
       // Call login API
       const loginResponse = await loginUser(username, password);
 
