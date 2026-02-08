@@ -46,6 +46,26 @@ const api = axios.create({
   },
 });
 
+// Interceptor: automatically add p_instance_name to all Apex requests
+api.interceptors.request.use(async (config) => {
+  const instance = await getInstance();
+  if (config.method === 'get') {
+    config.params = { ...config.params, p_instance_name: instance };
+  } else if (config.method === 'post' || config.method === 'put') {
+    if (config.data && typeof config.data === 'object') {
+      config.data = { ...config.data, p_instance_name: instance };
+    }
+  }
+  return config;
+});
+
+// Helper: append p_instance_name to a URL query string (for direct fetch/axios calls)
+export const appendInstanceParam = async (url) => {
+  const instance = await getInstance();
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}p_instance_name=${encodeURIComponent(instance)}`;
+};
+
 // Login API - Validate user credentials
 export const loginUser = async (username, password) => {
   const url = `${BASE_URL}/LOGIN/user/?username=${username}&password=${password}`;

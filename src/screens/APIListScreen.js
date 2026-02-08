@@ -13,6 +13,7 @@ import colors from '../theme/colors';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 
 // API Documentation organized by Module and Page
+// NOTE: All Apex/ORDS APIs automatically include p_instance_name (TEST/PROD) parameter
 const API_DOCUMENTATION = [
   {
     module: 'Login & Authentication',
@@ -26,7 +27,7 @@ const API_DOCUMENTATION = [
             name: 'User Login',
             endpoint: '/LOGIN/user/',
             method: 'GET',
-            params: 'username, password',
+            params: 'username, password, p_instance_name',
             description: 'Validate user credentials',
           },
         ],
@@ -38,7 +39,7 @@ const API_DOCUMENTATION = [
             name: 'Get Menu Options',
             endpoint: '/APPMENU/MENU/{username}',
             method: 'GET',
-            params: 'username (path)',
+            params: 'username (path), p_instance_name',
             description: 'Fetch user menu options',
           },
         ],
@@ -57,7 +58,7 @@ const API_DOCUMENTATION = [
             name: 'All Customers',
             endpoint: '/ALLCUSTOMERS/ALL',
             method: 'GET',
-            params: 'start_row, end_row',
+            params: 'start_row, end_row, p_instance_name',
             description: 'Fetch all customers with pagination',
           },
         ],
@@ -69,7 +70,7 @@ const API_DOCUMENTATION = [
             name: 'All Items',
             endpoint: '/ALLITEMS/ALL',
             method: 'GET',
-            params: 'start_row, end_row',
+            params: 'start_row, end_row, p_instance_name',
             description: 'Fetch all items with pagination',
           },
         ],
@@ -81,7 +82,7 @@ const API_DOCUMENTATION = [
             name: 'All Agents',
             endpoint: '/ALLAGENTS/ALL',
             method: 'GET',
-            params: 'start_row, end_row',
+            params: 'start_row, end_row, p_instance_name',
             description: 'Fetch all sales agents',
           },
         ],
@@ -93,14 +94,14 @@ const API_DOCUMENTATION = [
             name: 'Price List Names',
             endpoint: '/SYNCPRICELIST/LIST',
             method: 'GET',
-            params: 'SALESREP_NUMBER',
+            params: 'SALESREP_NUMBER, p_instance_name',
             description: 'Get price list names for user',
           },
           {
             name: 'Price List Items',
             endpoint: '/pricelist/onlypricelist',
             method: 'GET',
-            params: 'p_list_name, p_start_row, p_end_row',
+            params: 'p_list_name, p_start_row, p_end_row, p_instance_name',
             description: 'Fetch price list items with pagination (10,000 per page)',
           },
         ],
@@ -112,7 +113,7 @@ const API_DOCUMENTATION = [
             name: 'BOGO Promotions',
             endpoint: '/ARMODULE/BOGO',
             method: 'GET',
-            params: 'none',
+            params: 'p_instance_name',
             description: 'Fetch Buy-One-Get-One promotions',
           },
         ],
@@ -124,7 +125,7 @@ const API_DOCUMENTATION = [
             name: 'Payment Methods',
             endpoint: '/ARMODULE/PAYMENTMETHODS',
             method: 'GET',
-            params: 'none',
+            params: 'p_instance_name',
             description: 'Fetch available payment methods',
           },
         ],
@@ -137,7 +138,7 @@ const API_DOCUMENTATION = [
             endpoint: '/inventoryOnhandBalances',
             method: 'GET',
             params: 'OrganizationCode, SubinventoryCode, limit, offset',
-            description: 'Fusion Cloud API - Fetch inventory onhand balances',
+            description: 'Fusion Cloud API - Fetch inventory onhand balances (URL based on instance)',
             baseUrl: 'Fusion Cloud',
           },
           {
@@ -164,8 +165,27 @@ const API_DOCUMENTATION = [
             name: 'Query Historical Orders',
             endpoint: '/ORDERCRATION/QueryOrders',
             method: 'GET',
-            params: 'source_order_number, from_date, to_date, salesrep_number, location_name',
+            params: 'source_order_number, from_date, to_date, salesrep_number, location_name, p_instance_name',
             description: 'Query historical orders with filters',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    module: 'Lodgement',
+    icon: 'cash-outline',
+    color: '#E91E63',
+    pages: [
+      {
+        page: 'Lodgement Report',
+        apis: [
+          {
+            name: 'Daily Lodgment Report',
+            endpoint: '/ARMODULE/DAILYLODGMENT',
+            method: 'GET',
+            params: 'ORDER_DATE, SALESREP_NUMBER, p_instance_name',
+            description: 'Fetch daily lodgment report for a salesperson',
           },
         ],
       },
@@ -183,7 +203,7 @@ const API_DOCUMENTATION = [
             name: 'Shipments Summary',
             endpoint: '/WAREHOUSEMANAGEMENT/SHIPMENTSSUMMARYFORAPP',
             method: 'GET',
-            params: 'pickerName, P_fromDate, P_todate, pickConfirmStatus',
+            params: 'pickerName, P_fromDate, P_todate, pickConfirmStatus, p_instance_name',
             description: 'Fetch shipments summary for picker',
           },
         ],
@@ -195,15 +215,36 @@ const API_DOCUMENTATION = [
             name: 'Shipment Lines',
             endpoint: '/WAREHOUSEMANAGEMENT/SHIPMENTLINESFORAPP',
             method: 'GET',
-            params: 'p_SOURCE_ORDER_NUMBER',
+            params: 'p_SOURCE_ORDER_NUMBER, p_instance_name',
             description: 'Fetch shipment lines for an order',
           },
           {
             name: 'Confirm Pick',
             endpoint: '/WAREHOUSEMANAGEMENT/CONFIRMPICK',
             method: 'POST',
-            params: 'delivery_detail_id, picked_qty, pick_confirm_status, picker_name, pick_confirm_date',
+            params: 'delivery_detail_id, picked_qty, pick_confirm_status, picker_name, pick_confirm_date, p_instance_name',
             description: 'Confirm pick for a shipment line',
+          },
+          {
+            name: 'Pending Pick Confirm',
+            endpoint: '/WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS',
+            method: 'POST',
+            params: 'id, line_number, lot, pickedQty, pickedBy, pickConfirmDate, pickConfirmStatus, p_instance_name',
+            description: 'Confirm pending pick with lot details',
+          },
+          {
+            name: 'Ship Confirm (Auto)',
+            endpoint: '/WAREHOUSEMANAGEMENT/trip/processs2vauto/{deliveryDetailId}',
+            method: 'POST',
+            params: 'deliveryDetailId (path), p_instance_name',
+            description: 'Auto ship confirm for a delivery line',
+          },
+          {
+            name: 'Process S2V Shipment',
+            endpoint: '/WAREHOUSEMANAGEMENT/trip/processs2v',
+            method: 'POST',
+            params: 'p_trx_number, p_instance_name',
+            description: 'Process S2V shipment by order number',
           },
         ],
       },
@@ -214,7 +255,7 @@ const API_DOCUMENTATION = [
             name: 'Picker Performance',
             endpoint: '/WAREHOUSEMANAGEMENT/PICKERPERFORMANCE',
             method: 'GET',
-            params: 'pickerName, P_fromDate, P_todate, pickConfirmStatus',
+            params: 'pickerName, P_fromDate, P_todate, pickConfirmStatus, p_instance_name',
             description: 'Fetch picker performance metrics',
           },
         ],
@@ -227,7 +268,7 @@ const API_DOCUMENTATION = [
             endpoint: '/inventoryOnhandBalances',
             method: 'GET',
             params: 'OrganizationCode, SubinventoryCode, ItemNumber',
-            description: 'Fusion Cloud API - Search item onhand for lot lookup',
+            description: 'Fusion Cloud API - Search item onhand for lot lookup (URL based on instance)',
             baseUrl: 'Fusion Cloud',
           },
           {
@@ -254,7 +295,7 @@ const API_DOCUMENTATION = [
             name: 'Fetch Trips',
             endpoint: '/WAREHOUSEMANAGEMENT/appTripdetailsall',
             method: 'GET',
-            params: 'from_date, to_date',
+            params: 'from_date, to_date, p_instance_name',
             description: 'Fetch all trips for date range',
           },
         ],
@@ -266,7 +307,7 @@ const API_DOCUMENTATION = [
             name: 'Order Line Details',
             endpoint: '/TRIPMANAGEMENT/trips/orders/getlotdetails/{orderNumber}',
             method: 'GET',
-            params: 'orderNumber (path)',
+            params: 'orderNumber (path), p_instance_name',
             description: 'Fetch order line/lot details',
           },
         ],
@@ -513,6 +554,11 @@ const APIListScreen = ({ navigation }) => {
             <Text style={styles.baseUrlLabel}>Fusion Cloud ({currentInstance}):</Text>
             <Text style={styles.baseUrlValue} numberOfLines={2}>
               {fusionUrl || 'Loading...'}
+            </Text>
+          </View>
+          <View style={[styles.baseUrlRow, { backgroundColor: 'rgba(33,150,243,0.08)', borderRadius: 8, padding: 8, marginTop: 8 }]}>
+            <Text style={[styles.baseUrlLabel, { color: '#1565C0' }]}>
+              All Apex/ORDS APIs include p_instance_name={currentInstance} automatically
             </Text>
           </View>
         </View>
