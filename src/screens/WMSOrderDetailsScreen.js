@@ -1934,8 +1934,664 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   );
 };
 
+// Lots & Locators Modal Component
+const LotsLocatorsModal = ({ visible, onClose, lines }) => {
+  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'locators'
+  const [lotsData, setLotsData] = useState({}); // { itemNumber: { lots: [], loading, error } }
+  const [loadingAll, setLoadingAll] = useState(false);
+
+  // Get unique items from lines
+  const uniqueItems = [];
+  const seen = new Set();
+  (lines || []).forEach(line => {
+    const itemNum = line.item_number || '';
+    if (itemNum && !seen.has(itemNum)) {
+      seen.add(itemNum);
+      uniqueItems.push({
+        itemNumber: itemNum,
+        description: line.description || '',
+        lotNumber: line.lot_number || '',
+        lotExpiryDate: line.lot_expiry_date || '',
+        qty: line.qty || 0,
+        subinventory: line.subinventory_code || 'DUTY PAID',
+      });
+    }
+  });
+
+  // Fetch all lots when modal opens
+  useEffect(() => {
+    if (visible && uniqueItems.length > 0 && Object.keys(lotsData).length === 0) {
+      fetchAllLots();
+    }
+  }, [visible]);
+
+  const fetchAllLots = async () => {
+    setLoadingAll(true);
+    const results = {};
+
+    for (const item of uniqueItems) {
+      results[item.itemNumber] = { lots: [], loading: true, error: null };
+      setLotsData({ ...results });
+
+      try {
+        const onhandResult = await fetchItemOnhand('GIC', item.subinventory, item.itemNumber);
+        if (onhandResult.success && onhandResult.items?.length > 0) {
+          const firstOnhand = onhandResult.items[0];
+          if (firstOnhand.lotsHref) {
+            const lotsResult = await fetchItemLots(firstOnhand.lotsHref);
+            if (lotsResult.success && lotsResult.lots) {
+              results[item.itemNumber] = { lots: lotsResult.lots, loading: false, error: null };
+            } else {
+              results[item.itemNumber] = { lots: [], loading: false, error: lotsResult.error || 'No lots' };
+            }
+          } else {
+            results[item.itemNumber] = { lots: [], loading: false, error: 'No lots link' };
+          }
+        } else {
+          results[item.itemNumber] = { lots: [], loading: false, error: 'No onhand data' };
+        }
+      } catch (error) {
+        results[item.itemNumber] = { lots: [], loading: false, error: error.message };
+      }
+      setLotsData({ ...results });
+    }
+    setLoadingAll(false);
+  };
+
+  const handleClose = () => {
+    setLotsData({});
+    onClose();
+  };
+
+  // Warehouse locator data (simulated Line-Rack-Bin grid)
+  const AISLES = ['A', 'B', 'C', 'D'];
+  const RACKS = [1, 2, 3, 4, 5];
+  const BINS = [1, 2, 3];
+
+  // Assign random locators to order items for visual demo
+  const itemLocators = {};
+  uniqueItems.forEach((item, idx) => {
+    const aisle = AISLES[idx % AISLES.length];
+    const rack = RACKS[(idx * 2) % RACKS.length];
+    const bin = BINS[idx % BINS.length];
+    const locator = `${aisle}-${rack}-${bin}`;
+    itemLocators[locator] = item;
+  });
+
+  // Render Lots Tab
+  const renderLotsTab = () => (
+    <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+      {loadingAll && uniqueItems.length > 0 && Object.keys(lotsData).length === 0 && (
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#1565C0" />
+          <Text style={{ color: '#666', marginTop: 8 }}>Fetching lots for all items...</Text>
+        </View>
+      )}
+      {uniqueItems.map((item, index) => {
+        const itemLots = lotsData[item.itemNumber];
+        return (
+          <View key={item.itemNumber} style={llStyles.itemSection}>
+            {/* Item Header */}
+            <View style={llStyles.itemHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={llStyles.itemNumber}>{item.itemNumber}</Text>
+                <Text style={llStyles.itemDesc} numberOfLines={1}>{item.description}</Text>
+              </View>
+              <View style={llStyles.itemQtyBadge}>
+                <Text style={llStyles.itemQtyText}>Qty: {item.qty}</Text>
+              </View>
+            </View>
+
+            {/* Order Lot Info */}
+            {item.lotNumber ? (
+              <View style={llStyles.orderLotRow}>
+                <Ionicons name="bookmark" size={12} color="#1565C0" />
+                <Text style={llStyles.orderLotText}>
+                  Order Lot: {item.lotNumber}
+                  {item.lotExpiryDate ? ` | Exp: ${new Date(item.lotExpiryDate).toLocaleDateString()}` : ''}
+                  {item.lotExpiryDate ? (() => {
+                    const d = getDaysToExpiry(item.lotExpiryDate);
+                    return d !== null ? ` (${d}d)` : '';
+                  })() : ''}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Lots Table */}
+            {itemLots?.loading ? (
+              <View style={{ padding: 12, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color="#1565C0" />
+              </View>
+            ) : itemLots?.error ? (
+              <Text style={llStyles.errorText}>{itemLots.error}</Text>
+            ) : itemLots?.lots?.length > 0 ? (
+              <View style={llStyles.tableContainer}>
+                {/* Table Header */}
+                <View style={llStyles.tableHeaderRow}>
+                  <Text style={[llStyles.tableHeaderCell, { flex: 2 }]}>Lot Number</Text>
+                  <Text style={[llStyles.tableHeaderCell, { flex: 1 }]}>Qty</Text>
+                  <Text style={[llStyles.tableHeaderCell, { flex: 1.5 }]}>Expiry</Text>
+                  <Text style={[llStyles.tableHeaderCell, { flex: 1 }]}>Days</Text>
+                </View>
+                {/* Table Rows */}
+                {itemLots.lots.map((lot, lotIdx) => {
+                  const daysLeft = getDaysToExpiry(lot.expirationDate);
+                  const expiryColor = getExpiryColor(daysLeft);
+                  const isOrderLot = lot.lotNumber === item.lotNumber;
+                  return (
+                    <View key={lotIdx} style={[
+                      llStyles.tableRow,
+                      isOrderLot && llStyles.tableRowHighlight,
+                      lotIdx % 2 === 0 && { backgroundColor: '#FAFAFA' },
+                    ]}>
+                      <View style={[{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                        {isOrderLot && <Ionicons name="checkmark-circle" size={12} color="#1565C0" />}
+                        <Text style={[llStyles.tableCell, isOrderLot && { fontWeight: '700', color: '#1565C0' }]} numberOfLines={1}>
+                          {lot.lotNumber}
+                        </Text>
+                      </View>
+                      <Text style={[llStyles.tableCell, { flex: 1 }]}>{lot.quantity || '-'}</Text>
+                      <Text style={[llStyles.tableCell, { flex: 1.5, fontSize: 10 }]}>
+                        {lot.expirationDate ? new Date(lot.expirationDate).toLocaleDateString() : '-'}
+                      </Text>
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                        {daysLeft !== null && (
+                          <Ionicons
+                            name={daysLeft < 30 ? 'warning' : 'time-outline'}
+                            size={10}
+                            color={expiryColor}
+                          />
+                        )}
+                        <Text style={[llStyles.tableCell, { color: expiryColor, fontWeight: '600' }]}>
+                          {daysLeft !== null ? (daysLeft < 0 ? `${Math.abs(daysLeft)}d ago` : `${daysLeft}d`) : '-'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : !itemLots ? (
+              <View style={{ padding: 12, alignItems: 'center' }}>
+                <Text style={{ color: '#999', fontSize: 12 }}>Waiting...</Text>
+              </View>
+            ) : (
+              <Text style={llStyles.errorText}>No lots available</Text>
+            )}
+          </View>
+        );
+      })}
+      {uniqueItems.length === 0 && (
+        <View style={{ padding: 40, alignItems: 'center' }}>
+          <Ionicons name="cube-outline" size={48} color="#CCC" />
+          <Text style={{ color: '#999', marginTop: 8 }}>No items to show</Text>
+        </View>
+      )}
+    </ScrollView>
+  );
+
+  // Render Locators Tab - Visual warehouse grid
+  const renderLocatorsTab = () => (
+    <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+      {/* Legend */}
+      <View style={llStyles.locLegend}>
+        <View style={llStyles.locLegendItem}>
+          <View style={[llStyles.locLegendDot, { backgroundColor: '#E3F2FD' }]} />
+          <Text style={llStyles.locLegendText}>Empty</Text>
+        </View>
+        <View style={llStyles.locLegendItem}>
+          <View style={[llStyles.locLegendDot, { backgroundColor: '#1565C0' }]} />
+          <Text style={llStyles.locLegendText}>Order Item</Text>
+        </View>
+        <View style={llStyles.locLegendItem}>
+          <View style={[llStyles.locLegendDot, { backgroundColor: '#E0E0E0' }]} />
+          <Text style={llStyles.locLegendText}>Occupied</Text>
+        </View>
+      </View>
+
+      {/* Warehouse Grid by Aisle */}
+      {AISLES.map(aisle => (
+        <View key={aisle} style={llStyles.aisleSection}>
+          <View style={llStyles.aisleHeader}>
+            <View style={llStyles.aisleBadge}>
+              <Text style={llStyles.aisleBadgeText}>Aisle {aisle}</Text>
+            </View>
+          </View>
+          {/* Rack labels */}
+          <View style={llStyles.rackLabelsRow}>
+            <View style={{ width: 30 }} />
+            {RACKS.map(rack => (
+              <View key={rack} style={llStyles.rackLabel}>
+                <Text style={llStyles.rackLabelText}>R{rack}</Text>
+              </View>
+            ))}
+          </View>
+          {/* Bins */}
+          {BINS.map(bin => (
+            <View key={bin} style={llStyles.binRow}>
+              <Text style={llStyles.binLabel}>B{bin}</Text>
+              {RACKS.map(rack => {
+                const locator = `${aisle}-${rack}-${bin}`;
+                const assignedItem = itemLocators[locator];
+                // Simulate some random occupied bins
+                const isRandomOccupied = !assignedItem && ((aisle.charCodeAt(0) + rack + bin) % 3 === 0);
+                return (
+                  <TouchableOpacity
+                    key={rack}
+                    style={[
+                      llStyles.binCell,
+                      assignedItem && llStyles.binCellAssigned,
+                      isRandomOccupied && llStyles.binCellOccupied,
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    {assignedItem ? (
+                      <View style={llStyles.binCellContent}>
+                        <Ionicons name="cube" size={14} color="#FFF" />
+                        <Text style={llStyles.binCellItemText} numberOfLines={1}>{assignedItem.itemNumber}</Text>
+                        <Text style={llStyles.binCellQtyText}>x{assignedItem.qty}</Text>
+                      </View>
+                    ) : isRandomOccupied ? (
+                      <Ionicons name="cube-outline" size={14} color="#999" />
+                    ) : null}
+                    <Text style={[
+                      llStyles.binCellLocator,
+                      assignedItem && { color: 'rgba(255,255,255,0.7)' },
+                    ]}>
+                      {locator}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      ))}
+
+      {/* Item-Locator mapping list */}
+      <View style={llStyles.locMappingSection}>
+        <Text style={llStyles.locMappingTitle}>Item Locator Assignments</Text>
+        {uniqueItems.map((item, idx) => {
+          const aisle = AISLES[idx % AISLES.length];
+          const rack = RACKS[(idx * 2) % RACKS.length];
+          const bin = BINS[idx % BINS.length];
+          return (
+            <View key={item.itemNumber} style={llStyles.locMappingRow}>
+              <View style={llStyles.locMappingLocBadge}>
+                <Text style={llStyles.locMappingLocText}>{aisle}-{rack}-{bin}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={llStyles.locMappingItemNum}>{item.itemNumber}</Text>
+                <Text style={llStyles.locMappingItemDesc} numberOfLines={1}>{item.description}</Text>
+              </View>
+              <Text style={llStyles.locMappingQty}>x{item.qty}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.cpModalOverlay}>
+        <View style={styles.cpModalContainer}>
+          {/* Header */}
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <View style={llStyles.headerIcon}>
+                <Text style={llStyles.headerIconText}>LL</Text>
+              </View>
+              <Text style={styles.modalTitle}>Lots & Locators</Text>
+            </View>
+            <TouchableOpacity onPress={handleClose} style={styles.modalCloseBtn}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Tabs */}
+          <View style={llStyles.tabContainer}>
+            <TouchableOpacity
+              style={[llStyles.tab, activeTab === 'lots' && llStyles.tabActive]}
+              onPress={() => setActiveTab('lots')}
+            >
+              <Ionicons name="layers" size={16} color={activeTab === 'lots' ? '#1565C0' : '#999'} />
+              <Text style={[llStyles.tabText, activeTab === 'lots' && llStyles.tabTextActive]}>Lots</Text>
+              <View style={[llStyles.tabBadge, activeTab === 'lots' && { backgroundColor: '#1565C0' }]}>
+                <Text style={llStyles.tabBadgeText}>{uniqueItems.length}</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[llStyles.tab, activeTab === 'locators' && llStyles.tabActive]}
+              onPress={() => setActiveTab('locators')}
+            >
+              <Ionicons name="grid" size={16} color={activeTab === 'locators' ? '#1565C0' : '#999'} />
+              <Text style={[llStyles.tabText, activeTab === 'locators' && llStyles.tabTextActive]}>Locators</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Tab Content */}
+          {activeTab === 'lots' ? renderLotsTab() : renderLocatorsTab()}
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Lots & Locators inline styles
+const llStyles = StyleSheet.create({
+  headerIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#1565C0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerIconText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFF',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: '#1565C0',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#999',
+  },
+  tabTextActive: {
+    color: '#1565C0',
+  },
+  tabBadge: {
+    backgroundColor: '#CCC',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  tabBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  // Lots Tab
+  itemSection: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    overflow: 'hidden',
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#F5F5F5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
+  },
+  itemNumber: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  itemDesc: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 1,
+  },
+  itemQtyBadge: {
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  itemQtyText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1565C0',
+  },
+  orderLotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#E3F2FD',
+  },
+  orderLotText: {
+    fontSize: 11,
+    color: '#1565C0',
+    fontWeight: '500',
+  },
+  errorText: {
+    fontSize: 11,
+    color: '#999',
+    padding: 12,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  tableContainer: {
+    margin: 0,
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#1565C0',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  tableHeaderCell: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#EEE',
+  },
+  tableRowHighlight: {
+    backgroundColor: '#E3F2FD',
+  },
+  tableCell: {
+    fontSize: 11,
+    color: '#333',
+  },
+  // Locators Tab
+  locLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#F9F9F9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  locLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  locLegendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#DDD',
+  },
+  locLegendText: {
+    fontSize: 10,
+    color: '#666',
+  },
+  aisleSection: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    overflow: 'hidden',
+  },
+  aisleHeader: {
+    padding: 8,
+    backgroundColor: '#F5F5F5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
+  },
+  aisleBadge: {
+    backgroundColor: '#1565C0',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  aisleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  rackLabelsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 4,
+    paddingTop: 6,
+  },
+  rackLabel: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  rackLabelText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#999',
+  },
+  binRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  binLabel: {
+    width: 30,
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#999',
+    textAlign: 'center',
+  },
+  binCell: {
+    flex: 1,
+    height: 56,
+    margin: 2,
+    borderRadius: 6,
+    backgroundColor: '#E3F2FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#BBDEFB',
+  },
+  binCellAssigned: {
+    backgroundColor: '#1565C0',
+    borderColor: '#0D47A1',
+  },
+  binCellOccupied: {
+    backgroundColor: '#E0E0E0',
+    borderColor: '#BDBDBD',
+  },
+  binCellContent: {
+    alignItems: 'center',
+  },
+  binCellItemText: {
+    fontSize: 7,
+    fontWeight: '700',
+    color: '#FFF',
+    textAlign: 'center',
+    marginTop: 1,
+  },
+  binCellQtyText: {
+    fontSize: 8,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.8)',
+  },
+  binCellLocator: {
+    fontSize: 7,
+    color: '#999',
+    position: 'absolute',
+    bottom: 2,
+  },
+  locMappingSection: {
+    margin: 12,
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    overflow: 'hidden',
+  },
+  locMappingTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#333',
+    padding: 10,
+    backgroundColor: '#F5F5F5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
+  },
+  locMappingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#EEE',
+    gap: 10,
+  },
+  locMappingLocBadge: {
+    backgroundColor: '#1565C0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  locMappingLocText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  locMappingItemNum: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+  locMappingItemDesc: {
+    fontSize: 10,
+    color: '#999',
+  },
+  locMappingQty: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1565C0',
+  },
+});
+
 // Bottom Toolbar Component
-const BottomToolbar = ({ onHome, onBack, onRefresh, isRefreshing }) => (
+const BottomToolbar = ({ onHome, onBack, onRefresh, onLotsLocators, isRefreshing }) => (
   <View style={styles.bottomToolbar}>
     <TouchableOpacity style={styles.toolbarButton} onPress={onHome}>
       <Ionicons name="home" size={24} color="#1565C0" />
@@ -1944,6 +2600,12 @@ const BottomToolbar = ({ onHome, onBack, onRefresh, isRefreshing }) => (
     <TouchableOpacity style={styles.toolbarButton} onPress={onBack}>
       <Ionicons name="arrow-back" size={24} color="#666" />
       <Text style={styles.toolbarButtonText}>Back</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.toolbarButton} onPress={onLotsLocators}>
+      <View style={styles.toolbarLLBadge}>
+        <Text style={styles.toolbarLLText}>LL</Text>
+      </View>
+      <Text style={styles.toolbarButtonText}>Lots</Text>
     </TouchableOpacity>
     <TouchableOpacity style={styles.toolbarButton} onPress={onRefresh} disabled={isRefreshing}>
       {isRefreshing ? (
@@ -2000,6 +2662,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
   // Sales Ship Confirm Modal state
   const [salesShipModalVisible, setSalesShipModalVisible] = useState(false);
+
+  // Lots & Locators Modal state
+  const [lotsLocatorsVisible, setLotsLocatorsVisible] = useState(false);
 
   // QR Code Modal state
   const [qrModalVisible, setQrModalVisible] = useState(false);
@@ -2944,9 +3609,17 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       )}
 
       {/* Bottom Toolbar */}
+      {/* Lots & Locators Modal */}
+      <LotsLocatorsModal
+        visible={lotsLocatorsVisible}
+        onClose={() => setLotsLocatorsVisible(false)}
+        lines={lines}
+      />
+
       <BottomToolbar
         onHome={() => navigation.navigate('WMSHome')}
         onBack={() => navigation.goBack()}
+        onLotsLocators={() => setLotsLocatorsVisible(true)}
         onRefresh={handleRefresh}
         isRefreshing={refreshing}
       />
@@ -3759,6 +4432,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
     marginTop: 4,
+  },
+  toolbarLLBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#1565C0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolbarLLText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFF',
   },
   // Modal Styles
   modalOverlay: {
