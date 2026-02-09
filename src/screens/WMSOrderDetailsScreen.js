@@ -2722,8 +2722,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               <Text style={styles.shipAllButtonText}>Ship All</Text>
             </TouchableOpacity>
           )}
-          {/* Sales Ship Confirm Button - Only for Sales Orders when all lines are pick confirmed */}
-          {lines.length > 0 && summary.pendingLines === 0 && !(order?.transaction_type || '').toLowerCase().includes('store') && (
+          {/* Sales Ship Confirm Button - Only for Sales Orders when all lines are pick confirmed and not yet shipped */}
+          {lines.length > 0 && summary.pendingLines === 0 && summary.shippedLines < lines.length && !(order?.transaction_type || '').toLowerCase().includes('store') && (
             <TouchableOpacity style={[styles.shipAllButton, { backgroundColor: '#7B1FA2' }]} onPress={() => setSalesShipModalVisible(true)}>
               <Ionicons name="airplane" size={16} color="#FFF" />
               <Text style={styles.shipAllButtonText}>Ship Confirm</Text>
