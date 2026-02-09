@@ -314,8 +314,8 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContainer, { maxHeight: '92%', minHeight: 400 }]}>
+      <View style={styles.cpModalOverlay}>
+        <View style={styles.cpModalContainer}>
           {/* Header */}
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
@@ -3502,6 +3502,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
+  },
+  // Confirm Pick Modal - Full Height Overlay & Container
+  cpModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 8,
+  },
+  cpModalContainer: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    width: '100%',
+    maxHeight: '96%',
+    minHeight: '80%',
+    overflow: 'hidden',
   },
   // Confirm Pick Modal - Toggle & Info Styles
   cpToggleContainer: {
