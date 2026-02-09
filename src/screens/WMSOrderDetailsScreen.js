@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import printerService from '../services/printerService';
 
@@ -611,6 +611,428 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                     </Text>
                   </>
                 )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Sales Ship Confirm Modal - 3-step process for Sales Orders
+const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess }) => {
+  const [showDetails, setShowDetails] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0); // 0=not started, 1=GetShipment, 2=FusionShip, 3=UpdateStatus
+  const [step1Completed, setStep1Completed] = useState(false);
+  const [step2Completed, setStep2Completed] = useState(false);
+  const [step3Completed, setStep3Completed] = useState(false);
+  const [isRunningSequence, setIsRunningSequence] = useState(false);
+  const [sequenceError, setSequenceError] = useState(null);
+  const [allCompleted, setAllCompleted] = useState(false);
+  const [shipmentNumber, setShipmentNumber] = useState('');
+  const [step1Response, setStep1Response] = useState(null);
+  const [step2Response, setStep2Response] = useState(null);
+  const [step3Response, setStep3Response] = useState(null);
+
+  const sourceOrderNumber = order?.source_order_number || order?.order_number || '';
+  const instanceUpper = (instance || 'TEST').toUpperCase();
+
+  // URLs for display
+  const apexBase = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP';
+  const fusionHost = instanceUpper === 'PROD'
+    ? 'https://efmh.fa.em3.oraclecloud.com'
+    : 'https://efmh-test.fa.em3.oraclecloud.com';
+  const step1Url = `${apexBase}/WAREHOUSEMANAGEMENT/getshipmentnumber?source_order_number=${sourceOrderNumber}&p_instance_name=${instanceUpper}`;
+  const step2Url = `${fusionHost}/fscmRestApi/resources/11.13.18.05/shippingTransactions`;
+  const step3Url = `${apexBase}/TRIPMANAGEMENT/updateshipconfirmationstatus`;
+
+  // Payloads for display
+  const step2Payload = {
+    ShipmentName: shipmentNumber || '(from Step 1)',
+    Action: 'CONFIRM',
+    Organization: 'GIC',
+  };
+  const step3Payload = {
+    P_SOURCE_ORDER: sourceOrderNumber,
+    p_instance_name: instanceUpper,
+  };
+
+  const handleProcess = async () => {
+    setIsRunningSequence(true);
+    setSequenceError(null);
+    setAllCompleted(false);
+    setStep1Completed(false);
+    setStep2Completed(false);
+    setStep3Completed(false);
+    setStep1Response(null);
+    setStep2Response(null);
+    setStep3Response(null);
+    setShipmentNumber('');
+
+    try {
+      // Step 1: Get Shipment Number
+      setCurrentStep(1);
+      const step1Result = await getShipmentNumber(sourceOrderNumber);
+      setStep1Response(step1Result.data || { error: step1Result.error });
+
+      if (step1Result.success && step1Result.shipmentNumber) {
+        setStep1Completed(true);
+        setShipmentNumber(step1Result.shipmentNumber);
+
+        // Step 2: Fusion Ship Confirm
+        setCurrentStep(2);
+        const step2Result = await fusionShipConfirmTransaction(step1Result.shipmentNumber, 'GIC');
+        setStep2Response(step2Result.data || { error: step2Result.error });
+
+        if (step2Result.success) {
+          setStep2Completed(true);
+
+          // Step 3: Update Ship Confirmation Status
+          setCurrentStep(3);
+          const step3Result = await updateShipConfirmationStatus(sourceOrderNumber);
+          setStep3Response(step3Result.data || { error: step3Result.error });
+
+          if (step3Result.success) {
+            setStep3Completed(true);
+            setAllCompleted(true);
+            // Callback to parent
+            if (onProcess) onProcess({ success: true });
+          } else {
+            setSequenceError(step3Result.error || 'Update ship confirmation status failed');
+          }
+        } else {
+          setSequenceError(step2Result.error || 'Fusion ship confirm failed');
+        }
+      } else {
+        setSequenceError(step1Result.error || 'Failed to get shipment number');
+      }
+    } catch (error) {
+      setSequenceError(error.message || 'Unknown error');
+    } finally {
+      setIsRunningSequence(false);
+    }
+  };
+
+  const handleClose = () => {
+    setCurrentStep(0);
+    setStep1Completed(false);
+    setStep2Completed(false);
+    setStep3Completed(false);
+    setIsRunningSequence(false);
+    setSequenceError(null);
+    setAllCompleted(false);
+    setShipmentNumber('');
+    setStep1Response(null);
+    setStep2Response(null);
+    setStep3Response(null);
+    setShowDetails(false);
+    onClose();
+  };
+
+  // Render status row
+  const renderStatusRow = (stepNum, label, sublabel, isCompleted, isCurrentlyProcessing, response) => (
+    <View style={styles.sequenceStatusRow}>
+      <View style={[
+        styles.sequenceStatusCircle,
+        isCompleted && styles.sequenceStatusCircleCompleted,
+        isCurrentlyProcessing && styles.sequenceStatusCircleProcessing,
+      ]}>
+        {isCompleted ? (
+          <Ionicons name="checkmark" size={20} color="#FFF" />
+        ) : isCurrentlyProcessing ? (
+          <ActivityIndicator size="small" color="#FFF" />
+        ) : (
+          <Text style={styles.sequenceStatusNumber}>{stepNum}</Text>
+        )}
+      </View>
+      <View style={styles.sequenceStatusTextContainer}>
+        <Text style={[
+          styles.sequenceStatusLabel,
+          isCompleted && styles.sequenceStatusLabelCompleted,
+          isCurrentlyProcessing && styles.sequenceStatusLabelProcessing,
+        ]}>
+          {label}
+        </Text>
+        {sublabel && !isCompleted && !isCurrentlyProcessing && (
+          <Text style={{ fontSize: 11, color: '#999', marginTop: 1 }}>{sublabel}</Text>
+        )}
+        {isCompleted && <Text style={styles.sequenceStatusSuccess}>Completed</Text>}
+        {isCurrentlyProcessing && <Text style={styles.sequenceStatusProcessing}>Processing...</Text>}
+        {isCompleted && response && (
+          <Text style={{ fontSize: 10, color: '#888', marginTop: 2 }} numberOfLines={1}>
+            {typeof response === 'object' ? JSON.stringify(response).substring(0, 80) + '...' : String(response).substring(0, 80)}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.cpModalOverlay}>
+        <View style={styles.cpModalContainer}>
+          {/* Header */}
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <Ionicons name="airplane" size={24} color="#9C27B0" />
+              <Text style={styles.modalTitle}>Sales Ship Confirm</Text>
+            </View>
+            <TouchableOpacity onPress={handleClose} style={styles.modalCloseBtn} disabled={isRunningSequence}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            {/* Order Info */}
+            <View style={styles.modalItemInfo}>
+              <Text style={styles.modalItemNumber}>Order: {sourceOrderNumber}</Text>
+              <Text style={styles.modalItemDesc} numberOfLines={2}>
+                {order?.account_name || order?.customer_name || 'Customer'} | {order?.transaction_type || 'Sales Order'}
+              </Text>
+            </View>
+
+            {/* Instance & Shipment Info */}
+            <View style={styles.cpInfoSection}>
+              <View style={styles.cpInfoRow}>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Instance</Text>
+                  <View style={[styles.cpInstanceBadge, { backgroundColor: instanceUpper === 'PROD' ? '#E8F5E9' : '#FFF3E0' }]}>
+                    <Text style={[styles.cpInstanceText, { color: instanceUpper === 'PROD' ? '#2E7D32' : '#E65100' }]}>
+                      {instanceUpper}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Source Order</Text>
+                  <Text style={styles.cpInfoValue}>{sourceOrderNumber}</Text>
+                </View>
+              </View>
+              <View style={styles.cpInfoRow}>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Shipment Number</Text>
+                  <Text style={[styles.cpInfoValue, !shipmentNumber && { color: '#999' }]}>
+                    {shipmentNumber || '(will be fetched in Step 1)'}
+                  </Text>
+                </View>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Organization</Text>
+                  <Text style={styles.cpInfoValue}>GIC</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Processing Status View */}
+            {(isRunningSequence || step1Completed || step2Completed || step3Completed || sequenceError) ? (
+              <View style={styles.sequenceStatusContainer}>
+                {/* Step 1 */}
+                {renderStatusRow(
+                  1,
+                  'Get Shipment Number',
+                  'GET /getshipmentnumber',
+                  step1Completed,
+                  currentStep === 1 && !step1Completed && isRunningSequence,
+                  step1Response
+                )}
+
+                {/* Line 1-2 */}
+                <View style={[styles.sequenceStatusLine, step1Completed && styles.sequenceStatusLineCompleted]} />
+
+                {/* Step 2 */}
+                {renderStatusRow(
+                  2,
+                  'Fusion Ship Confirm',
+                  'POST /shippingTransactions',
+                  step2Completed,
+                  currentStep === 2 && !step2Completed && isRunningSequence,
+                  step2Response
+                )}
+
+                {/* Line 2-3 */}
+                <View style={[styles.sequenceStatusLine, step2Completed && styles.sequenceStatusLineCompleted]} />
+
+                {/* Step 3 */}
+                {renderStatusRow(
+                  3,
+                  'Update Ship Status',
+                  'POST /updateshipconfirmationstatus',
+                  step3Completed,
+                  currentStep === 3 && !step3Completed && isRunningSequence,
+                  step3Response
+                )}
+
+                {/* Error */}
+                {sequenceError && (
+                  <View style={styles.sequenceErrorContainer}>
+                    <Ionicons name="alert-circle" size={20} color="#F44336" />
+                    <Text style={styles.sequenceErrorText}>{sequenceError}</Text>
+                  </View>
+                )}
+
+                {/* Success */}
+                {allCompleted && (
+                  <View style={styles.sequenceSuccessContainer}>
+                    <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                    <Text style={styles.sequenceSuccessText}>Ship Confirm completed successfully!</Text>
+                  </View>
+                )}
+
+                {/* Response Details after processing */}
+                {(step1Response || step2Response || step3Response) && !isRunningSequence && (
+                  <View style={{ marginTop: 12 }}>
+                    <TouchableOpacity
+                      style={styles.detailsToggleBtn}
+                      onPress={() => setShowDetails(!showDetails)}
+                    >
+                      <View style={styles.detailsToggleLeft}>
+                        <Ionicons name="document-text" size={16} color="#666" />
+                        <Text style={styles.detailsToggleText}>Response Details</Text>
+                      </View>
+                      <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
+                    </TouchableOpacity>
+                    {showDetails && (
+                      <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
+                        <View style={styles.technicalDetailsContainer}>
+                          {step1Response && (
+                            <>
+                              <View style={styles.cpApiStepHeader}>
+                                <Text style={styles.cpApiStepTitle}>Step 1 Response: Get Shipment Number</Text>
+                              </View>
+                              <View style={styles.jsonCodeBlock}>
+                                <Text style={styles.jsonCodeText}>{JSON.stringify(step1Response, null, 2)}</Text>
+                              </View>
+                            </>
+                          )}
+                          {step2Response && (
+                            <>
+                              <View style={[styles.cpApiStepHeader, { marginTop: 10 }]}>
+                                <Text style={styles.cpApiStepTitle}>Step 2 Response: Fusion Ship Confirm</Text>
+                              </View>
+                              <View style={styles.jsonCodeBlock}>
+                                <Text style={styles.jsonCodeText}>{JSON.stringify(step2Response, null, 2)}</Text>
+                              </View>
+                            </>
+                          )}
+                          {step3Response && (
+                            <>
+                              <View style={[styles.cpApiStepHeader, { marginTop: 10 }]}>
+                                <Text style={styles.cpApiStepTitle}>Step 3 Response: Update Ship Status</Text>
+                              </View>
+                              <View style={styles.jsonCodeBlock}>
+                                <Text style={styles.jsonCodeText}>{JSON.stringify(step3Response, null, 2)}</Text>
+                              </View>
+                            </>
+                          )}
+                        </View>
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
+              </View>
+            ) : (
+              <>
+                {/* API Details Toggle (before processing) */}
+                <TouchableOpacity
+                  style={styles.detailsToggleBtn}
+                  onPress={() => setShowDetails(!showDetails)}
+                >
+                  <View style={styles.detailsToggleLeft}>
+                    <Ionicons name="code-slash" size={16} color="#666" />
+                    <Text style={styles.detailsToggleText}>API Details</Text>
+                  </View>
+                  <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
+                </TouchableOpacity>
+
+                {showDetails && (
+                  <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
+                    <View style={styles.technicalDetailsContainer}>
+                      {/* Step 1: GET Shipment Number */}
+                      <View style={styles.cpApiStepHeader}>
+                        <Text style={styles.cpApiStepTitle}>Step 1: Get Shipment Number</Text>
+                      </View>
+                      <View style={styles.apiEndpointInfo}>
+                        <View style={[styles.apiMethodBadge, { backgroundColor: '#4CAF50' }]}>
+                          <Text style={styles.apiMethodText}>GET</Text>
+                        </View>
+                        <Text style={styles.apiEndpointText} numberOfLines={4}>{step1Url}</Text>
+                      </View>
+
+                      {/* Step 2: Fusion Ship Confirm */}
+                      <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
+                        <Text style={styles.cpApiStepTitle}>Step 2: Fusion Ship Confirm</Text>
+                      </View>
+                      <View style={styles.apiEndpointInfo}>
+                        <View style={styles.apiMethodBadge}>
+                          <Text style={styles.apiMethodText}>POST</Text>
+                        </View>
+                        <Text style={styles.apiEndpointText} numberOfLines={3}>{step2Url}</Text>
+                      </View>
+                      <View style={styles.jsonPreviewContainer}>
+                        <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                        <View style={styles.jsonCodeBlock}>
+                          <Text style={styles.jsonCodeText}>{JSON.stringify(step2Payload, null, 2)}</Text>
+                        </View>
+                      </View>
+
+                      {/* Step 3: Update Ship Status */}
+                      <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
+                        <Text style={styles.cpApiStepTitle}>Step 3: Update Ship Confirmation Status</Text>
+                      </View>
+                      <View style={styles.apiEndpointInfo}>
+                        <View style={[styles.apiMethodBadge, { backgroundColor: '#FF9800' }]}>
+                          <Text style={styles.apiMethodText}>POST</Text>
+                        </View>
+                        <Text style={styles.apiEndpointText} numberOfLines={3}>{step3Url}</Text>
+                      </View>
+                      <View style={styles.jsonPreviewContainer}>
+                        <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                        <View style={styles.jsonCodeBlock}>
+                          <Text style={styles.jsonCodeText}>{JSON.stringify(step3Payload, null, 2)}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </ScrollView>
+                )}
+              </>
+            )}
+          </ScrollView>
+
+          {/* Action Buttons */}
+          {(allCompleted || sequenceError) && !isRunningSequence ? (
+            <View style={styles.confirmModalActions}>
+              {sequenceError && (
+                <TouchableOpacity
+                  style={[styles.confirmModalCancelBtn, { backgroundColor: '#FF9800' }]}
+                  onPress={handleProcess}
+                >
+                  <Ionicons name="refresh" size={18} color="#FFF" />
+                  <Text style={[styles.confirmModalCancelText, { color: '#FFF' }]}>Retry</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.confirmModalConfirmBtn, allCompleted && { backgroundColor: '#4CAF50' }]}
+                onPress={handleClose}
+              >
+                <Ionicons name={allCompleted ? 'checkmark-done' : 'close'} size={20} color="#FFF" />
+                <Text style={styles.confirmModalConfirmText}>
+                  {allCompleted ? 'Done' : 'Close'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : !isRunningSequence && (
+            <View style={styles.confirmModalActions}>
+              <TouchableOpacity
+                style={styles.confirmModalCancelBtn}
+                onPress={handleClose}
+              >
+                <Text style={styles.confirmModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmModalConfirmBtn, { backgroundColor: '#9C27B0' }]}
+                onPress={handleProcess}
+              >
+                <Ionicons name="airplane" size={20} color="#FFF" />
+                <Text style={styles.confirmModalConfirmText}>Ship Confirm</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1547,6 +1969,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [bulkProcessingStatus, setBulkProcessingStatus] = useState({});
   const [bulkFinalStatus, setBulkFinalStatus] = useState(null); // null, 'processing', 'success', 'error'
 
+  // Sales Ship Confirm Modal state
+  const [salesShipModalVisible, setSalesShipModalVisible] = useState(false);
+
   // QR Code Modal state
   const [qrModalVisible, setQrModalVisible] = useState(false);
 
@@ -2140,6 +2565,20 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         processingStatus={bulkProcessingStatus}
       />
 
+      {/* Sales Ship Confirm Modal - 3-step for Sales Orders */}
+      <SalesShipConfirmModal
+        visible={salesShipModalVisible}
+        onClose={() => setSalesShipModalVisible(false)}
+        order={order}
+        instance={order?.instance}
+        onProcess={(result) => {
+          if (result?.success) {
+            // Refresh lines after successful ship confirm
+            loadOrderLines();
+          }
+        }}
+      />
+
       {/* QR Code Print Modal */}
       <QRCodePrintModal
         visible={qrModalVisible}
@@ -2269,6 +2708,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             <TouchableOpacity style={styles.shipAllButton} onPress={handleOpenBulkShipConfirm}>
               <Ionicons name="airplane" size={18} color="#FFF" />
               <Text style={styles.shipAllButtonText}>Ship All</Text>
+            </TouchableOpacity>
+          )}
+          {/* Sales Ship Confirm Button - Only for Sales Orders when all lines are pick confirmed */}
+          {lines.length > 0 && summary.pendingLines === 0 && !(order?.transaction_type || '').toLowerCase().includes('store') && (
+            <TouchableOpacity style={[styles.shipAllButton, { backgroundColor: '#7B1FA2' }]} onPress={() => setSalesShipModalVisible(true)}>
+              <Ionicons name="airplane" size={18} color="#FFF" />
+              <Text style={styles.shipAllButtonText}>Ship Confirm</Text>
             </TouchableOpacity>
           )}
         </View>

@@ -269,6 +269,33 @@ const API_DOCUMENTATION = [
         ],
       },
       {
+        page: 'WMS Sales Ship Confirm (3-Step)',
+        apis: [
+          {
+            name: 'Get Shipment Number (Step 1)',
+            endpoint: '/WAREHOUSEMANAGEMENT/getshipmentnumber',
+            method: 'GET',
+            params: 'source_order_number, p_instance_name',
+            description: 'Apex API - Retrieve shipment number for a source order to use in Fusion ship confirm',
+          },
+          {
+            name: 'Fusion Ship Confirm (Step 2)',
+            endpoint: '/shippingTransactions',
+            method: 'POST',
+            params: 'ShipmentName (from Step 1), Action ("CONFIRM"), Organization ("GIC")',
+            description: 'Fusion Cloud API - Ship confirm via shippingTransactions (URL based on instance)',
+            baseUrl: 'Fusion Cloud',
+          },
+          {
+            name: 'Update Ship Confirmation Status (Step 3)',
+            endpoint: '/TRIPMANAGEMENT/updateshipconfirmationstatus',
+            method: 'POST',
+            params: 'P_SOURCE_ORDER (source order number), p_instance_name',
+            description: 'Apex API - Update ship confirmation status after Fusion ship confirm succeeds',
+          },
+        ],
+      },
+      {
         page: 'WMS Picker Stats',
         apis: [
           {

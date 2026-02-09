@@ -1072,6 +1072,186 @@ export const updatePickConfirmStatus = async (payload) => {
 };
 
 /**
+ * Step 1: Get shipment number for a source order (Sales Orders Ship Confirm)
+ * GET /WAREHOUSEMANAGEMENT/getshipmentnumber
+ * @param {string} sourceOrderNumber - Source order number
+ * @returns {Promise<Object>} { success, shipmentNumber, data }
+ */
+export const getShipmentNumber = async (sourceOrderNumber) => {
+  try {
+    const rawUrl = `${WMS_API_BASE}/getshipmentnumber?source_order_number=${encodeURIComponent(sourceOrderNumber)}`;
+    const url = await appendInstanceParam(rawUrl);
+
+    console.log('[WMSService] Get Shipment Number:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[WMSService] Get Shipment Number response:', JSON.stringify(data, null, 2));
+
+    const shipmentNumber = data?.shipment_number || data?.SHIPMENT_NUMBER || '';
+    if (data?.status === 'success' && shipmentNumber) {
+      return { success: true, shipmentNumber, data };
+    }
+
+    return { success: false, error: data?.message || 'No shipment number found', data };
+  } catch (error) {
+    console.error('[WMSService] Error getting shipment number:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Step 2: Fusion Ship Confirm via shippingTransactions API (Sales Orders)
+ * POST to Fusion /shippingTransactions
+ * @param {string} shipmentNumber - Shipment number from Step 1
+ * @param {string} organization - Organization code (default: GIC)
+ * @returns {Promise<Object>} { success, data }
+ */
+export const fusionShipConfirmTransaction = async (shipmentNumber, organization = 'GIC') => {
+  try {
+    const currentInstance = await getInstance();
+    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+    const url = `${fusionBaseUrl}/shippingTransactions`;
+
+    const body = {
+      ShipmentName: String(shipmentNumber),
+      Action: 'CONFIRM',
+      Organization: organization,
+    };
+
+    console.log('[WMSService] Fusion Ship Confirm:', url);
+    console.log('[WMSService] Payload:', JSON.stringify(body, null, 2));
+
+    const authHeader = await getFusionAuthHeader();
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    console.log('[WMSService] Fusion Ship Confirm response status:', response.status);
+
+    let data;
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      console.log('[WMSService] Response first 500 chars:', responseText.substring(0, 500));
+    } catch (textError) {
+      responseText = 'Error reading response';
+    }
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        data = {
+          error: titleMatch?.[1] || 'Server returned HTML error page',
+          type: 'HTML_ERROR',
+          status: response.status,
+        };
+      } else {
+        data = { message: responseText.substring(0, 500), type: 'TEXT_RESPONSE' };
+      }
+    }
+
+    console.log('[WMSService] Fusion Ship Confirm response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}`, data, status: response.status };
+    }
+
+    // Check Result field for SUCCESS
+    const result = data?.Result || data?.result || '';
+    if (result === 'SUCCESS') {
+      return { success: true, data, status: response.status };
+    }
+
+    return {
+      success: false,
+      error: data?.ErrorMessage || data?.errorMessage || `Result: ${result}`,
+      data,
+      status: response.status,
+    };
+  } catch (error) {
+    console.error('[WMSService] Error Fusion Ship Confirm:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
+ * Step 3: Update ship confirmation status via Apex API (after Fusion ship confirm)
+ * POST to /TRIPMANAGEMENT/updateshipconfirmationstatus
+ * @param {string|number} sourceOrder - P_SOURCE_ORDER (source order number)
+ * @returns {Promise<Object>} Update result
+ */
+export const updateShipConfirmationStatus = async (sourceOrder) => {
+  try {
+    const url = `${WMS_API_BASE.replace('/WAREHOUSEMANAGEMENT', '')}/TRIPMANAGEMENT/updateshipconfirmationstatus`;
+    const currentInstance = await getInstance();
+
+    const body = {
+      P_SOURCE_ORDER: sourceOrder,
+      p_instance_name: currentInstance,
+    };
+
+    console.log('[WMSService] Update Ship Confirmation Status:', url);
+    console.log('[WMSService] Payload:', JSON.stringify(body, null, 2));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    console.log('[WMSService] Update Ship Confirmation Status response:', response.status);
+
+    let data;
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      console.log('[WMSService] Response first 500 chars:', responseText.substring(0, 500));
+    } catch (textError) {
+      responseText = 'Error reading response';
+    }
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        data = { error: titleMatch?.[1] || 'Server returned HTML error page', type: 'HTML_ERROR', status: response.status };
+      } else {
+        data = { message: responseText.substring(0, 500), type: 'TEXT_RESPONSE' };
+      }
+    }
+
+    console.log('[WMSService] Update Ship Confirmation Status response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}`, data, status: response.status };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error updating ship confirmation status:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
  * Fetch picker performance data
  * @param {string} pickerName - Picker name
  * @param {Date} fromDate - Start date
@@ -1134,4 +1314,7 @@ export default {
   filterByPickStatus,
   filterPendingOrders,
   getWMSDateRange,
+  getShipmentNumber,
+  fusionShipConfirmTransaction,
+  updateShipConfirmationStatus,
 };
