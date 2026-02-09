@@ -1788,6 +1788,25 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
             {item.lot_expiry_date ? new Date(item.lot_expiry_date).toLocaleDateString() : 'N/A'}
           </Text>
         </View>
+        {item.lot_expiry_date && (() => {
+          const days = getDaysToExpiry(item.lot_expiry_date);
+          const color = getExpiryColor(days);
+          return (
+            <View style={styles.detailItem}>
+              <Text style={styles.detailLabel}>Days to Expiry</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons
+                  name={days !== null && days < 30 ? 'warning' : 'time-outline'}
+                  size={14}
+                  color={color}
+                />
+                <Text style={[styles.detailValue, { color, fontWeight: '700' }]}>
+                  {days !== null ? (days < 0 ? `Expired (${Math.abs(days)}d ago)` : `${days} days`) : 'N/A'}
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
       </View>
 
       {/* Barcode Info */}
