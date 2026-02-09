@@ -2703,27 +2703,29 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.headerText}>
-            <Text style={styles.headerTitle}>{orderNumber || 'Order Details'}</Text>
-            <Text style={styles.headerSubtitle}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{orderNumber || 'Order Details'}</Text>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
               {order?.account_name || order?.customer_name || 'Customer'} | {order?.transaction_type || 'Order'}
             </Text>
           </View>
-          {/* Print QR Button */}
+        </View>
+        {/* Header Action Buttons Row */}
+        <View style={styles.headerActionsRow}>
           <TouchableOpacity style={styles.printQRButton} onPress={() => setQrModalVisible(true)}>
-            <Ionicons name="qr-code" size={18} color="#FFF" />
+            <Ionicons name="qr-code" size={16} color="#FFF" />
             <Text style={styles.printQRButtonText}>Print QR</Text>
           </TouchableOpacity>
           {/* Ship Confirm All Button - Only for Store transactions */}
           {summary.pickedLines > 0 && (order?.transaction_type || '').toLowerCase().includes('store') && (
             <TouchableOpacity style={styles.shipAllButton} onPress={handleOpenBulkShipConfirm}>
-              <Ionicons name="airplane" size={18} color="#FFF" />
+              <Ionicons name="airplane" size={16} color="#FFF" />
               <Text style={styles.shipAllButtonText}>Ship All</Text>
             </TouchableOpacity>
           )}
           {/* Sales Ship Confirm Button - Only for Sales Orders when all lines are pick confirmed */}
           {lines.length > 0 && summary.pendingLines === 0 && !(order?.transaction_type || '').toLowerCase().includes('store') && (
             <TouchableOpacity style={[styles.shipAllButton, { backgroundColor: '#7B1FA2' }]} onPress={() => setSalesShipModalVisible(true)}>
-              <Ionicons name="airplane" size={18} color="#FFF" />
+              <Ionicons name="airplane" size={16} color="#FFF" />
               <Text style={styles.shipAllButtonText}>Ship Confirm</Text>
             </TouchableOpacity>
           )}
@@ -2890,6 +2892,13 @@ const styles = StyleSheet.create({
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  headerActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingLeft: 40,
+    gap: 8,
   },
   backButton: {
     padding: 8,

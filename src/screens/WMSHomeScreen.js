@@ -154,6 +154,15 @@ const OrderCard = ({ order, onPress }) => {
         </View>
       </View>
 
+      {/* Ship Confirm Ready badge - Sales Orders that are picked but not shipped */}
+      {isPicked && !isShipped && !(order.transaction_type || '').toLowerCase().includes('store') && (
+        <View style={styles.shipConfirmReadyBanner}>
+          <Ionicons name="airplane" size={14} color="#7B1FA2" />
+          <Text style={styles.shipConfirmReadyText}>Ready for Ship Confirm</Text>
+          <Ionicons name="chevron-forward" size={14} color="#7B1FA2" />
+        </View>
+      )}
+
       <View style={styles.orderFooter}>
         <View style={styles.tagContainer}>
           {order.lorry_number && (
@@ -1735,6 +1744,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
     marginLeft: 4,
+  },
+  shipConfirmReadyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3E5F5',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 8,
+    gap: 6,
+  },
+  shipConfirmReadyText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7B1FA2',
   },
   orderFooter: {
     flexDirection: 'row',
