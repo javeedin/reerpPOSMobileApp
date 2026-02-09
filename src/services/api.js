@@ -47,11 +47,12 @@ const api = axios.create({
 });
 
 // Interceptor: automatically add p_instance_name to all Apex requests
+// For GET: passed as custom header (ORDS rejects unknown query params with 403)
+// For POST/PUT: passed in request body
 api.interceptors.request.use(async (config) => {
   const instance = await getInstance();
-  if (config.method === 'get') {
-    config.params = { ...config.params, p_instance_name: instance };
-  } else if (config.method === 'post' || config.method === 'put') {
+  config.headers['X-Instance-Name'] = instance;
+  if (config.method === 'post' || config.method === 'put') {
     if (config.data && typeof config.data === 'object') {
       config.data = { ...config.data, p_instance_name: instance };
     }
@@ -59,7 +60,14 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Helper: append p_instance_name to a URL query string (for direct fetch/axios calls)
+// Helper: get instance headers for direct fetch calls (NOT query params - ORDS returns 403)
+export const getInstanceHeaders = async () => {
+  const instance = await getInstance();
+  return { 'X-Instance-Name': instance };
+};
+
+// Helper: append p_instance_name to a URL query string
+// ONLY use for endpoints confirmed to accept this parameter
 export const appendInstanceParam = async (url) => {
   const instance = await getInstance();
   const separator = url.includes('?') ? '&' : '?';

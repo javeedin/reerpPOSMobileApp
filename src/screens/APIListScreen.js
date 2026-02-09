@@ -558,7 +558,7 @@ const APIListScreen = ({ navigation }) => {
           </View>
           <View style={[styles.baseUrlRow, { backgroundColor: 'rgba(33,150,243,0.08)', borderRadius: 8, padding: 8, marginTop: 8 }]}>
             <Text style={[styles.baseUrlLabel, { color: '#1565C0' }]}>
-              All Apex/ORDS APIs include p_instance_name={currentInstance} automatically
+              All Apex/ORDS APIs include X-Instance-Name: {currentInstance} header. POST requests also include p_instance_name in body.
             </Text>
           </View>
         </View>

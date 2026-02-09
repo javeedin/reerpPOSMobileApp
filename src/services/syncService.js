@@ -74,8 +74,8 @@ const getPriceListStorageKey = (priceListName) => {
   return `${PRICELIST_KEY_PREFIX}${sanitized}`;
 };
 
-// Dynamic instance support - Fusion URLs + Apex p_instance_name helper
-import { getInstance, getFusionBaseUrl, appendInstanceParam } from './api';
+// Dynamic instance support - Fusion URLs + instance headers
+import { getInstance, getFusionBaseUrl, getInstanceHeaders } from './api';
 const FUSION_CREDENTIALS = {
   username: 'shaik',
   password: 'fusion1234',
@@ -197,11 +197,11 @@ const fetchWithPagination = async (endpoint, onProgress, maxRecords = MAX_RECORD
     const endRow = Math.min(startRow + BATCH_SIZE - 1, maxRecords);
 
     try {
-      const rawUrl = `${BASE_URL}${endpoint}?start_row=${startRow}&end_row=${endRow}`;
-      const url = await appendInstanceParam(rawUrl);
+      const url = `${BASE_URL}${endpoint}?start_row=${startRow}&end_row=${endRow}`;
+      const instanceHeaders = await getInstanceHeaders();
       console.log(`Fetching: ${url}`);
 
-      const response = await axios.get(url, { timeout: 60000 });
+      const response = await axios.get(url, { timeout: 60000, headers: instanceHeaders });
 
       let items = [];
       if (response.data?.items && Array.isArray(response.data.items)) {
@@ -398,15 +398,15 @@ export const syncAgents = async (onProgress) => {
 export const syncPriceListNames = async (onProgress, username) => {
   try {
     const salesRepNumber = username || 'njohar';
-    const rawListUrl = `${BASE_URL}${ENDPOINTS.PRICE_LIST_FOR_USER}?SALESREP_NUMBER=${salesRepNumber}`;
-    const listUrl = await appendInstanceParam(rawListUrl);
+    const listUrl = `${BASE_URL}${ENDPOINTS.PRICE_LIST_FOR_USER}?SALESREP_NUMBER=${salesRepNumber}`;
+    const instanceHeaders = await getInstanceHeaders();
     console.log('Fetching price lists:', listUrl);
 
     if (onProgress) {
       onProgress({ status: 'Fetching price list names...', fetched: 0 });
     }
 
-    const listResponse = await axios.get(listUrl, { timeout: 60000 });
+    const listResponse = await axios.get(listUrl, { timeout: 60000, headers: instanceHeaders });
     let priceLists = [];
 
     if (listResponse.data?.items && Array.isArray(listResponse.data.items)) {
@@ -554,8 +554,8 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
 
     while (hasMore) {
       const endRow = startRow + batchSize - 1;
-      const rawUrl = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}?p_list_name=${encodedName}&p_start_row=${startRow}&p_end_row=${endRow}`;
-      const url = await appendInstanceParam(rawUrl);
+      const url = `${BASE_URL}${ENDPOINTS.PRICE_LIST_ITEMS}?p_list_name=${encodedName}&p_start_row=${startRow}&p_end_row=${endRow}`;
+      const instanceHeaders = await getInstanceHeaders();
       console.log(`Fetching rows ${startRow}-${endRow}:`, url);
 
       if (onProgress) {
@@ -566,7 +566,7 @@ export const syncSinglePriceList = async (priceListName, onProgress, clearAllFir
         });
       }
 
-      const response = await axios.get(url, { timeout: 120000 });
+      const response = await axios.get(url, { timeout: 120000, headers: instanceHeaders });
       let items = [];
 
       if (response.data?.items && Array.isArray(response.data.items)) {
@@ -1180,10 +1180,11 @@ export const syncBogo = async (onProgress) => {
       onProgress({ status: 'Fetching BOGO promotions...', fetched: 0 });
     }
 
-    const url = await appendInstanceParam(`${BASE_URL}${BOGO_ENDPOINT}`);
+    const url = `${BASE_URL}${BOGO_ENDPOINT}`;
+    const instanceHeaders = await getInstanceHeaders();
     console.log('[syncBogo] Fetching BOGO from:', url);
 
-    const response = await axios.get(url, { timeout: 60000 });
+    const response = await axios.get(url, { timeout: 60000, headers: instanceHeaders });
     console.log('[syncBogo] API Response status:', response.status);
     console.log('[syncBogo] API Response data type:', typeof response.data);
     console.log('[syncBogo] API Response has items?:', !!response.data?.items);
@@ -1413,9 +1414,11 @@ export const syncPaymentMethods = async (onProgress) => {
       onProgress({ status: 'Fetching payment methods...', fetched: 0 });
     }
 
-    const pmUrl = await appendInstanceParam(`${BASE_URL}/ARMODULE/PAYMENTMETHODS`);
+    const pmUrl = `${BASE_URL}/ARMODULE/PAYMENTMETHODS`;
+    const instanceHeaders = await getInstanceHeaders();
     const response = await axios.get(pmUrl, {
       timeout: 30000,
+      headers: instanceHeaders,
     });
 
     let items = [];
@@ -1487,10 +1490,11 @@ export const queryHistoricalOrders = async ({
       location_name: locationName,
     });
 
-    const url = await appendInstanceParam(`${BASE_URL}/ORDERCRATION/QueryOrders?${params.toString()}`);
+    const url = `${BASE_URL}/ORDERCRATION/QueryOrders?${params.toString()}`;
+    const instanceHeaders = await getInstanceHeaders();
     console.log('Querying historical orders:', url);
 
-    const response = await axios.get(url, { timeout: 30000 });
+    const response = await axios.get(url, { timeout: 30000, headers: instanceHeaders });
 
     if (response.data && response.data.orders) {
       // Process orders to calculate totals
