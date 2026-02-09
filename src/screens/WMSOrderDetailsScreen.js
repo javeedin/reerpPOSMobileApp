@@ -2024,17 +2024,36 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
   // Fetch Fusion Order Lines - syncs lines from Fusion then refreshes
   const [fetchingFusionLines, setFetchingFusionLines] = useState(false);
+  const [fusionRecordCount, setFusionRecordCount] = useState(null);
   const handleFetchFusionOrderLines = async () => {
     if (fetchingFusionLines) return;
     setFetchingFusionLines(true);
     try {
       const currentInstance = await getInstance();
-      const url = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/order/fetchfusionorderlines?P_INSTANCE_NAME=${encodeURIComponent(currentInstance)}&p_order_number=${encodeURIComponent(orderNumber)}`;
-      console.log('[WMSOrderDetails] Fetch Fusion Order Lines:', url);
-      const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
-      const data = await response.json();
-      console.log('[WMSOrderDetails] Fetch Fusion Order Lines response:', JSON.stringify(data, null, 2));
-      // Refresh lines to get updated count
+      const url = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/order/fetchfusionorderlines';
+      const body = {
+        P_INSTANCE_NAME: currentInstance,
+        p_order_number: orderNumber,
+      };
+      console.log('[WMSOrderDetails] Fetch Fusion Order Lines:', url, JSON.stringify(body));
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const responseData = await response.json();
+      console.log('[WMSOrderDetails] Fetch Fusion Order Lines response:', JSON.stringify(responseData, null, 2));
+
+      // Parse nested JSON in data field
+      let parsedData = responseData;
+      if (responseData?.data && typeof responseData.data === 'string') {
+        try { parsedData = JSON.parse(responseData.data); } catch (e) { parsedData = responseData; }
+      }
+      const recordCount = parsedData?.RECORDCOUNT || parsedData?.recordcount || null;
+      if (recordCount !== null) {
+        setFusionRecordCount(Number(recordCount));
+      }
+      // Refresh lines to get updated data
       await loadOrderLines();
     } catch (error) {
       console.error('[WMSOrderDetails] Error fetching fusion order lines:', error);
@@ -2807,7 +2826,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           {/* Summary Stats */}
           <View style={styles.summaryContainer}>
             <View style={[styles.summaryItem, { borderColor: '#1565C0' }]}>
-              <Text style={[styles.summaryValue, { color: '#1565C0' }]}>{summary.totalLines}</Text>
+              <Text style={[styles.summaryValue, { color: '#1565C0' }]}>
+                {fusionRecordCount !== null ? fusionRecordCount : summary.totalLines}
+              </Text>
               <Text style={styles.summaryLabel}>Total</Text>
             </View>
             <View style={[styles.summaryItem, { borderColor: '#FF9800' }]}>
