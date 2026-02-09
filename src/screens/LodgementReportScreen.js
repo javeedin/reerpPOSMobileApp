@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import colors from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
-import { getInstanceHeaders } from '../services/api';
+import { appendInstanceParam } from '../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BASE_URL = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP';
@@ -493,9 +493,8 @@ const SummaryView = ({ salesrepNumber, onDrillDown }) => {
         dates.map(async (date) => {
           try {
             const dateParam = formatDateForAPI(date);
-            const url = `${BASE_URL}/ARMODULE/DAILYLODGMENT?ORDER_DATE=${dateParam}&SALESREP_NUMBER=${salesrepNumber}`;
-            const instanceHeaders = await getInstanceHeaders();
-            const response = await axios.get(url, { timeout: 30000, headers: instanceHeaders });
+            const url = await appendInstanceParam(`${BASE_URL}/ARMODULE/DAILYLODGMENT?ORDER_DATE=${dateParam}&SALESREP_NUMBER=${salesrepNumber}`);
+            const response = await axios.get(url, { timeout: 30000 });
             return { date, data: response.data?.['lodgment report'] || null };
           } catch {
             return { date, data: null };
@@ -682,10 +681,9 @@ const LodgementReportScreen = ({ navigation }) => {
 
     try {
       const dateParam = formatDateForAPI(selectedDate);
-      const url = `${BASE_URL}/ARMODULE/DAILYLODGMENT?ORDER_DATE=${dateParam}&SALESREP_NUMBER=${salesrepNumber}`;
-      const instanceHeaders = await getInstanceHeaders();
+      const url = await appendInstanceParam(`${BASE_URL}/ARMODULE/DAILYLODGMENT?ORDER_DATE=${dateParam}&SALESREP_NUMBER=${salesrepNumber}`);
 
-      const response = await axios.get(url, { timeout: 30000, headers: instanceHeaders });
+      const response = await axios.get(url, { timeout: 30000 });
 
       if (response.data && response.data['lodgment report']) {
         setReportData(response.data['lodgment report']);

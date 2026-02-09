@@ -30,20 +30,19 @@ export const fetchShipmentsSummary = async (pickerName, fromDate, toDate, pickCo
     const from = formatDateForAPI(fromDate);
     const to = formatDateForAPI(toDate);
 
-    let url = `${WMS_API_BASE}/SHIPMENTSSUMMARYFORAPP?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
+    let rawUrl = `${WMS_API_BASE}/SHIPMENTSSUMMARYFORAPP?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
 
     if (pickConfirmStatus) {
-      url += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
+      rawUrl += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
     }
 
-    const instanceHeaders = await getInstanceHeaders();
+    const url = await appendInstanceParam(rawUrl);
     console.log('[WMSService] Fetching shipments summary:', url);
 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        ...instanceHeaders,
       },
     });
 
@@ -420,8 +419,7 @@ export const getWMSDateRange = () => {
  */
 export const fetchShipmentLines = async (orderNumber) => {
   try {
-    const url = `${WMS_API_BASE}/SHIPMENTLINESFORAPP?p_SOURCE_ORDER_NUMBER=${encodeURIComponent(orderNumber)}`;
-    const instanceHeaders = await getInstanceHeaders();
+    const url = await appendInstanceParam(`${WMS_API_BASE}/SHIPMENTLINESFORAPP?p_SOURCE_ORDER_NUMBER=${encodeURIComponent(orderNumber)}`);
 
     console.log('[WMSService] Fetching shipment lines:', url);
 
@@ -429,7 +427,6 @@ export const fetchShipmentLines = async (orderNumber) => {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        ...instanceHeaders,
       },
     });
 
@@ -458,7 +455,6 @@ export const confirmPick = async (deliveryDetailId, qty, pickerName) => {
   try {
     const url = `${WMS_API_BASE}/CONFIRMPICK`;
     const currentInstance = await getInstance();
-    const instanceHeaders = await getInstanceHeaders();
 
     console.log('[WMSService] Confirming pick:', { deliveryDetailId, qty, pickerName });
 
@@ -466,7 +462,6 @@ export const confirmPick = async (deliveryDetailId, qty, pickerName) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...instanceHeaders,
       },
       body: JSON.stringify({
         delivery_detail_id: deliveryDetailId,
@@ -509,7 +504,6 @@ export const confirmPickPending = async (payload) => {
   try {
     const url = `${WMS_API_BASE}/PENDING_PICKING_DETAILS`;
     const currentInstance = await getInstance();
-    const instanceHeaders = await getInstanceHeaders();
 
     console.log('[WMSService] Confirming pick (PENDING_PICKING_DETAILS):', url);
     console.log('[WMSService] Payload:', JSON.stringify(payload, null, 2));
@@ -518,7 +512,6 @@ export const confirmPickPending = async (payload) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...instanceHeaders,
       },
       body: JSON.stringify({ ...payload, p_instance_name: currentInstance }),
     });
@@ -553,8 +546,7 @@ export const shipConfirm = async (deliveryDetailId) => {
     }
 
     // Don't encode - it's just a number
-    const url = `${WMS_API_BASE}/trip/processs2vauto/${deliveryDetailId}`;
-    const instanceHeaders = await getInstanceHeaders();
+    const url = await appendInstanceParam(`${WMS_API_BASE}/trip/processs2vauto/${deliveryDetailId}`);
 
     console.log('[WMSService] Ship confirm:', url);
     console.log('[WMSService] Lines_id:', deliveryDetailId);
@@ -562,9 +554,6 @@ export const shipConfirm = async (deliveryDetailId) => {
     // Try simple POST without body
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        ...instanceHeaders,
-      },
     });
 
     console.log('[WMSService] Ship confirm response status:', response.status);
@@ -645,7 +634,6 @@ export const processS2VShipment = async (sourceOrderNumber, instanceName = 'PROD
 
     const url = `${WMS_API_BASE}/trip/processs2v`;
     const currentInstance = await getInstance();
-    const instanceHeaders = await getInstanceHeaders();
     const payload = {
       p_trx_number: orderNumber,
       p_instance_name: instanceName || currentInstance,
@@ -659,7 +647,6 @@ export const processS2VShipment = async (sourceOrderNumber, instanceName = 'PROD
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        ...instanceHeaders,
       },
       body: JSON.stringify(payload),
     });
@@ -713,7 +700,7 @@ export const processS2VShipment = async (sourceOrderNumber, instanceName = 'PROD
 };
 
 // Dynamic instance support - Fusion URLs + Apex p_instance_name helper
-import { getInstance, getFusionBaseUrl, getInstanceHeaders } from './api';
+import { getInstance, getFusionBaseUrl, appendInstanceParam } from './api';
 const FUSION_CREDENTIALS = {
   username: 'shaik',
   password: 'fusion1234',
@@ -871,20 +858,19 @@ export const fetchPickerPerformance = async (pickerName, fromDate, toDate, pickC
     const from = formatDateForAPI(fromDate);
     const to = formatDateForAPI(toDate);
 
-    let url = `${WMS_API_BASE}/PICKERPERFORMANCE?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
+    let rawUrl = `${WMS_API_BASE}/PICKERPERFORMANCE?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
 
     if (pickConfirmStatus) {
-      url += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
+      rawUrl += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
     }
 
-    const instanceHeaders = await getInstanceHeaders();
+    const url = await appendInstanceParam(rawUrl);
     console.log('[WMSService] Fetching picker performance:', url);
 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        ...instanceHeaders,
       },
     });
 
