@@ -2022,6 +2022,28 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     loadOrderLines();
   };
 
+  // Fetch Fusion Order Lines - syncs lines from Fusion then refreshes
+  const [fetchingFusionLines, setFetchingFusionLines] = useState(false);
+  const handleFetchFusionOrderLines = async () => {
+    if (fetchingFusionLines) return;
+    setFetchingFusionLines(true);
+    try {
+      const currentInstance = await getInstance();
+      const url = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/order/fetchfusionorderlines?P_INSTANCE_NAME=${encodeURIComponent(currentInstance)}&p_order_number=${encodeURIComponent(orderNumber)}`;
+      console.log('[WMSOrderDetails] Fetch Fusion Order Lines:', url);
+      const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+      const data = await response.json();
+      console.log('[WMSOrderDetails] Fetch Fusion Order Lines response:', JSON.stringify(data, null, 2));
+      // Refresh lines to get updated count
+      await loadOrderLines();
+    } catch (error) {
+      console.error('[WMSOrderDetails] Error fetching fusion order lines:', error);
+      Alert.alert('Error', 'Failed to fetch fusion order lines');
+    } finally {
+      setFetchingFusionLines(false);
+    }
+  };
+
   // Open report preview modal
   const handlePrintReport = () => {
     setReportModalVisible(true);
@@ -2714,6 +2736,19 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           <TouchableOpacity style={styles.printQRButton} onPress={() => setQrModalVisible(true)}>
             <Ionicons name="qr-code" size={16} color="#FFF" />
             <Text style={styles.printQRButtonText}>Print QR</Text>
+          </TouchableOpacity>
+          {/* Fetch Fusion Lines Button */}
+          <TouchableOpacity
+            style={[styles.shipAllButton, { backgroundColor: '#0288D1' }]}
+            onPress={handleFetchFusionOrderLines}
+            disabled={fetchingFusionLines}
+          >
+            {fetchingFusionLines ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Ionicons name="cloud-download" size={16} color="#FFF" />
+            )}
+            <Text style={styles.shipAllButtonText}>Sync</Text>
           </TouchableOpacity>
           {/* Ship Confirm All Button - Only for Store transactions */}
           {summary.pickedLines > 0 && (order?.transaction_type || '').toLowerCase().includes('store') && (
