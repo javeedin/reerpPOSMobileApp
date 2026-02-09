@@ -274,8 +274,8 @@ const API_DOCUMENTATION = [
           {
             name: 'Get Shipment Number (Step 1)',
             endpoint: '/WAREHOUSEMANAGEMENT/getshipmentnumber',
-            method: 'GET',
-            params: 'source_order_number, p_instance_name',
+            method: 'POST',
+            params: 'source_order_number, p_instance_name (in body)',
             description: 'Apex API - Retrieve shipment number for a source order to use in Fusion ship confirm',
           },
           {

@@ -1073,20 +1073,27 @@ export const updatePickConfirmStatus = async (payload) => {
 
 /**
  * Step 1: Get shipment number for a source order (Sales Orders Ship Confirm)
- * GET /WAREHOUSEMANAGEMENT/getshipmentnumber
+ * POST /WAREHOUSEMANAGEMENT/getshipmentnumber
  * @param {string} sourceOrderNumber - Source order number
  * @returns {Promise<Object>} { success, shipmentNumber, data }
  */
 export const getShipmentNumber = async (sourceOrderNumber) => {
   try {
-    const rawUrl = `${WMS_API_BASE}/getshipmentnumber?source_order_number=${encodeURIComponent(sourceOrderNumber)}`;
-    const url = await appendInstanceParam(rawUrl);
+    const url = `${WMS_API_BASE}/getshipmentnumber`;
+    const currentInstance = await getInstance();
+
+    const body = {
+      source_order_number: sourceOrderNumber,
+      p_instance_name: currentInstance,
+    };
 
     console.log('[WMSService] Get Shipment Number:', url);
+    console.log('[WMSService] Payload:', JSON.stringify(body, null, 2));
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -1096,8 +1103,11 @@ export const getShipmentNumber = async (sourceOrderNumber) => {
     const data = await response.json();
     console.log('[WMSService] Get Shipment Number response:', JSON.stringify(data, null, 2));
 
-    const shipmentNumber = data?.shipment_number || data?.SHIPMENT_NUMBER || '';
-    if (data?.status === 'success' && shipmentNumber) {
+    // Handle items array or direct response
+    const item = data?.items?.[0] || data;
+    const shipmentNumber = item?.shipment_number || item?.SHIPMENT_NUMBER || data?.shipment_number || data?.SHIPMENT_NUMBER || '';
+
+    if (shipmentNumber) {
       return { success: true, shipmentNumber, data };
     }
 

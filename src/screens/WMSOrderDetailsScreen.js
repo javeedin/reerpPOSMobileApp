@@ -643,11 +643,15 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
   const fusionHost = instanceUpper === 'PROD'
     ? 'https://efmh.fa.em3.oraclecloud.com'
     : 'https://efmh-test.fa.em3.oraclecloud.com';
-  const step1Url = `${apexBase}/WAREHOUSEMANAGEMENT/getshipmentnumber?source_order_number=${sourceOrderNumber}&p_instance_name=${instanceUpper}`;
+  const step1Url = `${apexBase}/WAREHOUSEMANAGEMENT/getshipmentnumber`;
   const step2Url = `${fusionHost}/fscmRestApi/resources/11.13.18.05/shippingTransactions`;
   const step3Url = `${apexBase}/TRIPMANAGEMENT/updateshipconfirmationstatus`;
 
   // Payloads for display
+  const step1Payload = {
+    source_order_number: sourceOrderNumber,
+    p_instance_name: instanceUpper,
+  };
   const step2Payload = {
     ShipmentName: shipmentNumber || '(from Step 1)',
     Action: 'CONFIRM',
@@ -946,15 +950,21 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
                 {showDetails && (
                   <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
                     <View style={styles.technicalDetailsContainer}>
-                      {/* Step 1: GET Shipment Number */}
+                      {/* Step 1: POST Get Shipment Number */}
                       <View style={styles.cpApiStepHeader}>
                         <Text style={styles.cpApiStepTitle}>Step 1: Get Shipment Number</Text>
                       </View>
                       <View style={styles.apiEndpointInfo}>
-                        <View style={[styles.apiMethodBadge, { backgroundColor: '#4CAF50' }]}>
-                          <Text style={styles.apiMethodText}>GET</Text>
+                        <View style={styles.apiMethodBadge}>
+                          <Text style={styles.apiMethodText}>POST</Text>
                         </View>
-                        <Text style={styles.apiEndpointText} numberOfLines={4}>{step1Url}</Text>
+                        <Text style={styles.apiEndpointText} numberOfLines={3}>{step1Url}</Text>
+                      </View>
+                      <View style={styles.jsonPreviewContainer}>
+                        <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                        <View style={styles.jsonCodeBlock}>
+                          <Text style={styles.jsonCodeText}>{JSON.stringify(step1Payload, null, 2)}</Text>
+                        </View>
                       </View>
 
                       {/* Step 2: Fusion Ship Confirm */}
