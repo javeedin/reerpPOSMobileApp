@@ -23,7 +23,8 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots } from '../services/wmsService';
+import { getInstance, getFusionBaseUrl } from '../services/api';
 import printerService from '../services/printerService';
 
 const { width } = Dimensions.get('window');
@@ -64,12 +65,33 @@ const getItemId = (item) => {
   return String(item.id || item.source_delivery_detail_id || item.delivery_detail_id || '');
 };
 
-// Confirm Pick Modal Component - Shows JSON payload preview with two-step process for Store
-const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, order, pickerName, instance, isProcessing, transactionType }) => {
+// Helper: calculate days to expiry from a date
+const getDaysToExpiry = (expiryDate) => {
+  if (!expiryDate) return null;
+  const expiry = new Date(expiryDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  expiry.setHours(0, 0, 0, 0);
+  const diffMs = expiry - today;
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+};
+
+// Helper: get expiry badge color
+const getExpiryColor = (days) => {
+  if (days === null) return '#999';
+  if (days < 0) return '#D32F2F';
+  if (days < 30) return '#F44336';
+  if (days < 90) return '#FF9800';
+  return '#4CAF50';
+};
+
+// Confirm Pick Modal Component - Enhanced with Lot Based / Non Lot toggle
+const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onShipConfirm, item, order, pickerName, instance, isProcessing, transactionType }) => {
   const [showDetails, setShowDetails] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0); // 0 = not started, 1 = Pick, 2 = Ship
-  const [pickCompleted, setPickCompleted] = useState(false);
-  const [shipCompleted, setShipCompleted] = useState(false);
+  const [isLotBased, setIsLotBased] = useState(true); // Default: Lot Based
+  const [currentStep, setCurrentStep] = useState(0); // 0 = not started, 1 = Pick/Fusion, 2 = UpdateStatus/Ship
+  const [step1Completed, setStep1Completed] = useState(false);
+  const [step2Completed, setStep2Completed] = useState(false);
   const [isRunningSequence, setIsRunningSequence] = useState(false);
   const [sequenceError, setSequenceError] = useState(null);
   const [allCompleted, setAllCompleted] = useState(false);
@@ -77,51 +99,141 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
   if (!item) return null;
 
   const isStoreTransaction = (transactionType || '').toLowerCase().includes('store');
-  const modalTitle = isStoreTransaction ? 'Pick & Ship Confirm' : 'Confirm Pick';
 
-  // Build the JSON payload
+  // Build item data
   const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
+  const deliveryDetailId = item.delivery_detail_id || item.DELIVERY_DETAIL_ID || rawId;
   const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
   const accountCode = item.account_code || item.ACCOUNT_CODE || order?.account_code || order?.ACCOUNT_CODE || '';
+  const lotNumber = item.lot_number || '';
+  const lotExpiryDate = item.lot_expiry_date || '';
+  const daysToExpiry = getDaysToExpiry(lotExpiryDate);
+  const expiryColor = getExpiryColor(daysToExpiry);
+  const pickedQty = item.qty || '0';
 
-  const payload = {
+  // Get Fusion URL for display
+  const instanceUpper = (instance || 'TEST').toUpperCase();
+  const fusionHost = instanceUpper === 'PROD'
+    ? 'https://efmh.fa.em3.oraclecloud.com'
+    : 'https://efmh-test.fa.em3.oraclecloud.com';
+  const fusionUrl = `${fusionHost}/fscmRestApi/resources/11.13.18.05/pickTransactions`;
+  const apexUrl = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/updatepickconfirmstatus';
+
+  // Lot Based payload (Fusion)
+  const lotPayload = {
+    pickLines: [{
+      PickSlip: String(deliveryDetailId),
+      PickSlipLine: String(linesId),
+      PickedQuantity: String(pickedQty),
+      SubinventoryCode: 'DUTY PAID',
+      lotItemLots: [{
+        Lot: String(lotNumber),
+        Quantity: String(pickedQty),
+      }],
+    }],
+  };
+
+  // Lot Based Step 2 payload (Apex)
+  const updatePayload = {
+    P_TRANSACTION_ID: rawId,
+    p_instance_name: instanceUpper,
+    p_pickedQty: parseInt(pickedQty) || 0,
+  };
+
+  // Non-Lot payload (existing)
+  const nonLotPayload = {
     id: String(rawId),
     line_number: String(item.line_number || '1'),
-    lot: item.lot_number || '',
-    pickedQty: String(item.qty || '0'),
+    lot: lotNumber,
+    pickedQty: String(pickedQty),
     pickedBy: pickerName || '',
     pickConfirmDate: formatDateTimeForAPI(new Date()),
     pickConfirmStatus: 'YES',
-    instance: instance || 'PROD',
+    instance: instance || 'TEST',
     account_code: accountCode,
   };
 
-  const jsonString = JSON.stringify(payload, null, 2);
+  const lotJsonString = JSON.stringify(lotPayload, null, 2);
+  const updateJsonString = JSON.stringify(updatePayload, null, 2);
+  const nonLotJsonString = JSON.stringify(nonLotPayload, null, 2);
 
-  // For Store transactions: Run Pick Confirm then Ship Confirm automatically
-  const handlePickConfirm = async () => {
+  // Modal title based on mode
+  const getModalTitle = () => {
+    if (isLotBased) return 'Confirm Pick (Lot Based)';
+    if (isStoreTransaction) return 'Pick & Ship Confirm';
+    return 'Confirm Pick';
+  };
+
+  // Lot Based confirm: Step 1 = Fusion pickTransactions, Step 2 = Apex updatePickConfirmStatus
+  const handleLotBasedConfirm = async () => {
+    setIsRunningSequence(true);
+    setSequenceError(null);
+    setAllCompleted(false);
+    setStep1Completed(false);
+    setStep2Completed(false);
+
+    try {
+      // Step 1: Fusion Pick Transaction
+      setCurrentStep(1);
+      const fusionResult = await onLotBasedConfirm({
+        deliveryDetailId: deliveryDetailId,
+        linesId: linesId,
+        pickedQty: parseInt(pickedQty) || 0,
+        subinventoryCode: 'DUTY PAID',
+        lot: lotNumber,
+        lotQty: parseInt(pickedQty) || 0,
+      });
+
+      if (fusionResult && fusionResult.success) {
+        setStep1Completed(true);
+
+        // Step 2: Apex Update Pick Confirm Status
+        setCurrentStep(2);
+        const updateResult = await fusionResult.updatePickStatus({
+          transactionId: rawId,
+          pickedQty: parseInt(pickedQty) || 0,
+        });
+
+        if (updateResult && updateResult.success) {
+          setStep2Completed(true);
+          setAllCompleted(true);
+        } else {
+          setSequenceError(updateResult?.error || 'Update pick confirm status failed');
+        }
+      } else {
+        setSequenceError(fusionResult?.error || 'Fusion pick transaction failed');
+      }
+    } catch (error) {
+      setSequenceError(error.message || 'Unknown error');
+    } finally {
+      setIsRunningSequence(false);
+    }
+  };
+
+  // Non-Lot confirm: existing flow (Store = Pick + Ship, Non-Store = Pick only)
+  const handleNonLotConfirm = async () => {
     if (isStoreTransaction) {
       setIsRunningSequence(true);
       setSequenceError(null);
       setAllCompleted(false);
+      setStep1Completed(false);
+      setStep2Completed(false);
 
       try {
         // Step 1: Pick Confirm
         setCurrentStep(1);
-        const pickResult = await onConfirm(payload, true);
+        const pickResult = await onConfirm(nonLotPayload, true);
 
         if (pickResult && pickResult.success) {
-          setPickCompleted(true);
+          setStep1Completed(true);
 
           // Step 2: Ship Confirm (automatically)
           setCurrentStep(2);
           if (linesId) {
             const shipResult = await onShipConfirm(item, linesId, true);
-
             if (shipResult && shipResult.success) {
-              setShipCompleted(true);
+              setStep2Completed(true);
               setAllCompleted(true);
-              // Don't show alert - let user see the ticks and click Done
             } else {
               setSequenceError(shipResult?.error || 'Ship confirm failed');
             }
@@ -137,15 +249,23 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
         setIsRunningSequence(false);
       }
     } else {
-      // Non-Store: Just run Pick Confirm
-      await onConfirm(payload);
+      // Non-Store, Non-Lot: Just run Pick Confirm
+      await onConfirm(nonLotPayload);
+    }
+  };
+
+  const handleConfirm = () => {
+    if (isLotBased) {
+      handleLotBasedConfirm();
+    } else {
+      handleNonLotConfirm();
     }
   };
 
   const handleClose = () => {
     setCurrentStep(0);
-    setPickCompleted(false);
-    setShipCompleted(false);
+    setStep1Completed(false);
+    setStep2Completed(false);
     setIsRunningSequence(false);
     setSequenceError(null);
     setAllCompleted(false);
@@ -154,7 +274,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
   };
 
   // Render status row for each step
-  const renderStatusRow = (stepNumber, label, isActive, isCompleted, isCurrentlyProcessing) => (
+  const renderStatusRow = (stepNumber, label, sublabel, isCompleted, isCurrentlyProcessing) => (
     <View style={styles.sequenceStatusRow}>
       <View style={[
         styles.sequenceStatusCircle,
@@ -177,192 +297,322 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onShipConfirm, item, or
         ]}>
           {label}
         </Text>
-        {isCompleted && <Text style={styles.sequenceStatusSuccess}>✓ Completed</Text>}
+        {sublabel && !isCompleted && !isCurrentlyProcessing && (
+          <Text style={{ fontSize: 11, color: '#999', marginTop: 1 }}>{sublabel}</Text>
+        )}
+        {isCompleted && <Text style={styles.sequenceStatusSuccess}>Completed</Text>}
         {isCurrentlyProcessing && <Text style={styles.sequenceStatusProcessing}>Processing...</Text>}
       </View>
     </View>
   );
 
+  // Step labels based on mode
+  const getStep1Label = () => isLotBased ? 'Fusion Pick Transaction' : 'Pick Confirm';
+  const getStep1Sub = () => isLotBased ? 'POST /pickTransactions' : 'POST /PENDING_PICKING_DETAILS';
+  const getStep2Label = () => isLotBased ? 'Update Pick Confirm Status' : 'Ship Confirm';
+  const getStep2Sub = () => isLotBased ? 'POST /trip/updatepickconfirmstatus' : 'POST /trip/processs2vauto';
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContainer, { maxHeight: '85%', minHeight: isStoreTransaction ? 350 : 'auto' }]}>
+        <View style={[styles.modalContainer, { maxHeight: '92%', minHeight: 400 }]}>
+          {/* Header */}
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
-              <Ionicons name="code-slash-outline" size={24} color="#1565C0" />
-              <Text style={styles.modalTitle}>{modalTitle}</Text>
+              <Ionicons name="checkmark-circle-outline" size={24} color="#1565C0" />
+              <Text style={styles.modalTitle}>{getModalTitle()}</Text>
             </View>
             <TouchableOpacity onPress={handleClose} style={styles.modalCloseBtn} disabled={isRunningSequence}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
 
-          {/* Item Info */}
-          <View style={styles.modalItemInfo}>
-            <Text style={styles.modalItemNumber}>{item.item_number || 'N/A'}</Text>
-            <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
-          </View>
-
-          {/* Processing Status View - Show when running sequence for Store orders */}
-          {isStoreTransaction && (isRunningSequence || pickCompleted || shipCompleted || sequenceError) ? (
-            <View style={styles.sequenceStatusContainer}>
-              {/* Pick Confirm Status */}
-              {renderStatusRow(
-                1,
-                'Pick Confirm',
-                currentStep >= 1,
-                pickCompleted,
-                currentStep === 1 && !pickCompleted && isRunningSequence
-              )}
-
-              {/* Connecting Line */}
-              <View style={[
-                styles.sequenceStatusLine,
-                pickCompleted && styles.sequenceStatusLineCompleted
-              ]} />
-
-              {/* Ship Confirm Status */}
-              {renderStatusRow(
-                2,
-                'Ship Confirm',
-                currentStep >= 2,
-                shipCompleted,
-                currentStep === 2 && !shipCompleted && isRunningSequence
-              )}
-
-              {/* Error Message */}
-              {sequenceError && (
-                <View style={styles.sequenceErrorContainer}>
-                  <Ionicons name="alert-circle" size={20} color="#F44336" />
-                  <Text style={styles.sequenceErrorText}>{sequenceError}</Text>
-                </View>
-              )}
-
-              {/* Success Message */}
-              {allCompleted && (
-                <View style={styles.sequenceSuccessContainer}>
-                  <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-                  <Text style={styles.sequenceSuccessText}>All steps completed successfully!</Text>
-                </View>
-              )}
-
-              {/* Done Button - Show when completed or error */}
-              {(allCompleted || sequenceError) && !isRunningSequence && (
-                <View style={styles.confirmModalActions}>
-                  <TouchableOpacity
-                    style={[styles.confirmModalConfirmBtn, allCompleted && { backgroundColor: '#4CAF50' }]}
-                    onPress={handleClose}
-                  >
-                    <Ionicons name={allCompleted ? "checkmark-done" : "close"} size={20} color="#FFF" />
-                    <Text style={styles.confirmModalConfirmText}>
-                      {allCompleted ? 'Done' : 'Close'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+          <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            {/* Item Info */}
+            <View style={styles.modalItemInfo}>
+              <Text style={styles.modalItemNumber}>{item.item_number || 'N/A'}</Text>
+              <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
             </View>
-          ) : (
-            <>
-              {/* Normal View - Before processing starts */}
-              {/* Collapsible Technical Details */}
+
+            {/* Toggle: Lot Based / Non Lot Based */}
+            <View style={styles.cpToggleContainer}>
               <TouchableOpacity
-                style={styles.detailsToggleBtn}
-                onPress={() => setShowDetails(!showDetails)}
+                style={[styles.cpToggleBtn, isLotBased && styles.cpToggleBtnActive]}
+                onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(true)}
+                disabled={isRunningSequence || allCompleted}
               >
-                <View style={styles.detailsToggleLeft}>
-                  <Ionicons name="code-slash" size={16} color="#666" />
-                  <Text style={styles.detailsToggleText}>API Details</Text>
-                </View>
-                <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
+                <Ionicons name="layers" size={16} color={isLotBased ? '#FFF' : '#666'} />
+                <Text style={[styles.cpToggleBtnText, isLotBased && styles.cpToggleBtnTextActive]}>Lot Based</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.cpToggleBtn, !isLotBased && styles.cpToggleBtnActive]}
+                onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(false)}
+                disabled={isRunningSequence || allCompleted}
+              >
+                <Ionicons name="cube" size={16} color={!isLotBased ? '#FFF' : '#666'} />
+                <Text style={[styles.cpToggleBtnText, !isLotBased && styles.cpToggleBtnTextActive]}>Non Lot Based</Text>
+              </TouchableOpacity>
+            </View>
 
-              {showDetails && (
-                <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
-                  <View style={styles.technicalDetailsContainer}>
-                    <View style={styles.apiEndpointInfo}>
-                      <View style={styles.apiMethodBadge}>
-                        <Text style={styles.apiMethodText}>POST</Text>
-                      </View>
-                      <Text style={styles.apiEndpointText} numberOfLines={2}>
-                        /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
-                      </Text>
-                    </View>
-
-                    <View style={styles.jsonPreviewContainer}>
-                      <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
-                      <View style={styles.jsonCodeBlock}>
-                        <Text style={styles.jsonCodeText}>{jsonString}</Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.fieldDetailsTitle}>Field Mapping:</Text>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>id:</Text>
-                      <Text style={styles.fieldValue}>{payload.id || '(empty)'}</Text>
-                    </View>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>line_number:</Text>
-                      <Text style={styles.fieldValue}>{payload.line_number}</Text>
-                    </View>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>lot:</Text>
-                      <Text style={styles.fieldValue}>{payload.lot || '(empty)'}</Text>
-                    </View>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>pickedQty:</Text>
-                      <Text style={styles.fieldValue}>{payload.pickedQty}</Text>
-                    </View>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>pickedBy:</Text>
-                      <Text style={styles.fieldValue}>{payload.pickedBy || '(empty)'}</Text>
-                    </View>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>pickConfirmDate:</Text>
-                      <Text style={styles.fieldValue}>{payload.pickConfirmDate}</Text>
-                    </View>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>pickConfirmStatus:</Text>
-                      <Text style={styles.fieldValue}>{payload.pickConfirmStatus}</Text>
-                    </View>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>instance:</Text>
-                      <Text style={styles.fieldValue}>{payload.instance}</Text>
-                    </View>
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>account_code:</Text>
-                      <Text style={styles.fieldValue}>{payload.account_code || '(empty)'}</Text>
-                    </View>
-                  </View>
-                </ScrollView>
-              )}
-
-              {/* Action Buttons */}
-              <View style={styles.confirmModalActions}>
-                <TouchableOpacity
-                  style={styles.confirmModalCancelBtn}
-                  onPress={handleClose}
-                  disabled={isProcessing}
-                >
-                  <Text style={styles.confirmModalCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.confirmModalConfirmBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
-                  onPress={handlePickConfirm}
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-                      <Text style={styles.confirmModalConfirmText}>
-                        {isStoreTransaction ? 'Pick & Ship Confirm' : 'Confirm Pick'}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+            {/* Qty, Lot, Expiry Info */}
+            <View style={styles.cpInfoSection}>
+              <View style={styles.cpInfoRow}>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Quantity</Text>
+                  <Text style={styles.cpInfoValue}>{pickedQty}</Text>
+                </View>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Lot Number</Text>
+                  <Text style={[styles.cpInfoValue, !lotNumber && { color: '#999' }]}>{lotNumber || 'N/A'}</Text>
+                </View>
               </View>
-            </>
+              <View style={styles.cpInfoRow}>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Lot Expiry</Text>
+                  <Text style={styles.cpInfoValue}>
+                    {lotExpiryDate ? new Date(lotExpiryDate).toLocaleDateString() : 'N/A'}
+                  </Text>
+                </View>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Days to Expiry</Text>
+                  {daysToExpiry !== null ? (
+                    <View style={[styles.cpExpiryBadge, { backgroundColor: expiryColor + '20' }]}>
+                      <Ionicons
+                        name={daysToExpiry < 30 ? 'warning' : 'time-outline'}
+                        size={14}
+                        color={expiryColor}
+                      />
+                      <Text style={[styles.cpExpiryText, { color: expiryColor }]}>
+                        {daysToExpiry < 0 ? `Expired (${Math.abs(daysToExpiry)}d ago)` : `${daysToExpiry} days`}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.cpInfoValue, { color: '#999' }]}>N/A</Text>
+                  )}
+                </View>
+              </View>
+              {/* Instance Badge */}
+              <View style={styles.cpInfoRow}>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Instance</Text>
+                  <View style={[styles.cpInstanceBadge, { backgroundColor: instanceUpper === 'PROD' ? '#E8F5E9' : '#FFF3E0' }]}>
+                    <Text style={[styles.cpInstanceText, { color: instanceUpper === 'PROD' ? '#2E7D32' : '#E65100' }]}>
+                      {instanceUpper}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.cpInfoItem}>
+                  <Text style={styles.cpInfoLabel}>Picker</Text>
+                  <Text style={styles.cpInfoValue}>{pickerName || 'Unknown'}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Processing Status View */}
+            {(isRunningSequence || step1Completed || step2Completed || sequenceError) ? (
+              <View style={styles.sequenceStatusContainer}>
+                {/* Step 1 */}
+                {renderStatusRow(
+                  1,
+                  getStep1Label(),
+                  getStep1Sub(),
+                  step1Completed,
+                  currentStep === 1 && !step1Completed && isRunningSequence
+                )}
+
+                {/* Connecting Line */}
+                <View style={[styles.sequenceStatusLine, step1Completed && styles.sequenceStatusLineCompleted]} />
+
+                {/* Step 2 */}
+                {renderStatusRow(
+                  2,
+                  getStep2Label(),
+                  getStep2Sub(),
+                  step2Completed,
+                  currentStep === 2 && !step2Completed && isRunningSequence
+                )}
+
+                {/* Error */}
+                {sequenceError && (
+                  <View style={styles.sequenceErrorContainer}>
+                    <Ionicons name="alert-circle" size={20} color="#F44336" />
+                    <Text style={styles.sequenceErrorText}>{sequenceError}</Text>
+                  </View>
+                )}
+
+                {/* Success */}
+                {allCompleted && (
+                  <View style={styles.sequenceSuccessContainer}>
+                    <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                    <Text style={styles.sequenceSuccessText}>
+                      {isLotBased ? 'Lot-based pick confirmed!' : 'All steps completed!'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <>
+                {/* API Details Toggle */}
+                <TouchableOpacity
+                  style={styles.detailsToggleBtn}
+                  onPress={() => setShowDetails(!showDetails)}
+                >
+                  <View style={styles.detailsToggleLeft}>
+                    <Ionicons name="code-slash" size={16} color="#666" />
+                    <Text style={styles.detailsToggleText}>API Details</Text>
+                  </View>
+                  <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={18} color="#666" />
+                </TouchableOpacity>
+
+                {showDetails && (
+                  <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
+                    <View style={styles.technicalDetailsContainer}>
+                      {isLotBased ? (
+                        <>
+                          {/* Lot Based: Step 1 - Fusion */}
+                          <View style={styles.cpApiStepHeader}>
+                            <Text style={styles.cpApiStepTitle}>Step 1: Fusion Pick Transaction</Text>
+                          </View>
+                          <View style={styles.apiEndpointInfo}>
+                            <View style={styles.apiMethodBadge}>
+                              <Text style={styles.apiMethodText}>POST</Text>
+                            </View>
+                            <Text style={styles.apiEndpointText} numberOfLines={3}>{fusionUrl}</Text>
+                          </View>
+                          <View style={styles.jsonPreviewContainer}>
+                            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                            <View style={styles.jsonCodeBlock}>
+                              <Text style={styles.jsonCodeText}>{lotJsonString}</Text>
+                            </View>
+                          </View>
+
+                          {/* Lot Based: Step 2 - Apex */}
+                          <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
+                            <Text style={styles.cpApiStepTitle}>Step 2: Update Pick Confirm Status</Text>
+                          </View>
+                          <View style={styles.apiEndpointInfo}>
+                            <View style={[styles.apiMethodBadge, { backgroundColor: '#FF9800' }]}>
+                              <Text style={styles.apiMethodText}>POST</Text>
+                            </View>
+                            <Text style={styles.apiEndpointText} numberOfLines={3}>{apexUrl}</Text>
+                          </View>
+                          <View style={styles.jsonPreviewContainer}>
+                            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                            <View style={styles.jsonCodeBlock}>
+                              <Text style={styles.jsonCodeText}>{updateJsonString}</Text>
+                            </View>
+                          </View>
+
+                          {/* Field mapping */}
+                          <Text style={[styles.fieldDetailsTitle, { marginTop: 8 }]}>Field Mapping:</Text>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>PickSlip:</Text>
+                            <Text style={styles.fieldValue}>{deliveryDetailId} (DELIVERY_DETAIL_ID)</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>PickSlipLine:</Text>
+                            <Text style={styles.fieldValue}>{linesId} (LINES_ID)</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>Lot:</Text>
+                            <Text style={styles.fieldValue}>{lotNumber || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>P_TRANSACTION_ID:</Text>
+                            <Text style={styles.fieldValue}>{String(rawId)} (ID)</Text>
+                          </View>
+                        </>
+                      ) : (
+                        <>
+                          {/* Non-Lot: existing payload */}
+                          <View style={styles.apiEndpointInfo}>
+                            <View style={styles.apiMethodBadge}>
+                              <Text style={styles.apiMethodText}>POST</Text>
+                            </View>
+                            <Text style={styles.apiEndpointText} numberOfLines={2}>
+                              /WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS
+                            </Text>
+                          </View>
+                          <View style={styles.jsonPreviewContainer}>
+                            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                            <View style={styles.jsonCodeBlock}>
+                              <Text style={styles.jsonCodeText}>{nonLotJsonString}</Text>
+                            </View>
+                          </View>
+
+                          <Text style={styles.fieldDetailsTitle}>Field Mapping:</Text>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>id:</Text>
+                            <Text style={styles.fieldValue}>{String(rawId) || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>line_number:</Text>
+                            <Text style={styles.fieldValue}>{item.line_number || '1'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>lot:</Text>
+                            <Text style={styles.fieldValue}>{lotNumber || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>pickedQty:</Text>
+                            <Text style={styles.fieldValue}>{pickedQty}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>pickedBy:</Text>
+                            <Text style={styles.fieldValue}>{pickerName || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>instance:</Text>
+                            <Text style={styles.fieldValue}>{instanceUpper}</Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  </ScrollView>
+                )}
+              </>
+            )}
+          </ScrollView>
+
+          {/* Action Buttons */}
+          {(allCompleted || sequenceError) && !isRunningSequence ? (
+            <View style={styles.confirmModalActions}>
+              <TouchableOpacity
+                style={[styles.confirmModalConfirmBtn, allCompleted && { backgroundColor: '#4CAF50' }]}
+                onPress={handleClose}
+              >
+                <Ionicons name={allCompleted ? 'checkmark-done' : 'close'} size={20} color="#FFF" />
+                <Text style={styles.confirmModalConfirmText}>
+                  {allCompleted ? 'Done' : 'Close'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : !isRunningSequence && (
+            <View style={styles.confirmModalActions}>
+              <TouchableOpacity
+                style={styles.confirmModalCancelBtn}
+                onPress={handleClose}
+                disabled={isProcessing}
+              >
+                <Text style={styles.confirmModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmModalConfirmBtn, isProcessing && styles.confirmModalConfirmBtnDisabled]}
+                onPress={handleConfirm}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color="#FFF" />
+                    <Text style={styles.confirmModalConfirmText}>
+                      {isLotBased ? 'Confirm Pick (Lot)' : isStoreTransaction ? 'Pick & Ship Confirm' : 'Confirm Pick'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </View>
@@ -1510,6 +1760,65 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     }
   };
 
+  // Execute Lot-Based confirm pick: Step 1 = Fusion, returns handler for Step 2
+  const executeLotBasedConfirm = async (fusionPayload) => {
+    setIsConfirmingPick(true);
+    try {
+      console.log('[WMSOrderDetails] Lot-Based Confirm - Fusion Payload:', JSON.stringify(fusionPayload, null, 2));
+
+      // Step 1: Fusion pickTransactions
+      const fusionResult = await fusionPickTransaction(fusionPayload);
+
+      if (!fusionResult.success) {
+        setIsConfirmingPick(false);
+        return { success: false, error: fusionResult.error || 'Fusion pick transaction failed' };
+      }
+
+      // Return success with Step 2 handler
+      return {
+        success: true,
+        data: fusionResult.data,
+        updatePickStatus: async (updatePayload) => {
+          try {
+            console.log('[WMSOrderDetails] Lot-Based Confirm - Update Payload:', JSON.stringify(updatePayload, null, 2));
+
+            const updateResult = await updatePickConfirmStatus(updatePayload);
+
+            if (updateResult.success) {
+              // Update local state
+              const confirmedItemId = getItemId(confirmPickItem);
+              setLines(prev =>
+                prev.map(line =>
+                  getItemId(line) === confirmedItemId && confirmedItemId !== ''
+                    ? {
+                        ...line,
+                        picked_qty: confirmPickItem.qty,
+                        pick_confirm_status: 'YES',
+                        pick_confirm_date: new Date().toISOString(),
+                        pick_confirm_by: pickerName,
+                      }
+                    : line
+                )
+              );
+              return { success: true, data: updateResult.data };
+            } else {
+              return { success: false, error: updateResult.error || 'Update pick confirm status failed' };
+            }
+          } catch (error) {
+            console.error('[WMSOrderDetails] Error updating pick confirm status:', error);
+            return { success: false, error: error.message || 'Unknown error' };
+          } finally {
+            setIsConfirmingPick(false);
+          }
+        },
+      };
+    } catch (error) {
+      console.error('[WMSOrderDetails] Error lot-based confirm:', error);
+      setIsConfirmingPick(false);
+      return { success: false, error: error.message || 'Unknown error' };
+    }
+  };
+
   const handleCancelPick = async (item) => {
     Alert.alert(
       'Cancel Pick',
@@ -1801,11 +2110,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           setConfirmPickItem(null);
         }}
         onConfirm={executeConfirmPick}
+        onLotBasedConfirm={executeLotBasedConfirm}
         onShipConfirm={handleShipConfirm}
         item={confirmPickItem}
         order={order}
         pickerName={pickerName}
-        instance={user?.instance || 'PROD'}
+        instance={user?.instance || 'TEST'}
         isProcessing={isConfirmingPick}
         transactionType={order?.transaction_type}
       />
@@ -3192,6 +3502,94 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFF',
+  },
+  // Confirm Pick Modal - Toggle & Info Styles
+  cpToggleContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 12,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 10,
+    padding: 3,
+  },
+  cpToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  cpToggleBtnActive: {
+    backgroundColor: '#1565C0',
+  },
+  cpToggleBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  cpToggleBtnTextActive: {
+    color: '#FFF',
+  },
+  cpInfoSection: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 10,
+    padding: 12,
+  },
+  cpInfoRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  cpInfoItem: {
+    flex: 1,
+  },
+  cpInfoLabel: {
+    fontSize: 11,
+    color: '#999',
+    marginBottom: 3,
+  },
+  cpInfoValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  cpExpiryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
+  },
+  cpExpiryText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cpInstanceBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  cpInstanceText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cpApiStepHeader: {
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  cpApiStepTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1565C0',
   },
   // Step Indicator Styles
   stepIndicatorContainer: {

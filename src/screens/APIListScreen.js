@@ -226,11 +226,11 @@ const API_DOCUMENTATION = [
             description: 'Confirm pick for a shipment line',
           },
           {
-            name: 'Pending Pick Confirm',
+            name: 'Pending Pick Confirm (Non-Lot)',
             endpoint: '/WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS',
             method: 'POST',
             params: 'id, line_number, lot, pickedQty, pickedBy, pickConfirmDate, pickConfirmStatus, p_instance_name',
-            description: 'Confirm pending pick with lot details',
+            description: 'Non-Lot Based: Confirm pending pick with lot details',
           },
           {
             name: 'Ship Confirm (Auto)',
@@ -245,6 +245,26 @@ const API_DOCUMENTATION = [
             method: 'POST',
             params: 'p_trx_number, p_instance_name',
             description: 'Process S2V shipment by order number',
+          },
+        ],
+      },
+      {
+        page: 'WMS Lot-Based Pick Confirm (Fusion)',
+        apis: [
+          {
+            name: 'Fusion Pick Transaction (Lot Based Step 1)',
+            endpoint: '/pickTransactions',
+            method: 'POST',
+            params: 'pickLines[].PickSlip (DELIVERY_DETAIL_ID), pickLines[].PickSlipLine (LINES_ID), pickLines[].PickedQuantity, pickLines[].SubinventoryCode, pickLines[].lotItemLots[].Lot, pickLines[].lotItemLots[].Quantity',
+            description: 'Fusion Cloud API - Lot-based pick confirmation via pickTransactions (URL based on instance)',
+            baseUrl: 'Fusion Cloud',
+          },
+          {
+            name: 'Update Pick Confirm Status (Lot Based Step 2)',
+            endpoint: '/TRIPMANAGEMENT/trip/updatepickconfirmstatus',
+            method: 'POST',
+            params: 'P_TRANSACTION_ID (ID), p_instance_name, p_pickedQty',
+            description: 'Apex API - Update pick confirm status after Fusion pick transaction succeeds',
           },
         ],
       },

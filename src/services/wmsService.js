@@ -846,6 +846,180 @@ export const fetchItemLots = async (lotsHref) => {
 };
 
 /**
+ * Lot-Based Pick Confirm via Fusion pickTransactions API
+ * Step 1: POST to Fusion /pickTransactions
+ * @param {Object} payload - Pick transaction payload
+ * @param {string} payload.deliveryDetailId - DELIVERY_DETAIL_ID (PickSlip)
+ * @param {string} payload.linesId - LINES_ID (PickSlipLine)
+ * @param {number} payload.pickedQty - Picked quantity
+ * @param {string} payload.subinventoryCode - Subinventory code (default: DUTY PAID)
+ * @param {string} payload.lot - Lot number
+ * @param {number} payload.lotQty - Lot quantity (same as pickedQty)
+ * @returns {Promise<Object>} Fusion pick transaction result
+ */
+export const fusionPickTransaction = async (payload) => {
+  try {
+    const currentInstance = await getInstance();
+    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+    const url = `${fusionBaseUrl}/pickTransactions`;
+
+    const body = {
+      pickLines: [
+        {
+          PickSlip: String(payload.deliveryDetailId),
+          PickSlipLine: String(payload.linesId),
+          PickedQuantity: String(payload.pickedQty),
+          SubinventoryCode: payload.subinventoryCode || 'DUTY PAID',
+          lotItemLots: [
+            {
+              Lot: String(payload.lot),
+              Quantity: String(payload.lotQty || payload.pickedQty),
+            },
+          ],
+        },
+      ],
+    };
+
+    console.log('[WMSService] Fusion Pick Transaction:', url);
+    console.log('[WMSService] Payload:', JSON.stringify(body, null, 2));
+
+    const authHeader = 'Basic ' + base64Encode(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    console.log('[WMSService] Fusion Pick Transaction response status:', response.status);
+
+    let data;
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      console.log('[WMSService] Response first 500 chars:', responseText.substring(0, 500));
+    } catch (textError) {
+      responseText = 'Error reading response';
+    }
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        data = {
+          error: titleMatch?.[1] || 'Server returned HTML error page',
+          type: 'HTML_ERROR',
+          status: response.status,
+        };
+      } else {
+        data = {
+          message: responseText.substring(0, 500),
+          type: 'TEXT_RESPONSE',
+        };
+      }
+    }
+
+    console.log('[WMSService] Fusion Pick Transaction response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}`,
+        data,
+        status: response.status,
+      };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error Fusion Pick Transaction:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
+ * Update pick confirm status via Apex API (Step 2 after Fusion pick)
+ * POST to /TRIPMANAGEMENT/trip/updatepickconfirmstatus
+ * @param {Object} payload - Update payload
+ * @param {string|number} payload.transactionId - P_TRANSACTION_ID (ID field)
+ * @param {number} payload.pickedQty - Picked quantity
+ * @returns {Promise<Object>} Update result
+ */
+export const updatePickConfirmStatus = async (payload) => {
+  try {
+    const APEX_BASE = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP';
+    const url = `${APEX_BASE}/TRIPMANAGEMENT/trip/updatepickconfirmstatus`;
+    const currentInstance = await getInstance();
+
+    const body = {
+      P_TRANSACTION_ID: payload.transactionId,
+      p_instance_name: currentInstance,
+      p_pickedQty: payload.pickedQty,
+    };
+
+    console.log('[WMSService] Update Pick Confirm Status:', url);
+    console.log('[WMSService] Payload:', JSON.stringify(body, null, 2));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    console.log('[WMSService] Update Pick Confirm Status response:', response.status);
+
+    let data;
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      console.log('[WMSService] Response first 500 chars:', responseText.substring(0, 500));
+    } catch (textError) {
+      responseText = 'Error reading response';
+    }
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        data = {
+          error: titleMatch?.[1] || 'Server returned HTML error page',
+          type: 'HTML_ERROR',
+          status: response.status,
+        };
+      } else {
+        data = {
+          message: responseText.substring(0, 500),
+          type: 'TEXT_RESPONSE',
+        };
+      }
+    }
+
+    console.log('[WMSService] Update Pick Confirm Status response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}`,
+        data,
+        status: response.status,
+      };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error updating pick confirm status:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
  * Fetch picker performance data
  * @param {string} pickerName - Picker name
  * @param {Date} fromDate - Start date
@@ -893,6 +1067,8 @@ export default {
   fetchShipmentLines,
   confirmPick,
   confirmPickPending,
+  fusionPickTransaction,
+  updatePickConfirmStatus,
   shipConfirm,
   fetchItemOnhand,
   fetchItemLots,
