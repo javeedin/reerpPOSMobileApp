@@ -733,8 +733,8 @@ const getFusionCredentials = async () => {
 
     // Extract credentials from response (handle both single item and items array)
     const item = data?.items?.[0] || data;
-    const username = item.username || item.USERNAME || item.user_name || item.USER_NAME || '';
-    const password = item.password || item.PASSWORD || '';
+    const username = item.user_name || item.USER_NAME || item.username || item.USERNAME || '';
+    const password = item.passwordd || item.PASSWORDD || item.password || item.PASSWORD || '';
 
     if (username && password) {
       _fusionCredentialsCache = { username, password };
