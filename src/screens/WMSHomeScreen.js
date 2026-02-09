@@ -763,9 +763,9 @@ const WMSHomeScreen = ({ navigation }) => {
   const getFilteredShipments = () => {
     let filtered = [...shipments];
 
-    // Filter by pending only switch (orders not picked)
+    // Filter by pending only switch (orders not picked and not shipped)
     if (showPendingOnly) {
-      filtered = filtered.filter(s => s.pick_confirm_status !== 'YES');
+      filtered = filtered.filter(s => s.pick_confirm_status !== 'YES' && s.shipped_status !== 'YES');
     }
 
     // Filter by search text (customer name or order number)
