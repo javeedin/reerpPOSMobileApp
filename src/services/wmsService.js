@@ -701,9 +701,61 @@ export const processS2VShipment = async (sourceOrderNumber, instanceName = 'PROD
 
 // Dynamic instance support - Fusion URLs + Apex p_instance_name helper
 import { getInstance, getFusionBaseUrl, appendInstanceParam } from './api';
-const FUSION_CREDENTIALS = {
-  username: 'shaik',
-  password: 'fusion1234',
+
+// Fusion credentials - fetched dynamically from API, cached in memory
+let _fusionCredentialsCache = null;
+
+/**
+ * Fetch Fusion user credentials from Apex API
+ * Caches in memory so it's only fetched once per app session
+ * @returns {Promise<{username: string, password: string}>}
+ */
+const getFusionCredentials = async () => {
+  if (_fusionCredentialsCache) {
+    return _fusionCredentialsCache;
+  }
+
+  try {
+    const url = await appendInstanceParam(`${WMS_API_BASE}/trip/fusionuserdetails`);
+    console.log('[WMSService] Fetching Fusion credentials:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[WMSService] Fusion credentials fetched successfully');
+
+    // Extract credentials from response (handle both single item and items array)
+    const item = data?.items?.[0] || data;
+    const username = item.username || item.USERNAME || item.user_name || item.USER_NAME || '';
+    const password = item.password || item.PASSWORD || '';
+
+    if (username && password) {
+      _fusionCredentialsCache = { username, password };
+      return _fusionCredentialsCache;
+    }
+
+    throw new Error('No credentials found in API response');
+  } catch (error) {
+    console.error('[WMSService] Error fetching Fusion credentials:', error);
+    // No fallback - throw so caller knows it failed
+    throw new Error('Failed to fetch Fusion credentials: ' + error.message);
+  }
+};
+
+/**
+ * Build Basic Auth header from Fusion credentials
+ * @returns {Promise<string>} Authorization header value
+ */
+const getFusionAuthHeader = async () => {
+  const creds = await getFusionCredentials();
+  return 'Basic ' + base64Encode(`${creds.username}:${creds.password}`);
 };
 
 // Base64 encode for Basic Auth (cross-platform)
@@ -742,7 +794,7 @@ export const fetchItemOnhand = async (organizationCode, subinventoryCode, itemNu
 
     console.log('[WMSService] Fetching item onhand:', url);
 
-    const authHeader = 'Basic ' + base64Encode(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+    const authHeader = await getFusionAuthHeader();
 
     const response = await fetch(url, {
       method: 'GET',
@@ -807,7 +859,7 @@ export const fetchItemLots = async (lotsHref) => {
 
     console.log('[WMSService] Fetching lots:', lotsHref);
 
-    const authHeader = 'Basic ' + base64Encode(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+    const authHeader = await getFusionAuthHeader();
 
     const response = await fetch(lotsHref, {
       method: 'GET',
@@ -883,7 +935,7 @@ export const fusionPickTransaction = async (payload) => {
     console.log('[WMSService] Fusion Pick Transaction:', url);
     console.log('[WMSService] Payload:', JSON.stringify(body, null, 2));
 
-    const authHeader = 'Basic ' + base64Encode(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+    const authHeader = await getFusionAuthHeader();
 
     const response = await fetch(url, {
       method: 'POST',
