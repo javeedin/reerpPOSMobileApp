@@ -3507,16 +3507,17 @@ const styles = StyleSheet.create({
   cpModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    padding: 8,
+    paddingTop: 30,
+    paddingHorizontal: 4,
   },
   cpModalContainer: {
     backgroundColor: '#FFF',
     borderRadius: 16,
     width: '100%',
-    maxHeight: '96%',
-    minHeight: '80%',
+    flex: 1,
+    maxHeight: '98%',
     overflow: 'hidden',
   },
   // Confirm Pick Modal - Toggle & Info Styles
