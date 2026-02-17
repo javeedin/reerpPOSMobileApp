@@ -1684,7 +1684,7 @@ const CancelOrderModal = ({ visible, onClose, onConfirm, item, order, isProcessi
   if (!item) return null;
 
   const orderNumber = order?.order_number || order?.source_order_number || '';
-  const fulfillLineId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
+  const fulfillLineId = item.fulfill_line_id || item.FULFILL_LINE_ID || '';
 
   // Build the Fusion API URL
   const fusionBase = (instance || '').toUpperCase() === 'PROD'
@@ -1735,7 +1735,7 @@ const CancelOrderModal = ({ visible, onClose, onConfirm, item, order, isProcessi
               <Text style={cancelModalStyles.itemDescription}>{item.description || 'No Description'}</Text>
               <View style={cancelModalStyles.itemQtyRow}>
                 <Text style={cancelModalStyles.itemQtyLabel}>Qty: {parseInt(item.qty) || 0}</Text>
-                <Text style={cancelModalStyles.itemIdLabel}>ID: {fulfillLineId}</Text>
+                <Text style={cancelModalStyles.itemIdLabel}>FulfillLineId: {fulfillLineId}</Text>
               </View>
             </View>
 
@@ -2134,7 +2134,7 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
 
   const jsonPayload = {
     lines: markedItems.map(item => ({
-      FulfillLineId: item.id || item.source_delivery_detail_id || item.delivery_detail_id || '',
+      FulfillLineId: item.fulfill_line_id || item.FULFILL_LINE_ID || '',
       OrderedQuantity: 0,
       CancelReason: cancelReason,
     })),
@@ -2173,7 +2173,7 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
                 <Text style={cancelModalStyles.itemDescription} numberOfLines={1}>{item.description || 'No Description'}</Text>
                 <View style={cancelModalStyles.itemQtyRow}>
                   <Text style={cancelModalStyles.itemQtyLabel}>Qty: {parseInt(item.qty) || 0}</Text>
-                  <Text style={cancelModalStyles.itemIdLabel}>ID: {item.id || item.source_delivery_detail_id || item.delivery_detail_id || ''}</Text>
+                  <Text style={cancelModalStyles.itemIdLabel}>FulfillLineId: {item.fulfill_line_id || item.FULFILL_LINE_ID || ''}</Text>
                 </View>
               </View>
             ))}
@@ -2343,6 +2343,9 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
   const formattedId = String(rawId);
 
+  // Get FulfillLineId for cancel API
+  const fulfillLineId = item.fulfill_line_id || item.FULFILL_LINE_ID || '';
+
   // Get Lines_id for ship confirm API
   const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
 
@@ -2374,6 +2377,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
           <Text style={styles.lineItemNumber}>{item.item_number || 'N/A'}</Text>
           <View style={styles.idsInline}>
             <Text style={styles.itemIdSmall}>{formattedId}</Text>
+            {fulfillLineId ? <Text style={styles.linesIdSmall}>F:{fulfillLineId}</Text> : null}
             {linesId ? <Text style={styles.linesIdSmall}>L:{linesId}</Text> : null}
           </View>
         </View>
@@ -3687,7 +3691,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     setIsCancellingLine(true);
     setCancellingId(item.delivery_detail_id);
     try {
-      const fulfillLineId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
+      const fulfillLineId = item.fulfill_line_id || item.FULFILL_LINE_ID || '';
 
       const payload = {
         orderNumber: orderNumber,
@@ -3739,7 +3743,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       const payload = {
         orderNumber: orderNumber,
         lines: items.map(item => ({
-          FulfillLineId: item.id || item.source_delivery_detail_id || item.delivery_detail_id || '',
+          FulfillLineId: item.fulfill_line_id || item.FULFILL_LINE_ID || '',
           CancelReason: cancelReason || 'OUT OF STOCK',
         })),
       };
