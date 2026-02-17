@@ -30,20 +30,26 @@ export const fetchShipmentsSummary = async (pickerName, fromDate, toDate, pickCo
     const from = formatDateForAPI(fromDate);
     const to = formatDateForAPI(toDate);
 
-    let rawUrl = `${WMS_API_BASE}/SHIPMENTSSUMMARYFORAPP?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
+    const url = `${WMS_API_BASE}/SHIPMENTSSUMMARYFORAPP`;
 
+    const params = {
+      pickerName,
+      P_fromDate: from,
+      P_todate: to,
+    };
     if (pickConfirmStatus) {
-      rawUrl += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
+      params.pickConfirmStatus = pickConfirmStatus;
     }
 
-    const url = await appendInstanceParam(rawUrl);
-    console.log('[WMSService] Fetching shipments summary:', url);
+    const body = await buildInstanceBody(params);
+    console.log('[WMSService] Fetching shipments summary:', url, body);
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -419,15 +425,17 @@ export const getWMSDateRange = () => {
  */
 export const fetchShipmentLines = async (orderNumber) => {
   try {
-    const url = await appendInstanceParam(`${WMS_API_BASE}/SHIPMENTLINESFORAPP?p_SOURCE_ORDER_NUMBER=${encodeURIComponent(orderNumber)}`);
+    const url = `${WMS_API_BASE}/SHIPMENTLINESFORAPP`;
+    const body = await buildInstanceBody({ p_SOURCE_ORDER_NUMBER: orderNumber });
 
-    console.log('[WMSService] Fetching shipment lines:', url);
+    console.log('[WMSService] Fetching shipment lines:', url, body);
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -546,14 +554,16 @@ export const shipConfirm = async (deliveryDetailId) => {
     }
 
     // Don't encode - it's just a number
-    const url = await appendInstanceParam(`${WMS_API_BASE}/trip/processs2vauto/${deliveryDetailId}`);
+    const url = `${WMS_API_BASE}/trip/processs2vauto/${deliveryDetailId}`;
+    const body = await buildInstanceBody({});
 
     console.log('[WMSService] Ship confirm:', url);
     console.log('[WMSService] Lines_id:', deliveryDetailId);
 
-    // Try simple POST without body
     const response = await fetch(url, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
 
     console.log('[WMSService] Ship confirm response status:', response.status);
@@ -700,7 +710,7 @@ export const processS2VShipment = async (sourceOrderNumber, instanceName = 'PROD
 };
 
 // Dynamic instance support - Fusion URLs + Apex p_instance_name helper
-import { getInstance, getFusionBaseUrl, appendInstanceParam } from './api';
+import { getInstance, getFusionBaseUrl, buildInstanceBody } from './api';
 
 // Fusion credentials - fetched dynamically from API, cached in memory
 let _fusionCredentialsCache = null;
@@ -716,12 +726,14 @@ const getFusionCredentials = async () => {
   }
 
   try {
-    const url = await appendInstanceParam(`${WMS_API_BASE}/trip/fusionuserdetails`);
+    const url = `${WMS_API_BASE}/trip/fusionuserdetails`;
+    const body = await buildInstanceBody({});
     console.log('[WMSService] Fetching Fusion credentials:', url);
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -1364,15 +1376,20 @@ export const getCancelOrderLineUrl = async (orderNumber) => {
  */
 export const updateCancelStatus = async (transactionId, instanceName) => {
   try {
-    const url = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/updatecancelstatus?P_TRANSACTION_ID=${encodeURIComponent(transactionId)}&p_instance_name=${encodeURIComponent(instanceName || 'TEST')}`;
+    const url = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/updatecancelstatus`;
+    const body = {
+      P_TRANSACTION_ID: transactionId,
+      p_instance_name: instanceName || 'TEST',
+    };
 
-    console.log('[WMSService] Update Cancel Status (APEX):', url);
+    console.log('[WMSService] Update Cancel Status (APEX):', url, body);
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(body),
     });
 
     console.log('[WMSService] Update Cancel Status response status:', response.status);
@@ -1409,20 +1426,26 @@ export const fetchPickerPerformance = async (pickerName, fromDate, toDate, pickC
     const from = formatDateForAPI(fromDate);
     const to = formatDateForAPI(toDate);
 
-    let rawUrl = `${WMS_API_BASE}/PICKERPERFORMANCE?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
+    const url = `${WMS_API_BASE}/PICKERPERFORMANCE`;
 
+    const params = {
+      pickerName,
+      P_fromDate: from,
+      P_todate: to,
+    };
     if (pickConfirmStatus) {
-      rawUrl += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
+      params.pickConfirmStatus = pickConfirmStatus;
     }
 
-    const url = await appendInstanceParam(rawUrl);
-    console.log('[WMSService] Fetching picker performance:', url);
+    const body = await buildInstanceBody(params);
+    console.log('[WMSService] Fetching picker performance:', url, body);
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
