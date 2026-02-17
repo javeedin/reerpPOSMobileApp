@@ -2112,8 +2112,188 @@ const cancelModalStyles = StyleSheet.create({
   },
 });
 
+// Bulk Cancel Modal - shows all marked lines and cancels them in one API call
+const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExecuteBulkCancel, isProcessing }) => {
+  const [cancelReason, setCancelReason] = useState('OUT OF STOCK');
+  const [showApiDetails, setShowApiDetails] = useState(false);
+  const [apiResult, setApiResult] = useState(null);
+
+  useEffect(() => {
+    if (visible) {
+      setCancelReason('OUT OF STOCK');
+      setApiResult(null);
+    }
+  }, [visible]);
+
+  const orderNumber = order?.order_number || order?.source_order_number || '';
+
+  const fusionBase = (instance || '').toUpperCase() === 'PROD'
+    ? 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05'
+    : 'https://efmh-test.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05';
+  const apiUrl = `${fusionBase}/salesOrdersForOrderHub/OPS:${orderNumber}`;
+
+  const jsonPayload = {
+    lines: markedItems.map(item => ({
+      FulfillLineId: item.id || item.source_delivery_detail_id || item.delivery_detail_id || '',
+      OrderedQuantity: 0,
+      CancelReason: cancelReason,
+    })),
+  };
+
+  const handleConfirm = async () => {
+    setApiResult(null);
+    const result = await onExecuteBulkCancel(markedItems, cancelReason);
+    setApiResult(result);
+  };
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={cancelModalStyles.overlay}>
+        <View style={cancelModalStyles.container}>
+          {/* Header */}
+          <View style={cancelModalStyles.header}>
+            <View style={cancelModalStyles.headerLeft}>
+              <Ionicons name="close-circle" size={24} color="#D32F2F" />
+              <Text style={cancelModalStyles.headerTitle}>Cancel Lines ({markedItems.length})</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} disabled={isProcessing}>
+              <Ionicons name="close" size={22} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={cancelModalStyles.scrollContent} showsVerticalScrollIndicator={false}>
+            {/* Marked Lines List */}
+            {markedItems.map((item, idx) => (
+              <View key={`bulk-cancel-${idx}`} style={cancelModalStyles.itemSection}>
+                <View style={cancelModalStyles.itemBadge}>
+                  <Ionicons name="cube" size={16} color="#1565C0" />
+                  <Text style={cancelModalStyles.itemNumber}>{item.item_number || 'N/A'}</Text>
+                  <Text style={cancelModalStyles.lineNum}>Line #{item.line_number || '1'}</Text>
+                </View>
+                <Text style={cancelModalStyles.itemDescription} numberOfLines={1}>{item.description || 'No Description'}</Text>
+                <View style={cancelModalStyles.itemQtyRow}>
+                  <Text style={cancelModalStyles.itemQtyLabel}>Qty: {parseInt(item.qty) || 0}</Text>
+                  <Text style={cancelModalStyles.itemIdLabel}>ID: {item.id || item.source_delivery_detail_id || item.delivery_detail_id || ''}</Text>
+                </View>
+              </View>
+            ))}
+
+            {/* Cancel Reason */}
+            <View style={cancelModalStyles.reasonSection}>
+              <Text style={cancelModalStyles.sectionTitle}>Cancel Reason (applies to all lines)</Text>
+              <TextInput
+                style={cancelModalStyles.reasonInput}
+                placeholder="Enter cancel reason"
+                placeholderTextColor="#999"
+                value={cancelReason}
+                onChangeText={setCancelReason}
+              />
+            </View>
+
+            {/* API Details Section - collapsed by default */}
+            <TouchableOpacity
+              style={cancelModalStyles.apiToggle}
+              onPress={() => setShowApiDetails(!showApiDetails)}
+            >
+              <View style={cancelModalStyles.apiToggleLeft}>
+                <Ionicons name="code-slash" size={16} color="#1565C0" />
+                <Text style={cancelModalStyles.apiToggleText}>API Details</Text>
+              </View>
+              <Ionicons name={showApiDetails ? 'chevron-up' : 'chevron-down'} size={16} color="#666" />
+            </TouchableOpacity>
+
+            {showApiDetails && (
+              <View style={cancelModalStyles.apiSection}>
+                <View style={cancelModalStyles.apiMethodRow}>
+                  <View style={cancelModalStyles.methodBadge}>
+                    <Text style={cancelModalStyles.methodText}>PATCH</Text>
+                  </View>
+                  <Text style={cancelModalStyles.instanceBadgeText}>
+                    {(instance || 'TEST').toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={3}>{apiUrl}</Text>
+                <Text style={cancelModalStyles.jsonLabel}>Request Body:</Text>
+                <View style={cancelModalStyles.jsonContainer}>
+                  <Text style={cancelModalStyles.jsonText} selectable>
+                    {JSON.stringify(jsonPayload, null, 2)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* API Result Status */}
+            {apiResult && (
+              <View style={[
+                cancelModalStyles.resultSection,
+                { backgroundColor: apiResult.success ? '#E8F5E9' : '#FFEBEE' }
+              ]}>
+                <View style={cancelModalStyles.resultHeader}>
+                  <Ionicons
+                    name={apiResult.success ? 'checkmark-circle' : 'close-circle'}
+                    size={20}
+                    color={apiResult.success ? '#4CAF50' : '#D32F2F'}
+                  />
+                  <Text style={[
+                    cancelModalStyles.resultTitle,
+                    { color: apiResult.success ? '#2E7D32' : '#C62828' }
+                  ]}>
+                    {apiResult.success ? `${markedItems.length} Line(s) Cancelled` : 'Cancel Failed'}
+                  </Text>
+                </View>
+                {apiResult.status && (
+                  <Text style={cancelModalStyles.resultStatus}>HTTP Status: {apiResult.status}</Text>
+                )}
+                {apiResult.data && (
+                  <View style={cancelModalStyles.resultDataContainer}>
+                    <Text style={cancelModalStyles.resultDataText} selectable>
+                      {typeof apiResult.data === 'string' ? apiResult.data : JSON.stringify(apiResult.data, null, 2)}
+                    </Text>
+                  </View>
+                )}
+                {apiResult.error && !apiResult.success && (
+                  <Text style={cancelModalStyles.resultError}>{apiResult.error}</Text>
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={cancelModalStyles.actions}>
+            <TouchableOpacity
+              style={cancelModalStyles.keepButton}
+              onPress={onClose}
+              disabled={isProcessing}
+            >
+              <Text style={cancelModalStyles.keepButtonText}>
+                {apiResult?.success ? 'Close' : 'Go Back'}
+              </Text>
+            </TouchableOpacity>
+            {!apiResult?.success && (
+              <TouchableOpacity
+                style={[cancelModalStyles.cancelButton, isProcessing && cancelModalStyles.disabledButton]}
+                onPress={handleConfirm}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle" size={18} color="#FFF" />
+                    <Text style={cancelModalStyles.cancelButtonText}>Cancel All ({markedItems.length})</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 // Line Item Card Component
-const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing }) => {
+const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing, isMarkedForCancel, onToggleMarkCancel }) => {
   const [showDetails, setShowDetails] = useState(false);
   const isPicked = item.pick_confirm_status === 'YES';
   const isShipped = item.shipped_status === 'YES';
@@ -2296,18 +2476,13 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.cancelPickButton}
-            onPress={() => onCancelPick(item)}
-            disabled={isCancelling}
+            style={[styles.markCancelButton, isMarkedForCancel && styles.markCancelButtonActive]}
+            onPress={() => onToggleMarkCancel(item)}
           >
-            {isCancelling ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="close-circle" size={20} color="#FFF" />
-                <Text style={styles.cancelPickButtonText}>Cancel</Text>
-              </>
-            )}
+            <Ionicons name={isMarkedForCancel ? 'checkmark-circle' : 'flag-outline'} size={20} color={isMarkedForCancel ? '#FFF' : '#D32F2F'} />
+            <Text style={[styles.markCancelButtonText, isMarkedForCancel && styles.markCancelButtonTextActive]}>
+              {isMarkedForCancel ? 'Marked' : 'Mark Cancel'}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -2332,22 +2507,17 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         </View>
       )}
 
-      {/* Cancel Button - show for picked/shipped lines that are not yet cancelled */}
+      {/* Mark for Cancel Button - show for picked/shipped lines that are not yet cancelled */}
       {showCancelButton && (
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
-            style={[styles.cancelPickButton, { flex: 1 }]}
-            onPress={() => onCancelPick(item)}
-            disabled={isCancelling}
+            style={[styles.markCancelButton, { flex: 1 }, isMarkedForCancel && styles.markCancelButtonActive]}
+            onPress={() => onToggleMarkCancel(item)}
           >
-            {isCancelling ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="close-circle" size={20} color="#FFF" />
-                <Text style={styles.cancelPickButtonText}>Cancel Line</Text>
-              </>
-            )}
+            <Ionicons name={isMarkedForCancel ? 'checkmark-circle' : 'flag-outline'} size={20} color={isMarkedForCancel ? '#FFF' : '#D32F2F'} />
+            <Text style={[styles.markCancelButtonText, isMarkedForCancel && styles.markCancelButtonTextActive]}>
+              {isMarkedForCancel ? 'Marked for Cancel' : 'Mark for Cancel'}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -3179,6 +3349,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [cancelItem, setCancelItem] = useState(null);
   const [isCancellingLine, setIsCancellingLine] = useState(false);
 
+  // Bulk Cancel (Mark for Cancel) state
+  const [markedForCancel, setMarkedForCancel] = useState(new Set());
+  const [bulkCancelModalVisible, setBulkCancelModalVisible] = useState(false);
+
   // Report Preview Modal state
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
@@ -3494,6 +3668,20 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     setCancelModalVisible(true);
   };
 
+  // Toggle mark for cancel on a line
+  const handleToggleMarkCancel = (item) => {
+    const itemId = getItemId(item);
+    setMarkedForCancel(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
   // Execute cancel order line via Fusion API - returns result for modal display
   const executeCancelOrderLine = async (item, cancelReason) => {
     setIsCancellingLine(true);
@@ -3541,6 +3729,51 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     } finally {
       setIsCancellingLine(false);
       setCancellingId(null);
+    }
+  };
+
+  // Execute bulk cancel - cancels all marked lines in a single API call
+  const executeBulkCancel = async (items, cancelReason) => {
+    setIsCancellingLine(true);
+    try {
+      const payload = {
+        orderNumber: orderNumber,
+        lines: items.map(item => ({
+          FulfillLineId: item.id || item.source_delivery_detail_id || item.delivery_detail_id || '',
+          CancelReason: cancelReason || 'OUT OF STOCK',
+        })),
+      };
+
+      console.log('[WMSOrderDetails] Bulk Cancel Payload:', JSON.stringify(payload, null, 2));
+
+      const result = await cancelOrderLine(payload);
+
+      if (result.success) {
+        // Update local state to mark all items as cancelled
+        const cancelledIds = new Set(items.map(item => getItemId(item)));
+        setLines(prev =>
+          prev.map(line =>
+            cancelledIds.has(getItemId(line))
+              ? {
+                  ...line,
+                  cancelled_status: 'YES',
+                  cancelled_date: new Date().toISOString(),
+                  cancelled_by: pickerName,
+                  cancel_reason: cancelReason || 'OUT OF STOCK',
+                }
+              : line
+          )
+        );
+        // Clear marked items
+        setMarkedForCancel(new Set());
+      }
+
+      return { success: result.success, data: result.data, error: result.error, status: result.status };
+    } catch (error) {
+      console.error('[WMSOrderDetails] Error bulk cancelling order lines:', error);
+      return { success: false, error: error.message || 'Unknown error' };
+    } finally {
+      setIsCancellingLine(false);
     }
   };
 
@@ -3807,7 +4040,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         transactionType={order?.transaction_type}
       />
 
-      {/* Cancel Order Line Modal */}
+      {/* Cancel Order Line Modal (single line - legacy) */}
       <CancelOrderModal
         visible={cancelModalVisible}
         onClose={() => {
@@ -3818,6 +4051,17 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         item={cancelItem}
         order={order}
         instance={user?.instance || 'TEST'}
+        isProcessing={isCancellingLine}
+      />
+
+      {/* Bulk Cancel Modal - cancel all marked lines */}
+      <BulkCancelModal
+        visible={bulkCancelModalVisible}
+        onClose={() => setBulkCancelModalVisible(false)}
+        markedItems={lines.filter(l => markedForCancel.has(getItemId(l)))}
+        order={order}
+        instance={user?.instance || 'TEST'}
+        onExecuteBulkCancel={executeBulkCancel}
         isProcessing={isCancellingLine}
       />
 
@@ -4008,6 +4252,16 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               <Text style={styles.shipAllButtonText}>Ship Confirm</Text>
             </TouchableOpacity>
           )}
+          {/* Cancel Marked Lines Button - show when lines are marked */}
+          {markedForCancel.size > 0 && (
+            <TouchableOpacity
+              style={[styles.shipAllButton, { backgroundColor: '#D32F2F' }]}
+              onPress={() => setBulkCancelModalVisible(true)}
+            >
+              <Ionicons name="close-circle" size={16} color="#FFF" />
+              <Text style={styles.shipAllButtonText}>Cancel ({markedForCancel.size})</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </LinearGradient>
 
@@ -4149,6 +4403,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                 isCancelling={cancellingId === item.delivery_detail_id}
                 isShipping={shippingId === item.delivery_detail_id}
                 isUndoing={undoingId === item.delivery_detail_id}
+                isMarkedForCancel={markedForCancel.has(getItemId(item))}
+                onToggleMarkCancel={handleToggleMarkCancel}
               />
             ))
           )}
@@ -4812,6 +5068,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFF',
     marginLeft: 6,
+  },
+  markCancelButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: '#D32F2F',
+    gap: 6,
+  },
+  markCancelButtonActive: {
+    backgroundColor: '#D32F2F',
+    borderColor: '#D32F2F',
+  },
+  markCancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D32F2F',
+  },
+  markCancelButtonTextActive: {
+    color: '#FFF',
   },
   shipConfirmButton: {
     flex: 1,
