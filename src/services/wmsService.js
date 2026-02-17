@@ -1262,6 +1262,101 @@ export const updateShipConfirmationStatus = async (sourceOrder) => {
 };
 
 /**
+ * Cancel order line(s) via Fusion salesOrdersForOrderHub REST API
+ * PATCH to /fscmRestApi/resources/11.13.18.05/salesOrdersForOrderHub/OPS:{orderNumber}
+ * @param {Object} payload - Cancel payload
+ * @param {string} payload.orderNumber - Source order number
+ * @param {Array} payload.lines - Array of line objects { FulfillLineId, CancelReason }
+ * @returns {Promise<Object>} Cancel result with full API response
+ */
+export const cancelOrderLine = async (payload) => {
+  try {
+    const currentInstance = await getInstance();
+    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+    const url = `${fusionBaseUrl}/salesOrdersForOrderHub/OPS:${payload.orderNumber}`;
+
+    const body = {
+      lines: payload.lines.map(line => ({
+        FulfillLineId: line.FulfillLineId,
+        OrderedQuantity: 0,
+        CancelReason: line.CancelReason || 'OUT OF STOCK',
+      })),
+    };
+
+    console.log('[WMSService] Cancel Order Line (Fusion):', url);
+    console.log('[WMSService] Payload:', JSON.stringify(body, null, 2));
+
+    const authHeader = await getFusionAuthHeader();
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    console.log('[WMSService] Cancel Order Line response status:', response.status);
+
+    let data;
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      console.log('[WMSService] Response first 500 chars:', responseText.substring(0, 500));
+    } catch (textError) {
+      console.error('[WMSService] Error reading response text:', textError);
+      responseText = 'Error reading response';
+    }
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        data = {
+          error: titleMatch?.[1] || 'Server returned HTML error page',
+          type: 'HTML_ERROR',
+          status: response.status,
+        };
+      } else {
+        data = {
+          message: responseText.substring(0, 500),
+          type: 'TEXT_RESPONSE',
+        };
+      }
+    }
+
+    console.log('[WMSService] Cancel Order Line response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HTTP ${response.status}`,
+        data,
+        status: response.status,
+      };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error cancelling order line (Fusion):', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
+ * Get the Fusion cancel order line URL (for display purposes)
+ * @param {string} orderNumber - Source order number
+ * @returns {Promise<string>} Full Fusion API URL
+ */
+export const getCancelOrderLineUrl = async (orderNumber) => {
+  const currentInstance = await getInstance();
+  const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+  return `${fusionBaseUrl}/salesOrdersForOrderHub/OPS:${orderNumber}`;
+};
+
+/**
  * Fetch picker performance data
  * @param {string} pickerName - Picker name
  * @param {Date} fromDate - Start date
@@ -1327,4 +1422,6 @@ export default {
   getShipmentNumber,
   fusionShipConfirmTransaction,
   updateShipConfirmationStatus,
+  cancelOrderLine,
+  getCancelOrderLineUrl,
 };

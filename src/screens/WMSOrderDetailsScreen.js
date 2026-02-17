@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import printerService from '../services/printerService';
 
@@ -1667,16 +1667,462 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   );
 };
 
+// Cancel Order Line Modal Component - Shows Fusion API details, JSON, and status
+const CancelOrderModal = ({ visible, onClose, onConfirm, item, order, isProcessing, instance }) => {
+  const [cancelReason, setCancelReason] = useState('OUT OF STOCK');
+  const [showApiDetails, setShowApiDetails] = useState(true);
+  const [apiResult, setApiResult] = useState(null); // null = not started, { success, data, error }
+
+  // Reset state when modal opens with new item
+  useEffect(() => {
+    if (visible) {
+      setCancelReason('OUT OF STOCK');
+      setApiResult(null);
+    }
+  }, [visible, item?.id]);
+
+  if (!item) return null;
+
+  const orderNumber = order?.order_number || order?.source_order_number || '';
+  const fulfillLineId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
+
+  // Build the Fusion API URL
+  const fusionBase = (instance || '').toUpperCase() === 'PROD'
+    ? 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05'
+    : 'https://efmh-test.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05';
+  const apiUrl = `${fusionBase}/salesOrdersForOrderHub/OPS:${orderNumber}`;
+
+  // Build the JSON payload
+  const jsonPayload = {
+    lines: [
+      {
+        FulfillLineId: fulfillLineId,
+        OrderedQuantity: 0,
+        CancelReason: cancelReason,
+      },
+    ],
+  };
+
+  const handleConfirm = async () => {
+    setApiResult(null);
+    const result = await onConfirm(item, cancelReason);
+    setApiResult(result);
+  };
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={cancelModalStyles.overlay}>
+        <View style={cancelModalStyles.container}>
+          {/* Header */}
+          <View style={cancelModalStyles.header}>
+            <View style={cancelModalStyles.headerLeft}>
+              <Ionicons name="close-circle" size={24} color="#D32F2F" />
+              <Text style={cancelModalStyles.headerTitle}>Cancel Order Line</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} disabled={isProcessing}>
+              <Ionicons name="close" size={22} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={cancelModalStyles.scrollContent} showsVerticalScrollIndicator={false}>
+            {/* Item Description Section */}
+            <View style={cancelModalStyles.itemSection}>
+              <View style={cancelModalStyles.itemBadge}>
+                <Ionicons name="cube" size={16} color="#1565C0" />
+                <Text style={cancelModalStyles.itemNumber}>{item.item_number || 'N/A'}</Text>
+                <Text style={cancelModalStyles.lineNum}>Line #{item.line_number || '1'}</Text>
+              </View>
+              <Text style={cancelModalStyles.itemDescription}>{item.description || 'No Description'}</Text>
+              <View style={cancelModalStyles.itemQtyRow}>
+                <Text style={cancelModalStyles.itemQtyLabel}>Qty: {parseInt(item.qty) || 0}</Text>
+                <Text style={cancelModalStyles.itemIdLabel}>ID: {fulfillLineId}</Text>
+              </View>
+            </View>
+
+            {/* Cancel Reason */}
+            <View style={cancelModalStyles.reasonSection}>
+              <Text style={cancelModalStyles.sectionTitle}>Cancel Reason</Text>
+              <TextInput
+                style={cancelModalStyles.reasonInput}
+                placeholder="Enter cancel reason"
+                placeholderTextColor="#999"
+                value={cancelReason}
+                onChangeText={setCancelReason}
+              />
+            </View>
+
+            {/* API Details Section */}
+            <TouchableOpacity
+              style={cancelModalStyles.apiToggle}
+              onPress={() => setShowApiDetails(!showApiDetails)}
+            >
+              <View style={cancelModalStyles.apiToggleLeft}>
+                <Ionicons name="code-slash" size={16} color="#1565C0" />
+                <Text style={cancelModalStyles.apiToggleText}>API Details</Text>
+              </View>
+              <Ionicons name={showApiDetails ? 'chevron-up' : 'chevron-down'} size={16} color="#666" />
+            </TouchableOpacity>
+
+            {showApiDetails && (
+              <View style={cancelModalStyles.apiSection}>
+                {/* Method & URL */}
+                <View style={cancelModalStyles.apiMethodRow}>
+                  <View style={cancelModalStyles.methodBadge}>
+                    <Text style={cancelModalStyles.methodText}>PATCH</Text>
+                  </View>
+                  <Text style={cancelModalStyles.instanceBadgeText}>
+                    {(instance || 'TEST').toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={3}>{apiUrl}</Text>
+
+                {/* JSON Payload */}
+                <Text style={cancelModalStyles.jsonLabel}>Request Body:</Text>
+                <View style={cancelModalStyles.jsonContainer}>
+                  <Text style={cancelModalStyles.jsonText} selectable>
+                    {JSON.stringify(jsonPayload, null, 2)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* API Result Status */}
+            {apiResult && (
+              <View style={[
+                cancelModalStyles.resultSection,
+                { backgroundColor: apiResult.success ? '#E8F5E9' : '#FFEBEE' }
+              ]}>
+                <View style={cancelModalStyles.resultHeader}>
+                  <Ionicons
+                    name={apiResult.success ? 'checkmark-circle' : 'close-circle'}
+                    size={20}
+                    color={apiResult.success ? '#4CAF50' : '#D32F2F'}
+                  />
+                  <Text style={[
+                    cancelModalStyles.resultTitle,
+                    { color: apiResult.success ? '#2E7D32' : '#C62828' }
+                  ]}>
+                    {apiResult.success ? 'Cancel Successful' : 'Cancel Failed'}
+                  </Text>
+                </View>
+                {apiResult.status && (
+                  <Text style={cancelModalStyles.resultStatus}>HTTP Status: {apiResult.status}</Text>
+                )}
+                {apiResult.data && (
+                  <View style={cancelModalStyles.resultDataContainer}>
+                    <Text style={cancelModalStyles.resultDataText} selectable>
+                      {typeof apiResult.data === 'string' ? apiResult.data : JSON.stringify(apiResult.data, null, 2)}
+                    </Text>
+                  </View>
+                )}
+                {apiResult.error && !apiResult.success && (
+                  <Text style={cancelModalStyles.resultError}>{apiResult.error}</Text>
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={cancelModalStyles.actions}>
+            <TouchableOpacity
+              style={cancelModalStyles.keepButton}
+              onPress={onClose}
+              disabled={isProcessing}
+            >
+              <Text style={cancelModalStyles.keepButtonText}>
+                {apiResult?.success ? 'Close' : 'Keep Line'}
+              </Text>
+            </TouchableOpacity>
+            {!apiResult?.success && (
+              <TouchableOpacity
+                style={[cancelModalStyles.cancelButton, isProcessing && cancelModalStyles.disabledButton]}
+                onPress={handleConfirm}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle" size={18} color="#FFF" />
+                    <Text style={cancelModalStyles.cancelButtonText}>Cancel Line</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const cancelModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  container: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    width: '100%',
+    maxHeight: '92%',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#D32F2F',
+  },
+  scrollContent: {
+    maxHeight: 500,
+  },
+  // Item Section
+  itemSection: {
+    margin: 16,
+    marginBottom: 8,
+    backgroundColor: '#FFF3E0',
+    borderRadius: 8,
+    padding: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800',
+  },
+  itemBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  itemNumber: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1565C0',
+  },
+  lineNum: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 'auto',
+  },
+  itemDescription: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+    marginBottom: 6,
+  },
+  itemQtyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  itemQtyLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#E65100',
+  },
+  itemIdLabel: {
+    fontSize: 11,
+    color: '#999',
+  },
+  // Cancel Reason
+  reasonSection: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 6,
+  },
+  reasonInput: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    padding: 10,
+    fontSize: 14,
+    color: '#333',
+  },
+  // API Details
+  apiToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 0.5,
+    borderTopColor: '#E0E0E0',
+  },
+  apiToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  apiToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1565C0',
+  },
+  apiSection: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    padding: 12,
+  },
+  apiMethodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  methodBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  methodText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFF',
+  },
+  instanceBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  apiUrl: {
+    fontSize: 11,
+    color: '#1565C0',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+  jsonLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  jsonContainer: {
+    backgroundColor: '#263238',
+    borderRadius: 6,
+    padding: 10,
+  },
+  jsonText: {
+    fontSize: 11,
+    color: '#A5D6A7',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 16,
+  },
+  // Result Section
+  resultSection: {
+    margin: 16,
+    marginTop: 8,
+    borderRadius: 8,
+    padding: 12,
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  resultTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  resultStatus: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 6,
+  },
+  resultDataContainer: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 4,
+  },
+  resultDataText: {
+    fontSize: 11,
+    color: '#333',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    lineHeight: 16,
+  },
+  resultError: {
+    fontSize: 13,
+    color: '#C62828',
+    marginTop: 4,
+  },
+  // Actions
+  actions: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#EEE',
+  },
+  keepButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  keepButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#666',
+  },
+  cancelButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D32F2F',
+    borderRadius: 8,
+    paddingVertical: 14,
+    gap: 6,
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+});
+
 // Line Item Card Component
 const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing }) => {
   const [showDetails, setShowDetails] = useState(false);
   const isPicked = item.pick_confirm_status === 'YES';
   const isShipped = item.shipped_status === 'YES';
+  const isCancelled = item.cancelled_status === 'YES';
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
   const discPer = item.disc_per != null ? String(item.disc_per) : '';
   const isStoreTransfer = (transactionType || '').toLowerCase().includes('store');
-  const hasStatusInfo = pickedQty > 0 || isShipped;
+  const hasStatusInfo = pickedQty > 0 || isShipped || isCancelled;
 
   // Check if discount is 50% (handle both "50%" and "50" formats)
   const discValue = parseFloat(discPer.replace('%', '')) || 0;
@@ -1706,10 +2152,12 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
     }
   }, [isHighDiscount, isStoreTransfer]);
 
-  // Show Confirm and Cancel buttons only when picked_qty = 0
-  const showPickButtons = pickedQty === 0;
+  // Show Confirm and Cancel buttons only when picked_qty = 0 and not cancelled
+  const showPickButtons = pickedQty === 0 && !isCancelled;
   // Show Ship Confirm button when picked but not shipped (Store orders only)
-  const showShipButtons = pickedQty > 0 && !isShipped;
+  const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled;
+  // Show Cancel button for picked/shipped lines that are not yet cancelled
+  const showCancelButton = !isCancelled && (pickedQty > 0 || isShipped);
 
   // Use the "id" field directly as-is
   const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
@@ -1718,12 +2166,16 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   // Get Lines_id for ship confirm API
   const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
 
-  // Status determination: picked_qty = 0 means pending, > 0 means picked
+  // Status determination: cancelled > shipped > picked > pending
   let statusColor = '#FF9800'; // Pending
   let statusIcon = 'time-outline';
   let statusText = 'Pending';
 
-  if (isShipped) {
+  if (isCancelled) {
+    statusColor = '#D32F2F';
+    statusIcon = 'close-circle';
+    statusText = 'Cancelled';
+  } else if (isShipped) {
     statusColor = '#9C27B0';
     statusIcon = 'checkmark-done-circle';
     statusText = 'Shipped';
@@ -1880,7 +2332,42 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         </View>
       )}
 
-      {/* Collapsible Status Info - shows when picked or shipped */}
+      {/* Cancel Button - show for picked/shipped lines that are not yet cancelled */}
+      {showCancelButton && (
+        <View style={styles.actionButtonsRow}>
+          <TouchableOpacity
+            style={[styles.cancelPickButton, { flex: 1 }]}
+            onPress={() => onCancelPick(item)}
+            disabled={isCancelling}
+          >
+            {isCancelling ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <>
+                <Ionicons name="close-circle" size={20} color="#FFF" />
+                <Text style={styles.cancelPickButtonText}>Cancel Line</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Cancelled Banner - show when line is cancelled */}
+      {isCancelled && (
+        <View style={styles.cancelledBanner}>
+          <Ionicons name="close-circle" size={16} color="#D32F2F" />
+          <Text style={styles.cancelledBannerText}>
+            Cancelled{item.cancel_reason ? `: ${item.cancel_reason}` : ''}
+          </Text>
+          {item.cancelled_date && (
+            <Text style={styles.cancelledBannerDate}>
+              {new Date(item.cancelled_date).toLocaleDateString()}
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Collapsible Status Info - shows when picked, shipped, or cancelled */}
       {hasStatusInfo && (
         <TouchableOpacity
           style={styles.statusInfoToggle}
@@ -1898,6 +2385,12 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
               <View style={styles.statusBadgeShipped}>
                 <Ionicons name="checkmark-done-circle" size={12} color="#9C27B0" />
                 <Text style={styles.statusBadgeTextShipped}>Shipped</Text>
+              </View>
+            )}
+            {isCancelled && (
+              <View style={styles.statusBadgeCancelled}>
+                <Ionicons name="close-circle" size={12} color="#D32F2F" />
+                <Text style={styles.statusBadgeTextCancelled}>Cancelled</Text>
               </View>
             )}
           </View>
@@ -1925,6 +2418,18 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
               <Text style={styles.statusDetailText}>Shipped</Text>
               <Text style={styles.statusDetailDate}>
                 {item.shipped_date ? new Date(item.shipped_date).toLocaleDateString() : ''}
+              </Text>
+            </View>
+          )}
+          {isCancelled && (
+            <View style={styles.statusDetailRow}>
+              <Ionicons name="close-circle" size={14} color="#D32F2F" />
+              <Text style={styles.statusDetailText}>
+                Cancelled{item.cancelled_by ? ` by ${item.cancelled_by}` : ''}
+                {item.cancel_reason ? ` - ${item.cancel_reason}` : ''}
+              </Text>
+              <Text style={styles.statusDetailDate}>
+                {item.cancelled_date ? new Date(item.cancelled_date).toLocaleDateString() : ''}
               </Text>
             </View>
           )}
@@ -2669,6 +3174,11 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // QR Code Modal state
   const [qrModalVisible, setQrModalVisible] = useState(false);
 
+  // Cancel Order Line Modal state
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancelItem, setCancelItem] = useState(null);
+  const [isCancellingLine, setIsCancellingLine] = useState(false);
+
   // Report Preview Modal state
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
@@ -2979,43 +3489,59 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     }
   };
 
-  const handleCancelPick = async (item) => {
-    Alert.alert(
-      'Cancel Pick',
-      `Are you sure you want to cancel pick for ${item.item_number}?\n\nThis will reset the picked quantity to 0.`,
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            setCancellingId(item.delivery_detail_id);
-            try {
-              // TODO: Replace with actual cancel pick API call
-              // For now, just show a message
-              Alert.alert('Info', 'Cancel Pick API not yet configured.\n\nPlease provide the API endpoint.');
+  const handleCancelPick = (item) => {
+    setCancelItem(item);
+    setCancelModalVisible(true);
+  };
 
-              // When API is ready, uncomment and modify:
-              // const result = await cancelPick(item.delivery_detail_id, pickerName);
-              // if (result.success) {
-              //   setLines(prev =>
-              //     prev.map(line =>
-              //       line.delivery_detail_id === item.delivery_detail_id
-              //         ? { ...line, picked_qty: 0, pick_confirm_status: 'NO', pick_confirm_date: null }
-              //         : line
-              //     )
-              //   );
-              // }
-            } catch (error) {
-              console.error('[WMSOrderDetails] Error cancelling pick:', error);
-              Alert.alert('Error', 'Failed to cancel pick');
-            } finally {
-              setCancellingId(null);
-            }
+  // Execute cancel order line via Fusion API - returns result for modal display
+  const executeCancelOrderLine = async (item, cancelReason) => {
+    setIsCancellingLine(true);
+    setCancellingId(item.delivery_detail_id);
+    try {
+      const fulfillLineId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
+
+      const payload = {
+        orderNumber: orderNumber,
+        lines: [
+          {
+            FulfillLineId: fulfillLineId,
+            CancelReason: cancelReason || 'OUT OF STOCK',
           },
-        },
-      ]
-    );
+        ],
+      };
+
+      console.log('[WMSOrderDetails] Cancel Order Line Payload:', JSON.stringify(payload, null, 2));
+
+      const result = await cancelOrderLine(payload);
+
+      if (result.success) {
+        // Update local state to reflect cancelled status
+        const cancelledItemId = getItemId(item);
+        setLines(prev =>
+          prev.map(line =>
+            getItemId(line) === cancelledItemId && cancelledItemId !== ''
+              ? {
+                  ...line,
+                  cancelled_status: 'YES',
+                  cancelled_date: new Date().toISOString(),
+                  cancelled_by: pickerName,
+                  cancel_reason: cancelReason || 'OUT OF STOCK',
+                }
+              : line
+          )
+        );
+      }
+
+      // Return full result for modal to display status
+      return { success: result.success, data: result.data, error: result.error, status: result.status };
+    } catch (error) {
+      console.error('[WMSOrderDetails] Error cancelling order line:', error);
+      return { success: false, error: error.message || 'Unknown error' };
+    } finally {
+      setIsCancellingLine(false);
+      setCancellingId(null);
+    }
   };
 
   // Handle Ship Confirm
@@ -3242,10 +3768,11 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     totalLines: lines.length,
     totalQty: lines.reduce((sum, l) => sum + (parseInt(l.qty) || 0), 0),
     pickedQty: lines.reduce((sum, l) => sum + (parseInt(l.picked_qty) || 0), 0),
-    // Pending: picked_qty = 0; Picked: picked_qty > 0 and not shipped
-    pendingLines: lines.filter(l => (parseInt(l.picked_qty) || 0) === 0).length,
-    pickedLines: lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 && l.shipped_status !== 'YES').length,
-    shippedLines: lines.filter(l => l.shipped_status === 'YES').length,
+    // Pending: picked_qty = 0 and not cancelled; Picked: picked_qty > 0 and not shipped and not cancelled
+    pendingLines: lines.filter(l => (parseInt(l.picked_qty) || 0) === 0 && l.cancelled_status !== 'YES').length,
+    pickedLines: lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 && l.shipped_status !== 'YES' && l.cancelled_status !== 'YES').length,
+    shippedLines: lines.filter(l => l.shipped_status === 'YES' && l.cancelled_status !== 'YES').length,
+    cancelledLines: lines.filter(l => l.cancelled_status === 'YES').length,
   };
 
   return (
@@ -3278,6 +3805,20 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         instance={user?.instance || 'TEST'}
         isProcessing={isConfirmingPick}
         transactionType={order?.transaction_type}
+      />
+
+      {/* Cancel Order Line Modal */}
+      <CancelOrderModal
+        visible={cancelModalVisible}
+        onClose={() => {
+          setCancelModalVisible(false);
+          setCancelItem(null);
+        }}
+        onConfirm={executeCancelOrderLine}
+        item={cancelItem}
+        order={order}
+        instance={user?.instance || 'TEST'}
+        isProcessing={isCancellingLine}
       />
 
       {/* API Response Modal */}
@@ -3527,6 +4068,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               <Text style={[styles.summaryValue, { color: '#9C27B0' }]}>{summary.shippedLines}</Text>
               <Text style={styles.summaryLabel}>Shipped</Text>
             </View>
+            {summary.cancelledLines > 0 && (
+              <View style={[styles.summaryItem, { borderColor: '#D32F2F' }]}>
+                <Text style={[styles.summaryValue, { color: '#D32F2F' }]}>{summary.cancelledLines}</Text>
+                <Text style={styles.summaryLabel}>Cancelled</Text>
+              </View>
+            )}
           </View>
 
           {/* Filter Section */}
@@ -4324,6 +4871,42 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#9C27B0',
     fontWeight: '600',
+  },
+  statusBadgeCancelled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+    gap: 3,
+  },
+  statusBadgeTextCancelled: {
+    fontSize: 10,
+    color: '#D32F2F',
+    fontWeight: '600',
+  },
+  cancelledBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginTop: 8,
+    gap: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#D32F2F',
+  },
+  cancelledBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#C62828',
+    fontWeight: '600',
+  },
+  cancelledBannerDate: {
+    fontSize: 11,
+    color: '#999',
   },
   statusDetailsExpanded: {
     backgroundColor: '#FAFAFA',
