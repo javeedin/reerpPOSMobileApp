@@ -46,16 +46,26 @@ const api = axios.create({
   },
 });
 
-// Interceptor: automatically add p_instance_name to all Apex requests (POST body)
+// Interceptor: automatically add p_instance_name to all Apex requests
+// GET: as query parameter | POST/PUT: in request body
 api.interceptors.request.use(async (config) => {
   const instance = await getInstance();
-  if (config.data && typeof config.data === 'object') {
-    config.data = { ...config.data, p_instance_name: instance };
-  } else {
-    config.data = { ...(config.data || {}), p_instance_name: instance };
+  if (config.method === 'get') {
+    config.params = { ...config.params, p_instance_name: instance };
+  } else if (config.method === 'post' || config.method === 'put') {
+    if (config.data && typeof config.data === 'object') {
+      config.data = { ...config.data, p_instance_name: instance };
+    }
   }
   return config;
 });
+
+// Helper: append p_instance_name as query parameter for direct fetch GET calls
+export const appendInstanceParam = async (url) => {
+  const instance = await getInstance();
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}p_instance_name=${encodeURIComponent(instance)}`;
+};
 
 // Helper: build POST body with p_instance_name for direct fetch POST calls
 export const buildInstanceBody = async (params = {}) => {
@@ -69,9 +79,11 @@ export const loginUser = async (username, password) => {
   console.log('Username:', username);
 
   try {
-    const response = await api.post(`/LOGIN/user/`, {
-      username: username,
-      password: password,
+    const response = await api.get(`/LOGIN/user/`, {
+      params: {
+        username: username,
+        password: password,
+      },
     });
     console.log('=== LOGIN RESPONSE ===');
     console.log('Status:', response.status);
@@ -95,7 +107,7 @@ export const getMenuOptions = async (username) => {
   console.log('Username:', username);
 
   try {
-    const response = await api.post(`/APPMENU/MENU/${username}`, {});
+    const response = await api.get(`/APPMENU/MENU/${username}`);
     console.log('=== MENU RESPONSE ===');
     console.log('Status:', response.status);
     console.log('Data:', JSON.stringify(response.data, null, 2));

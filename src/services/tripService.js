@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { buildInstanceBody } from './api';
+import { appendInstanceParam } from './api';
 
 const TRIP_CACHE_KEY = 'trip_data_cache';
 const TRIP_API_BASE = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT';
@@ -30,16 +30,14 @@ export const fetchTrips = async (fromDate, toDate) => {
     const from = formatDateForAPI(fromDate);
     const to = formatDateForAPI(toDate);
 
-    const url = `${TRIP_API_BASE}/appTripdetailsall`;
-    const body = await buildInstanceBody({ from_date: from, to_date: to });
-    console.log('[TripService] Fetching trips:', url, body);
+    const url = await appendInstanceParam(`${TRIP_API_BASE}/appTripdetailsall?from_date=${from}&to_date=${to}`);
+    console.log('[TripService] Fetching trips:', url);
 
     const response = await fetch(url, {
-      method: 'POST',
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -71,16 +69,14 @@ export const fetchTrips = async (fromDate, toDate) => {
  */
 export const fetchOrderLineDetails = async (orderNumber) => {
   try {
-    const url = `${TRIP_MGMT_API_BASE}/trips/orders/getlotdetails/${orderNumber}`;
-    const body = await buildInstanceBody({});
-    console.log('[TripService] Fetching order lines:', url, body);
+    const url = await appendInstanceParam(`${TRIP_MGMT_API_BASE}/trips/orders/getlotdetails/${orderNumber}`);
+    console.log('[TripService] Fetching order lines:', url);
 
     const response = await fetch(url, {
-      method: 'POST',
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
