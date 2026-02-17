@@ -3857,7 +3857,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const executeCancelOrderLine = async (item, cancelReason, setCurrentStep, setStep1Result, setStep2Result) => {
     setIsCancellingLine(true);
     setCancellingId(item.delivery_detail_id);
-    const instanceName = (user?.instance || 'TEST').toUpperCase();
+    const instanceName = await getInstance();
     try {
       // Step 1: Cancel in Fusion
       setCurrentStep('step1');
@@ -3921,7 +3921,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // Execute bulk cancel: Step 1 = Fusion (all lines in one call), Step 2 = APEX (per line)
   const executeBulkCancel = async (items, cancelReason, setCurrentStep, setStep1Result, setStep2Result) => {
     setIsCancellingLine(true);
-    const instanceName = (user?.instance || 'TEST').toUpperCase();
+    const instanceName = await getInstance();
     try {
       // Step 1: Cancel all in Fusion
       setCurrentStep('step1');
@@ -4150,7 +4150,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       setBulkFinalStatus('processing');
       try {
         console.log('[WMSOrderDetails] Processing S2V shipment for order:', orderNumber);
-        const instanceName = user?.instance || 'PROD';
+        const instanceName = await getInstance();
         const finalResult = await processS2VShipment(orderNumber, instanceName);
 
         if (finalResult.success) {
