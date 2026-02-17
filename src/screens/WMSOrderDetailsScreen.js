@@ -2472,7 +2472,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   const [showDetails, setShowDetails] = useState(false);
   const isPicked = item.pick_confirm_status === 'YES';
   const isShipped = item.shipped_status === 'YES';
-  const isCancelled = item.cancelled_status === 'YES' || (item.cancel_status || '').toUpperCase() === 'CANCELLED';
+  const isCancelled = item.cancelled_status === 'YES' || (item.cancel_status || '').toUpperCase() === 'YES' || (item.cancel_status || '').toUpperCase() === 'CANCELLED';
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
   const discPer = item.disc_per != null ? String(item.disc_per) : '';
@@ -4212,10 +4212,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     totalQty: lines.reduce((sum, l) => sum + (parseInt(l.qty) || 0), 0),
     pickedQty: lines.reduce((sum, l) => sum + (parseInt(l.picked_qty) || 0), 0),
     // Pending: picked_qty = 0 and not cancelled; Picked: picked_qty > 0 and not shipped and not cancelled
-    pendingLines: lines.filter(l => (parseInt(l.picked_qty) || 0) === 0 && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED').length,
-    pickedLines: lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 && l.shipped_status !== 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED').length,
-    shippedLines: lines.filter(l => l.shipped_status === 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED').length,
-    cancelledLines: lines.filter(l => l.cancelled_status === 'YES' || (l.cancel_status || '').toUpperCase() === 'CANCELLED').length,
+    pendingLines: lines.filter(l => (parseInt(l.picked_qty) || 0) === 0 && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES').length,
+    pickedLines: lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 && l.shipped_status !== 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES').length,
+    shippedLines: lines.filter(l => l.shipped_status === 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES').length,
+    cancelledLines: lines.filter(l => l.cancelled_status === 'YES' || (l.cancel_status || '').toUpperCase() === 'CANCELLED' || (l.cancel_status || '').toUpperCase() === 'YES').length,
   };
 
   return (
