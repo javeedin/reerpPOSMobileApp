@@ -27,6 +27,7 @@ import {
   filterPendingOrders,
   clearWMSCache,
 } from '../services/wmsService';
+import { getInstance } from '../services/api';
 import colors from '../theme/colors';
 
 const { width } = Dimensions.get('window');
@@ -666,8 +667,15 @@ const WMSHomeScreen = ({ navigation }) => {
   const [searchText, setSearchText] = useState('');
   const [showPendingOnly, setShowPendingOnly] = useState(true); // Default to Pending
 
+  const [currentInstance, setCurrentInstance] = useState('');
+
   // Get picker name from user data
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
+
+  // Load current instance
+  useEffect(() => {
+    getInstance().then(inst => setCurrentInstance((inst || 'TEST').toUpperCase()));
+  }, []);
 
   // Check if user is a PICKER
   const isPicker = (user?.userType || '').toUpperCase() === 'PICKER';
@@ -812,7 +820,14 @@ const WMSHomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
           <View style={styles.headerText}>
-            <Text style={styles.headerTitle}>WMS 1.0.3</Text>
+            <View style={styles.headerTitleRow}>
+              <Text style={styles.headerTitle}>WMS 1.0.3</Text>
+              {currentInstance ? (
+                <View style={[styles.instanceBadge, currentInstance === 'PROD' ? styles.instanceBadgeProd : styles.instanceBadgeTest]}>
+                  <Text style={styles.instanceBadgeText}>{currentInstance}</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.headerSubtitle}>
               {pickerName || 'Not Set'}
             </Text>
@@ -1194,8 +1209,29 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   headerTitle: {
     fontSize: 20,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  instanceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  instanceBadgeProd: {
+    backgroundColor: '#D32F2F',
+  },
+  instanceBadgeTest: {
+    backgroundColor: '#FF9800',
+  },
+  instanceBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
     color: '#FFF',
   },
