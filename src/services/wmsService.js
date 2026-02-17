@@ -1357,6 +1357,46 @@ export const getCancelOrderLineUrl = async (orderNumber) => {
 };
 
 /**
+ * Update cancel status in APEX after successful Fusion cancel
+ * @param {string} transactionId - The line transaction ID (item.id)
+ * @param {string} instanceName - Instance name (PROD/TEST)
+ * @returns {Promise<Object>} Update result
+ */
+export const updateCancelStatus = async (transactionId, instanceName) => {
+  try {
+    const url = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/updatecancelstatus?P_TRANSACTION_ID=${encodeURIComponent(transactionId)}&p_instance_name=${encodeURIComponent(instanceName || 'TEST')}`;
+
+    console.log('[WMSService] Update Cancel Status (APEX):', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('[WMSService] Update Cancel Status response status:', response.status);
+
+    let data;
+    try {
+      const responseText = await response.text();
+      data = JSON.parse(responseText);
+    } catch (e) {
+      data = { message: 'Response received' };
+    }
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}`, data, status: response.status };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error updating cancel status (APEX):', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
  * Fetch picker performance data
  * @param {string} pickerName - Picker name
  * @param {Date} fromDate - Start date
@@ -1424,4 +1464,5 @@ export default {
   updateShipConfirmationStatus,
   cancelOrderLine,
   getCancelOrderLineUrl,
+  updateCancelStatus,
 };
