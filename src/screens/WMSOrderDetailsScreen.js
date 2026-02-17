@@ -1851,14 +1851,18 @@ const CancelOrderModal = ({ visible, onClose, onConfirm, item, order, isProcessi
                 <View style={cancelModalStyles.apiDivider} />
                 <Text style={cancelModalStyles.apiStepLabel}>Step 2: APEX Update Cancel Status</Text>
                 <View style={cancelModalStyles.apiMethodRow}>
-                  <View style={[cancelModalStyles.methodBadge, { backgroundColor: '#4CAF50' }]}>
-                    <Text style={cancelModalStyles.methodText}>GET</Text>
+                  <View style={[cancelModalStyles.methodBadge, { backgroundColor: '#FF9800' }]}>
+                    <Text style={cancelModalStyles.methodText}>POST</Text>
                   </View>
                   <Text style={cancelModalStyles.instanceBadgeText}>{instanceName}</Text>
                 </View>
-                <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={5}>
-                  {apexBaseUrl}?P_TRANSACTION_ID={transactionId}&p_instance_name={instanceName}
-                </Text>
+                <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={3}>{apexBaseUrl}</Text>
+                <Text style={cancelModalStyles.jsonLabel}>Request Body:</Text>
+                <View style={cancelModalStyles.jsonContainer}>
+                  <Text style={cancelModalStyles.jsonText} selectable>
+                    {JSON.stringify({ P_TRANSACTION_ID: transactionId, p_instance_name: instanceName }, null, 2)}
+                  </Text>
+                </View>
                 {step2Result && (
                   <View style={[cancelModalStyles.apiResultInline, { borderLeftColor: step2Result.success ? '#4CAF50' : '#D32F2F' }]}>
                     <Text style={cancelModalStyles.apiResultLabel}>Response ({step2Result.status || '-'}):</Text>
@@ -2405,14 +2409,18 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
                 <View style={cancelModalStyles.apiDivider} />
                 <Text style={cancelModalStyles.apiStepLabel}>Step 2: APEX Update Cancel Status</Text>
                 <View style={cancelModalStyles.apiMethodRow}>
-                  <View style={[cancelModalStyles.methodBadge, { backgroundColor: '#4CAF50' }]}>
-                    <Text style={cancelModalStyles.methodText}>GET</Text>
+                  <View style={[cancelModalStyles.methodBadge, { backgroundColor: '#FF9800' }]}>
+                    <Text style={cancelModalStyles.methodText}>POST</Text>
                   </View>
                   <Text style={cancelModalStyles.instanceBadgeText}>{instanceName}</Text>
                 </View>
-                <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={5}>
-                  {apexBaseUrl}?P_TRANSACTION_ID={'{each line ID}'}&p_instance_name={instanceName}
-                </Text>
+                <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={3}>{apexBaseUrl}</Text>
+                <Text style={cancelModalStyles.jsonLabel}>Request Body:</Text>
+                <View style={cancelModalStyles.jsonContainer}>
+                  <Text style={cancelModalStyles.jsonText} selectable>
+                    {JSON.stringify({ P_TRANSACTION_ID: '{each line ID}', p_instance_name: instanceName }, null, 2)}
+                  </Text>
+                </View>
                 {step2Result && (
                   <View style={[cancelModalStyles.apiResultInline, { borderLeftColor: step2Result.success ? '#4CAF50' : '#D32F2F' }]}>
                     <Text style={cancelModalStyles.apiResultLabel}>Response ({step2Result.status || '-'}):</Text>
@@ -3878,18 +3886,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       const result = await cancelOrderLine(payload);
       setStep1Result({ success: result.success, data: result.data, error: result.error, status: result.status });
 
-      if (!result.success) {
-        setCurrentStep('done');
-        return { success: false, data: result.data, error: result.error, status: result.status };
-      }
-
-      // Step 2: Update APEX cancel status for each line
+      // Step 2: Update APEX cancel status — always run even if Fusion failed
       setCurrentStep('step2');
       const transactionId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
       const apexResult = await updateCancelStatus(transactionId, instanceName);
       setStep2Result({ success: apexResult.success, data: apexResult.data, error: apexResult.error, status: apexResult.status });
 
-      // Update local state
+      // Update local state — mark line as cancelled regardless of Fusion result
       const cancelledItemId = getItemId(item);
       setLines(prev =>
         prev.map(line =>
@@ -3907,7 +3910,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       );
 
       setCurrentStep('done');
-      return { success: true };
+      return { success: apexResult.success, fusionSuccess: result.success };
     } catch (error) {
       console.error('[WMSOrderDetails] Error cancelling order line:', error);
       setCurrentStep('done');
@@ -3938,12 +3941,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       const result = await cancelOrderLine(payload);
       setStep1Result({ success: result.success, data: result.data, error: result.error, status: result.status });
 
-      if (!result.success) {
-        setCurrentStep('done');
-        return { success: false, data: result.data, error: result.error, status: result.status };
-      }
-
-      // Step 2: Update APEX cancel status for each line
+      // Step 2: Update APEX cancel status for each line — always run even if Fusion failed
       setCurrentStep('step2');
       const apexResults = [];
       for (const item of items) {
@@ -3959,7 +3957,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         error: allApexSuccess ? null : 'Some APEX updates failed',
       });
 
-      // Update local state to mark all items as cancelled
+      // Update local state to mark all items as cancelled regardless of Fusion result
       const cancelledIds = new Set(items.map(item => getItemId(item)));
       setLines(prev =>
         prev.map(line =>
@@ -3979,7 +3977,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       setMarkedForCancel(new Set());
 
       setCurrentStep('done');
-      return { success: true };
+      return { success: allApexSuccess, fusionSuccess: result.success };
     } catch (error) {
       console.error('[WMSOrderDetails] Error bulk cancelling order lines:', error);
       setCurrentStep('done');
