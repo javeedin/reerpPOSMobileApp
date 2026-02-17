@@ -2511,8 +2511,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   const showPickButtons = pickedQty === 0 && !isCancelled;
   // Show Ship Confirm button when picked but not shipped (Store orders only)
   const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled;
-  // Show Cancel button for picked/shipped lines that are not yet cancelled
-  const showCancelButton = !isCancelled && (pickedQty > 0 || isShipped);
+  // Cancel button only shows in pending state (within showPickButtons)
 
   // Use the "id" field directly as-is
   const rawId = item.id || item.source_delivery_detail_id || item.delivery_detail_id || '';
@@ -2686,20 +2685,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         </View>
       )}
 
-      {/* Mark for Cancel Button - show for picked/shipped lines that are not yet cancelled */}
-      {showCancelButton && (
-        <View style={styles.actionButtonsRow}>
-          <TouchableOpacity
-            style={[styles.markCancelButton, { flex: 1 }, isMarkedForCancel && styles.markCancelButtonActive]}
-            onPress={() => onToggleMarkCancel(item)}
-          >
-            <Ionicons name={isMarkedForCancel ? 'checkmark-circle' : 'flag-outline'} size={20} color={isMarkedForCancel ? '#FFF' : '#D32F2F'} />
-            <Text style={[styles.markCancelButtonText, isMarkedForCancel && styles.markCancelButtonTextActive]}>
-              {isMarkedForCancel ? 'Marked for Cancel' : 'Mark for Cancel'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Mark for Cancel Button removed - no buttons needed after picking is done */}
 
       {/* Cancelled Banner - show when line is cancelled */}
       {isCancelled && (
