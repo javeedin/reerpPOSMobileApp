@@ -1364,15 +1364,21 @@ export const getCancelOrderLineUrl = async (orderNumber) => {
  */
 export const updateCancelStatus = async (transactionId, instanceName) => {
   try {
-    const url = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/updatecancelstatus?P_TRANSACTION_ID=${encodeURIComponent(transactionId)}&p_instance_name=${encodeURIComponent(instanceName || 'TEST')}`;
+    const url = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/updatecancelstatus`;
 
-    console.log('[WMSService] Update Cancel Status (APEX):', url);
+    const body = {
+      P_TRANSACTION_ID: transactionId,
+      p_instance_name: instanceName || 'TEST',
+    };
+
+    console.log('[WMSService] Update Cancel Status (APEX):', url, body);
 
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(body),
     });
 
     console.log('[WMSService] Update Cancel Status response status:', response.status);

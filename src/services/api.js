@@ -60,23 +60,20 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Helper: append p_instance_name as query parameter for direct fetch GET calls
+// Helper: append p_instance_name as query parameter for direct fetch/axios GET calls
 export const appendInstanceParam = async (url) => {
   const instance = await getInstance();
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}p_instance_name=${encodeURIComponent(instance)}`;
 };
 
-// Helper: build POST body with p_instance_name for direct fetch POST calls
-export const buildInstanceBody = async (params = {}) => {
-  const instance = await getInstance();
-  return { ...params, p_instance_name: instance };
-};
-
 // Login API - Validate user credentials
 export const loginUser = async (username, password) => {
+  const url = `${BASE_URL}/LOGIN/user/?username=${username}&password=${password}`;
   console.log('=== LOGIN API CALL ===');
+  console.log('URL:', url);
   console.log('Username:', username);
+  console.log('Password:', password);
 
   try {
     const response = await api.get(`/LOGIN/user/`, {
@@ -103,8 +100,9 @@ export const loginUser = async (username, password) => {
 
 // Get Menu Options for the logged-in user
 export const getMenuOptions = async (username) => {
+  const url = `${BASE_URL}/APPMENU/MENU/${username}`;
   console.log('=== MENU API CALL ===');
-  console.log('Username:', username);
+  console.log('URL:', url);
 
   try {
     const response = await api.get(`/APPMENU/MENU/${username}`);
