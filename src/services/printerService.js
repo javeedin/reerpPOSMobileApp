@@ -2,10 +2,15 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Safely load react-native-tcp-socket (not available in Expo Go)
+// Metro config mocks this to an empty module in Expo Go to prevent native crashes.
 let TcpSocket = null;
 try {
-  TcpSocket = require('react-native-tcp-socket');
-  if (TcpSocket && TcpSocket.default) TcpSocket = TcpSocket.default;
+  const mod = require('react-native-tcp-socket');
+  TcpSocket = mod && mod.default ? mod.default : mod;
+  // Verify the module is real (not an empty Metro mock)
+  if (!TcpSocket || typeof TcpSocket.createConnection !== 'function') {
+    TcpSocket = null;
+  }
 } catch (e) {
   console.warn('react-native-tcp-socket not available (Expo Go). Printing disabled.');
 }
