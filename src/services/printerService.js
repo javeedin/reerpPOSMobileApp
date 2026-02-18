@@ -1,6 +1,14 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import TcpSocket from 'react-native-tcp-socket';
+
+// Safely load react-native-tcp-socket (not available in Expo Go)
+let TcpSocket = null;
+try {
+  TcpSocket = require('react-native-tcp-socket');
+  if (TcpSocket && TcpSocket.default) TcpSocket = TcpSocket.default;
+} catch (e) {
+  console.warn('react-native-tcp-socket not available (Expo Go). Printing disabled.');
+}
 
 const PRINTER_STORAGE_KEY = '@fcpos_printer_settings';
 const DEFAULT_PRINTER_PORT = 9100; // Standard RAW printing port
@@ -55,6 +63,10 @@ class PrinterService {
   // Connect to printer via TCP/IP
   connectToPrinter(ipAddress, port = DEFAULT_PRINTER_PORT) {
     return new Promise((resolve, reject) => {
+      if (!TcpSocket) {
+        reject(new Error('Printing not available in Expo Go. Use a development build for printer support.'));
+        return;
+      }
       try {
         this.socket = TcpSocket.createConnection(
           {
