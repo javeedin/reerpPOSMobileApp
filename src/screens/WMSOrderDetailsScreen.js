@@ -88,7 +88,7 @@ const getExpiryColor = (days) => {
 // Confirm Pick Modal Component - Enhanced with Lot Based / Non Lot toggle
 const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onShipConfirm, item, order, pickerName, instance, isProcessing, transactionType }) => {
   const [showDetails, setShowDetails] = useState(false);
-  const [isLotBased, setIsLotBased] = useState(true); // Default: Lot Based
+  const [isLotBased, setIsLotBased] = useState(true); // Default: Lot Based (Sales only)
   const [currentStep, setCurrentStep] = useState(0); // 0 = not started, 1 = Pick/Fusion, 2 = UpdateStatus/Ship
   const [step1Completed, setStep1Completed] = useState(false);
   const [step2Completed, setStep2Completed] = useState(false);
@@ -111,7 +111,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const expiryColor = getExpiryColor(daysToExpiry);
   const pickedQty = item.qty || '0';
 
-  // Get Fusion URL for display
+  // Get Fusion URL for display (Sales Orders only)
   const instanceUpper = (instance || 'TEST').toUpperCase();
   const fusionHost = instanceUpper === 'PROD'
     ? 'https://efmh.fa.em3.oraclecloud.com'
@@ -119,7 +119,11 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const fusionUrl = `${fusionHost}/fscmRestApi/resources/11.13.18.05/pickTransactions`;
   const apexUrl = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/updatepickconfirmstatus';
 
-  // Lot Based payload (Fusion)
+  // Store Transaction URLs
+  const apexPickUrl = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS';
+  const apexShipUrl = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT/trip/processs2vauto/${linesId}`;
+
+  // Lot Based payload (Fusion) - Sales Orders only
   const lotPayload = {
     pickLines: [{
       PickSlip: String(deliveryDetailId),
@@ -140,7 +144,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     p_pickedQty: parseInt(pickedQty) || 0,
   };
 
-  // Non-Lot payload (existing)
+  // Non-Lot payload (used by both Store and Sales non-lot)
   const nonLotPayload = {
     id: String(rawId),
     line_number: String(item.line_number || '1'),
@@ -157,14 +161,17 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const updateJsonString = JSON.stringify(updatePayload, null, 2);
   const nonLotJsonString = JSON.stringify(nonLotPayload, null, 2);
 
-  // Modal title based on mode
+  // For Store: always Non-Lot. For Sales: user can toggle.
+  const effectiveIsLotBased = isStoreTransaction ? false : isLotBased;
+
+  // Modal title based on order type
   const getModalTitle = () => {
-    if (isLotBased) return 'Confirm Pick (Lot Based)';
-    if (isStoreTransaction) return 'Pick & Ship Confirm';
-    return 'Confirm Pick';
+    if (isStoreTransaction) return 'Pick & Ship Confirm (S2V)';
+    if (effectiveIsLotBased) return 'Confirm Pick - Lot Based (ORD)';
+    return 'Confirm Pick (ORD)';
   };
 
-  // Lot Based confirm: Step 1 = Fusion pickTransactions, Step 2 = Apex updatePickConfirmStatus
+  // Lot Based confirm (Sales only): Step 1 = Fusion pickTransactions, Step 2 = Apex updatePickConfirmStatus
   const handleLotBasedConfirm = async () => {
     setIsRunningSequence(true);
     setSequenceError(null);
@@ -210,7 +217,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     }
   };
 
-  // Non-Lot confirm: existing flow (Store = Pick + Ship, Non-Store = Pick only)
+  // Non-Lot / Store confirm: Store = Pick + Ship, Non-Store = Pick only
   const handleNonLotConfirm = async () => {
     if (isStoreTransaction) {
       setIsRunningSequence(true);
@@ -220,14 +227,14 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
       setStep2Completed(false);
 
       try {
-        // Step 1: Pick Confirm
+        // Step 1: Pick Confirm (APEX PENDING_PICKING_DETAILS)
         setCurrentStep(1);
         const pickResult = await onConfirm(nonLotPayload, true);
 
         if (pickResult && pickResult.success) {
           setStep1Completed(true);
 
-          // Step 2: Ship Confirm (automatically)
+          // Step 2: Ship Confirm (APEX processs2vauto/:P_LID)
           setCurrentStep(2);
           if (linesId) {
             const shipResult = await onShipConfirm(item, linesId, true);
@@ -255,7 +262,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   };
 
   const handleConfirm = () => {
-    if (isLotBased) {
+    if (effectiveIsLotBased) {
       handleLotBasedConfirm();
     } else {
       handleNonLotConfirm();
@@ -306,11 +313,23 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     </View>
   );
 
-  // Step labels based on mode
-  const getStep1Label = () => isLotBased ? 'Fusion Pick Transaction' : 'Pick Confirm';
-  const getStep1Sub = () => isLotBased ? 'POST /pickTransactions' : 'POST /PENDING_PICKING_DETAILS';
-  const getStep2Label = () => isLotBased ? 'Update Pick Confirm Status' : 'Ship Confirm';
-  const getStep2Sub = () => isLotBased ? 'POST /trip/updatepickconfirmstatus' : 'POST /trip/processs2vauto';
+  // Step labels based on order type
+  const getStep1Label = () => {
+    if (isStoreTransaction) return 'Pick Confirm (S2V)';
+    return effectiveIsLotBased ? 'Fusion Pick Transaction (ORD)' : 'Pick Confirm (ORD)';
+  };
+  const getStep1Sub = () => {
+    if (isStoreTransaction) return 'POST /PENDING_PICKING_DETAILS';
+    return effectiveIsLotBased ? 'POST /pickTransactions' : 'POST /PENDING_PICKING_DETAILS';
+  };
+  const getStep2Label = () => {
+    if (isStoreTransaction) return 'Ship Confirm (S2V)';
+    return effectiveIsLotBased ? 'Update Pick Confirm Status (ORD)' : '';
+  };
+  const getStep2Sub = () => {
+    if (isStoreTransaction) return `POST /trip/processs2vauto/${linesId}`;
+    return effectiveIsLotBased ? 'POST /trip/updatepickconfirmstatus' : '';
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -333,7 +352,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
               <View style={{
                 backgroundColor: isStoreTransaction ? '#E3F2FD' : '#FFF3E0',
                 paddingHorizontal: 10,
-                paddingVertical: 4,
+                paddingVertical: 5,
                 borderRadius: 6,
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -345,19 +364,16 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   color={isStoreTransaction ? '#1565C0' : '#E65100'}
                 />
                 <Text style={{
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: '700',
                   color: isStoreTransaction ? '#1565C0' : '#E65100',
                 }}>
-                  {transactionType || 'Unknown'}
+                  {isStoreTransaction ? 'S2V' : 'ORD'}
                 </Text>
               </View>
-              {isStoreTransaction && (
-                <Text style={{ fontSize: 11, color: '#666', fontStyle: 'italic' }}>APEX Services</Text>
-              )}
-              {!isStoreTransaction && isLotBased && (
-                <Text style={{ fontSize: 11, color: '#666', fontStyle: 'italic' }}>Fusion Services</Text>
-              )}
+              <Text style={{ fontSize: 12, color: '#555', flex: 1 }}>
+                {transactionType || 'Unknown'}
+              </Text>
             </View>
 
             {/* Item Info */}
@@ -366,25 +382,38 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
               <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
             </View>
 
-            {/* Toggle: Lot Based / Non Lot Based */}
-            <View style={styles.cpToggleContainer}>
-              <TouchableOpacity
-                style={[styles.cpToggleBtn, isLotBased && styles.cpToggleBtnActive]}
-                onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(true)}
-                disabled={isRunningSequence || allCompleted}
-              >
-                <Ionicons name="layers" size={16} color={isLotBased ? '#FFF' : '#666'} />
-                <Text style={[styles.cpToggleBtnText, isLotBased && styles.cpToggleBtnTextActive]}>Lot Based</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.cpToggleBtn, !isLotBased && styles.cpToggleBtnActive]}
-                onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(false)}
-                disabled={isRunningSequence || allCompleted}
-              >
-                <Ionicons name="cube" size={16} color={!isLotBased ? '#FFF' : '#666'} />
-                <Text style={[styles.cpToggleBtnText, !isLotBased && styles.cpToggleBtnTextActive]}>Non Lot Based</Text>
-              </TouchableOpacity>
-            </View>
+            {/* Toggle: Lot Based / Non Lot Based - Only for Sales Orders (ORD) */}
+            {isStoreTransaction ? (
+              <View style={[styles.cpToggleContainer, { opacity: 0.6 }]}>
+                <View style={[styles.cpToggleBtn, { backgroundColor: '#E0E0E0' }]}>
+                  <Ionicons name="layers" size={16} color="#999" />
+                  <Text style={[styles.cpToggleBtnText, { color: '#999' }]}>Lot Based</Text>
+                </View>
+                <View style={[styles.cpToggleBtn, styles.cpToggleBtnActive]}>
+                  <Ionicons name="cube" size={16} color="#FFF" />
+                  <Text style={[styles.cpToggleBtnText, styles.cpToggleBtnTextActive]}>Non Lot Based</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.cpToggleContainer}>
+                <TouchableOpacity
+                  style={[styles.cpToggleBtn, isLotBased && styles.cpToggleBtnActive]}
+                  onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(true)}
+                  disabled={isRunningSequence || allCompleted}
+                >
+                  <Ionicons name="layers" size={16} color={isLotBased ? '#FFF' : '#666'} />
+                  <Text style={[styles.cpToggleBtnText, isLotBased && styles.cpToggleBtnTextActive]}>Lot Based</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.cpToggleBtn, !isLotBased && styles.cpToggleBtnActive]}
+                  onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(false)}
+                  disabled={isRunningSequence || allCompleted}
+                >
+                  <Ionicons name="cube" size={16} color={!isLotBased ? '#FFF' : '#666'} />
+                  <Text style={[styles.cpToggleBtnText, !isLotBased && styles.cpToggleBtnTextActive]}>Non Lot Based</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Qty, Lot, Expiry Info */}
             <View style={styles.cpInfoSection}>
@@ -477,7 +506,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   <View style={styles.sequenceSuccessContainer}>
                     <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
                     <Text style={styles.sequenceSuccessText}>
-                      {isLotBased ? 'Lot-based pick confirmed!' : 'All steps completed!'}
+                      {isStoreTransaction ? 'Pick & Ship confirmed (S2V)!' : effectiveIsLotBased ? 'Lot-based pick confirmed (ORD)!' : 'Pick confirmed (ORD)!'}
                     </Text>
                   </View>
                 )}
@@ -499,11 +528,67 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                 {showDetails && (
                   <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
                     <View style={styles.technicalDetailsContainer}>
-                      {isLotBased ? (
+                      {isStoreTransaction ? (
                         <>
-                          {/* Lot Based: Step 1 - Fusion */}
+                          {/* Store (S2V): Step 1 - APEX Pick Confirm */}
                           <View style={styles.cpApiStepHeader}>
-                            <Text style={styles.cpApiStepTitle}>Step 1: Fusion Pick Transaction</Text>
+                            <Text style={styles.cpApiStepTitle}>Step 1: Pick Confirm (S2V)</Text>
+                          </View>
+                          <View style={styles.apiEndpointInfo}>
+                            <View style={[styles.apiMethodBadge, { backgroundColor: '#1565C0' }]}>
+                              <Text style={styles.apiMethodText}>POST</Text>
+                            </View>
+                            <Text style={styles.apiEndpointText} numberOfLines={3}>{apexPickUrl}</Text>
+                          </View>
+                          <View style={styles.jsonPreviewContainer}>
+                            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                            <View style={styles.jsonCodeBlock}>
+                              <Text style={styles.jsonCodeText}>{nonLotJsonString}</Text>
+                            </View>
+                          </View>
+
+                          {/* Store (S2V): Step 2 - APEX Ship Confirm */}
+                          <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
+                            <Text style={styles.cpApiStepTitle}>Step 2: Ship Confirm (S2V)</Text>
+                          </View>
+                          <View style={styles.apiEndpointInfo}>
+                            <View style={[styles.apiMethodBadge, { backgroundColor: '#FF9800' }]}>
+                              <Text style={styles.apiMethodText}>POST</Text>
+                            </View>
+                            <Text style={styles.apiEndpointText} numberOfLines={3}>{apexShipUrl}</Text>
+                          </View>
+                          <View style={styles.jsonPreviewContainer}>
+                            <Text style={styles.jsonPreviewTitle}>No body - Lines ID ({linesId}) in URL path</Text>
+                          </View>
+
+                          {/* Field mapping */}
+                          <Text style={[styles.fieldDetailsTitle, { marginTop: 8 }]}>Field Mapping:</Text>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>id:</Text>
+                            <Text style={styles.fieldValue}>{String(rawId) || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>lines_id (P_LID):</Text>
+                            <Text style={styles.fieldValue}>{linesId || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>pickedQty:</Text>
+                            <Text style={styles.fieldValue}>{pickedQty}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>pickedBy:</Text>
+                            <Text style={styles.fieldValue}>{pickerName || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>instance:</Text>
+                            <Text style={styles.fieldValue}>{instanceUpper}</Text>
+                          </View>
+                        </>
+                      ) : effectiveIsLotBased ? (
+                        <>
+                          {/* Sales (ORD) Lot Based: Step 1 - Fusion */}
+                          <View style={styles.cpApiStepHeader}>
+                            <Text style={styles.cpApiStepTitle}>Step 1: Fusion Pick Transaction (ORD)</Text>
                           </View>
                           <View style={styles.apiEndpointInfo}>
                             <View style={styles.apiMethodBadge}>
@@ -518,9 +603,9 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                             </View>
                           </View>
 
-                          {/* Lot Based: Step 2 - Apex */}
+                          {/* Sales (ORD) Lot Based: Step 2 - Apex */}
                           <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
-                            <Text style={styles.cpApiStepTitle}>Step 2: Update Pick Confirm Status</Text>
+                            <Text style={styles.cpApiStepTitle}>Step 2: Update Pick Confirm Status (ORD)</Text>
                           </View>
                           <View style={styles.apiEndpointInfo}>
                             <View style={[styles.apiMethodBadge, { backgroundColor: '#FF9800' }]}>
@@ -556,7 +641,10 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                         </>
                       ) : (
                         <>
-                          {/* Non-Lot: existing payload */}
+                          {/* Sales (ORD) Non-Lot: Pick Confirm only */}
+                          <View style={styles.cpApiStepHeader}>
+                            <Text style={styles.cpApiStepTitle}>Pick Confirm (ORD)</Text>
+                          </View>
                           <View style={styles.apiEndpointInfo}>
                             <View style={styles.apiMethodBadge}>
                               <Text style={styles.apiMethodText}>POST</Text>
@@ -639,7 +727,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   <>
                     <Ionicons name="checkmark-circle" size={20} color="#FFF" />
                     <Text style={styles.confirmModalConfirmText}>
-                      {isLotBased ? 'Confirm Pick (Lot)' : isStoreTransaction ? 'Pick & Ship Confirm' : 'Confirm Pick'}
+                      {isStoreTransaction ? 'Pick & Ship (S2V)' : effectiveIsLotBased ? 'Confirm Pick - Lot (ORD)' : 'Confirm Pick (ORD)'}
                     </Text>
                   </>
                 )}
