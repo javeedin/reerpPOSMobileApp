@@ -153,6 +153,12 @@ const OrderCard = ({ order, onPress }) => {
           <Ionicons name="pricetag-outline" size={14} color="#666" />
           <Text style={styles.metaText}>{order.transaction_type || '-'}</Text>
         </View>
+        {order.instance_name ? (
+          <View style={[styles.metaItem, { backgroundColor: (order.instance_name || '').toUpperCase() === 'PROD' ? '#E8F5E9' : '#FFF3E0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }]}>
+            <Ionicons name="server-outline" size={12} color={(order.instance_name || '').toUpperCase() === 'PROD' ? '#2E7D32' : '#E65100'} />
+            <Text style={[styles.metaText, { color: (order.instance_name || '').toUpperCase() === 'PROD' ? '#2E7D32' : '#E65100', fontWeight: '600', fontSize: 11 }]}>{(order.instance_name || '').toUpperCase()}</Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Ship Confirm Ready badge - Sales Orders that are picked but not shipped */}

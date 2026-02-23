@@ -157,14 +157,57 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const updateJsonString = JSON.stringify(updatePayload, null, 2);
   const nonLotJsonString = JSON.stringify(nonLotPayload, null, 2);
 
-  // Modal title based on mode
+  // Store transactions: APEX URLs for Pick + Ship
+  const apexPickUrl = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS';
+  const apexShipUrl = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT/trip/processs2vauto/${linesId}`;
+
+  // Modal title based on mode and transaction type
   const getModalTitle = () => {
-    if (isLotBased) return 'Confirm Pick (Lot Based)';
     if (isStoreTransaction) return 'Pick & Ship Confirm';
+    if (isLotBased) return 'Confirm Pick (Lot Based)';
     return 'Confirm Pick';
   };
 
-  // Lot Based confirm: Step 1 = Fusion pickTransactions, Step 2 = Apex updatePickConfirmStatus
+  // Store Transaction confirm: Step 1 = APEX Pick Confirm, Step 2 = APEX Ship Confirm
+  const handleStoreConfirm = async () => {
+    setIsRunningSequence(true);
+    setSequenceError(null);
+    setAllCompleted(false);
+    setStep1Completed(false);
+    setStep2Completed(false);
+
+    try {
+      // Step 1: Pick Confirm (APEX PENDING_PICKING_DETAILS)
+      setCurrentStep(1);
+      const pickResult = await onConfirm(nonLotPayload, true);
+
+      if (pickResult && pickResult.success) {
+        setStep1Completed(true);
+
+        // Step 2: Ship Confirm (APEX processs2vauto)
+        setCurrentStep(2);
+        if (linesId) {
+          const shipResult = await onShipConfirm(item, linesId, true);
+          if (shipResult && shipResult.success) {
+            setStep2Completed(true);
+            setAllCompleted(true);
+          } else {
+            setSequenceError(shipResult?.error || 'Ship confirm failed');
+          }
+        } else {
+          setSequenceError('No Lines ID available for Ship Confirm');
+        }
+      } else {
+        setSequenceError(pickResult?.error || 'Pick confirm failed');
+      }
+    } catch (error) {
+      setSequenceError(error.message || 'Unknown error');
+    } finally {
+      setIsRunningSequence(false);
+    }
+  };
+
+  // Lot Based confirm (Sales only): Step 1 = Fusion pickTransactions, Step 2 = Apex updatePickConfirmStatus
   const handleLotBasedConfirm = async () => {
     setIsRunningSequence(true);
     setSequenceError(null);
@@ -210,54 +253,20 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     }
   };
 
-  // Non-Lot confirm: existing flow (Store = Pick + Ship, Non-Store = Pick only)
+  // Non-Lot confirm (Sales only): Just run Pick Confirm
   const handleNonLotConfirm = async () => {
-    if (isStoreTransaction) {
-      setIsRunningSequence(true);
-      setSequenceError(null);
-      setAllCompleted(false);
-      setStep1Completed(false);
-      setStep2Completed(false);
-
-      try {
-        // Step 1: Pick Confirm
-        setCurrentStep(1);
-        const pickResult = await onConfirm(nonLotPayload, true);
-
-        if (pickResult && pickResult.success) {
-          setStep1Completed(true);
-
-          // Step 2: Ship Confirm (automatically)
-          setCurrentStep(2);
-          if (linesId) {
-            const shipResult = await onShipConfirm(item, linesId, true);
-            if (shipResult && shipResult.success) {
-              setStep2Completed(true);
-              setAllCompleted(true);
-            } else {
-              setSequenceError(shipResult?.error || 'Ship confirm failed');
-            }
-          } else {
-            setSequenceError('No Lines ID available for Ship Confirm');
-          }
-        } else {
-          setSequenceError(pickResult?.error || 'Pick confirm failed');
-        }
-      } catch (error) {
-        setSequenceError(error.message || 'Unknown error');
-      } finally {
-        setIsRunningSequence(false);
-      }
-    } else {
-      // Non-Store, Non-Lot: Just run Pick Confirm
-      await onConfirm(nonLotPayload);
-    }
+    await onConfirm(nonLotPayload);
   };
 
   const handleConfirm = () => {
-    if (isLotBased) {
+    if (isStoreTransaction) {
+      // Store transactions: always use Pick + Ship (APEX) flow
+      handleStoreConfirm();
+    } else if (isLotBased) {
+      // Sales Orders: Lot based = Fusion + APEX
       handleLotBasedConfirm();
     } else {
+      // Sales Orders: Non-lot = just Pick Confirm
       handleNonLotConfirm();
     }
   };
@@ -306,11 +315,23 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     </View>
   );
 
-  // Step labels based on mode
-  const getStep1Label = () => isLotBased ? 'Fusion Pick Transaction' : 'Pick Confirm';
-  const getStep1Sub = () => isLotBased ? 'POST /pickTransactions' : 'POST /PENDING_PICKING_DETAILS';
-  const getStep2Label = () => isLotBased ? 'Update Pick Confirm Status' : 'Ship Confirm';
-  const getStep2Sub = () => isLotBased ? 'POST /trip/updatepickconfirmstatus' : 'POST /trip/processs2vauto';
+  // Step labels based on mode and transaction type
+  const getStep1Label = () => {
+    if (isStoreTransaction) return 'Pick Confirm (APEX)';
+    return isLotBased ? 'Fusion Pick Transaction' : 'Pick Confirm';
+  };
+  const getStep1Sub = () => {
+    if (isStoreTransaction) return 'POST /PENDING_PICKING_DETAILS';
+    return isLotBased ? 'POST /pickTransactions' : 'POST /PENDING_PICKING_DETAILS';
+  };
+  const getStep2Label = () => {
+    if (isStoreTransaction) return 'Ship Confirm (APEX)';
+    return isLotBased ? 'Update Pick Confirm Status' : 'Ship Confirm';
+  };
+  const getStep2Sub = () => {
+    if (isStoreTransaction) return `POST /trip/processs2vauto/${linesId}`;
+    return isLotBased ? 'POST /trip/updatepickconfirmstatus' : 'POST /trip/processs2vauto';
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -328,31 +349,65 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
           </View>
 
           <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            {/* Order Type Badge */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12, gap: 8 }}>
+              <View style={{
+                backgroundColor: isStoreTransaction ? '#E3F2FD' : '#FFF3E0',
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+              }}>
+                <Ionicons
+                  name={isStoreTransaction ? 'swap-horizontal' : 'cart'}
+                  size={14}
+                  color={isStoreTransaction ? '#1565C0' : '#E65100'}
+                />
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: '700',
+                  color: isStoreTransaction ? '#1565C0' : '#E65100',
+                }}>
+                  {transactionType || 'Unknown'}
+                </Text>
+              </View>
+              {isStoreTransaction && (
+                <Text style={{ fontSize: 11, color: '#666', fontStyle: 'italic' }}>APEX Services</Text>
+              )}
+              {!isStoreTransaction && isLotBased && (
+                <Text style={{ fontSize: 11, color: '#666', fontStyle: 'italic' }}>Fusion Services</Text>
+              )}
+            </View>
+
             {/* Item Info */}
             <View style={styles.modalItemInfo}>
               <Text style={styles.modalItemNumber}>{item.item_number || 'N/A'}</Text>
               <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
             </View>
 
-            {/* Toggle: Lot Based / Non Lot Based */}
-            <View style={styles.cpToggleContainer}>
-              <TouchableOpacity
-                style={[styles.cpToggleBtn, isLotBased && styles.cpToggleBtnActive]}
-                onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(true)}
-                disabled={isRunningSequence || allCompleted}
-              >
-                <Ionicons name="layers" size={16} color={isLotBased ? '#FFF' : '#666'} />
-                <Text style={[styles.cpToggleBtnText, isLotBased && styles.cpToggleBtnTextActive]}>Lot Based</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.cpToggleBtn, !isLotBased && styles.cpToggleBtnActive]}
-                onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(false)}
-                disabled={isRunningSequence || allCompleted}
-              >
-                <Ionicons name="cube" size={16} color={!isLotBased ? '#FFF' : '#666'} />
-                <Text style={[styles.cpToggleBtnText, !isLotBased && styles.cpToggleBtnTextActive]}>Non Lot Based</Text>
-              </TouchableOpacity>
-            </View>
+            {/* Toggle: Lot Based / Non Lot Based - Only show for Sales Orders */}
+            {!isStoreTransaction && (
+              <View style={styles.cpToggleContainer}>
+                <TouchableOpacity
+                  style={[styles.cpToggleBtn, isLotBased && styles.cpToggleBtnActive]}
+                  onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(true)}
+                  disabled={isRunningSequence || allCompleted}
+                >
+                  <Ionicons name="layers" size={16} color={isLotBased ? '#FFF' : '#666'} />
+                  <Text style={[styles.cpToggleBtnText, isLotBased && styles.cpToggleBtnTextActive]}>Lot Based</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.cpToggleBtn, !isLotBased && styles.cpToggleBtnActive]}
+                  onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(false)}
+                  disabled={isRunningSequence || allCompleted}
+                >
+                  <Ionicons name="cube" size={16} color={!isLotBased ? '#FFF' : '#666'} />
+                  <Text style={[styles.cpToggleBtnText, !isLotBased && styles.cpToggleBtnTextActive]}>Non Lot Based</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Qty, Lot, Expiry Info */}
             <View style={styles.cpInfoSection}>
@@ -445,7 +500,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   <View style={styles.sequenceSuccessContainer}>
                     <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
                     <Text style={styles.sequenceSuccessText}>
-                      {isLotBased ? 'Lot-based pick confirmed!' : 'All steps completed!'}
+                      {isStoreTransaction ? 'Pick & Ship confirmed!' : isLotBased ? 'Lot-based pick confirmed!' : 'All steps completed!'}
                     </Text>
                   </View>
                 )}
@@ -467,9 +522,65 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                 {showDetails && (
                   <ScrollView style={styles.technicalDetailsScroll} nestedScrollEnabled>
                     <View style={styles.technicalDetailsContainer}>
-                      {isLotBased ? (
+                      {isStoreTransaction ? (
                         <>
-                          {/* Lot Based: Step 1 - Fusion */}
+                          {/* Store Transaction: Step 1 - APEX Pick Confirm */}
+                          <View style={styles.cpApiStepHeader}>
+                            <Text style={styles.cpApiStepTitle}>Step 1: Pick Confirm (APEX)</Text>
+                          </View>
+                          <View style={styles.apiEndpointInfo}>
+                            <View style={[styles.apiMethodBadge, { backgroundColor: '#1565C0' }]}>
+                              <Text style={styles.apiMethodText}>POST</Text>
+                            </View>
+                            <Text style={styles.apiEndpointText} numberOfLines={3}>{apexPickUrl}</Text>
+                          </View>
+                          <View style={styles.jsonPreviewContainer}>
+                            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                            <View style={styles.jsonCodeBlock}>
+                              <Text style={styles.jsonCodeText}>{nonLotJsonString}</Text>
+                            </View>
+                          </View>
+
+                          {/* Store Transaction: Step 2 - APEX Ship Confirm */}
+                          <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
+                            <Text style={styles.cpApiStepTitle}>Step 2: Ship Confirm (APEX)</Text>
+                          </View>
+                          <View style={styles.apiEndpointInfo}>
+                            <View style={[styles.apiMethodBadge, { backgroundColor: '#FF9800' }]}>
+                              <Text style={styles.apiMethodText}>POST</Text>
+                            </View>
+                            <Text style={styles.apiEndpointText} numberOfLines={3}>{apexShipUrl}</Text>
+                          </View>
+                          <View style={styles.jsonPreviewContainer}>
+                            <Text style={styles.jsonPreviewTitle}>No request body needed (Lines ID in URL)</Text>
+                          </View>
+
+                          {/* Field mapping */}
+                          <Text style={[styles.fieldDetailsTitle, { marginTop: 8 }]}>Field Mapping:</Text>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>id:</Text>
+                            <Text style={styles.fieldValue}>{String(rawId) || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>lines_id:</Text>
+                            <Text style={styles.fieldValue}>{linesId || '(empty)'} (for Ship Confirm URL)</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>pickedQty:</Text>
+                            <Text style={styles.fieldValue}>{pickedQty}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>pickedBy:</Text>
+                            <Text style={styles.fieldValue}>{pickerName || '(empty)'}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>instance:</Text>
+                            <Text style={styles.fieldValue}>{instanceUpper}</Text>
+                          </View>
+                        </>
+                      ) : isLotBased ? (
+                        <>
+                          {/* Sales Lot Based: Step 1 - Fusion */}
                           <View style={styles.cpApiStepHeader}>
                             <Text style={styles.cpApiStepTitle}>Step 1: Fusion Pick Transaction</Text>
                           </View>
@@ -486,7 +597,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                             </View>
                           </View>
 
-                          {/* Lot Based: Step 2 - Apex */}
+                          {/* Sales Lot Based: Step 2 - Apex */}
                           <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
                             <Text style={styles.cpApiStepTitle}>Step 2: Update Pick Confirm Status</Text>
                           </View>
@@ -524,7 +635,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                         </>
                       ) : (
                         <>
-                          {/* Non-Lot: existing payload */}
+                          {/* Sales Non-Lot: existing payload */}
                           <View style={styles.apiEndpointInfo}>
                             <View style={styles.apiMethodBadge}>
                               <Text style={styles.apiMethodText}>POST</Text>
@@ -607,7 +718,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   <>
                     <Ionicons name="checkmark-circle" size={20} color="#FFF" />
                     <Text style={styles.confirmModalConfirmText}>
-                      {isLotBased ? 'Confirm Pick (Lot)' : isStoreTransaction ? 'Pick & Ship Confirm' : 'Confirm Pick'}
+                      {isStoreTransaction ? 'Pick & Ship Confirm' : isLotBased ? 'Confirm Pick (Lot)' : 'Confirm Pick'}
                     </Text>
                   </>
                 )}
@@ -4411,7 +4522,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           <View style={styles.headerText}>
             <Text style={styles.headerTitle} numberOfLines={1}>{orderNumber || 'Order Details'}</Text>
             <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {order?.account_name || order?.customer_name || 'Customer'} | {order?.transaction_type || 'Order'}
+              {order?.account_name || order?.customer_name || 'Customer'} | {order?.transaction_type || 'Order'}{order?.instance_name ? ` | ${(order.instance_name).toUpperCase()}` : ''}
             </Text>
           </View>
         </View>
@@ -4491,6 +4602,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                 <Text style={styles.orderInfoCompactLabel}>Priority: </Text>
                 {order?.order_priority || 'N/A'}
               </Text>
+              {order?.instance_name ? (
+                <View style={{ backgroundColor: (order.instance_name || '').toUpperCase() === 'PROD' ? '#E8F5E9' : '#FFF3E0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: (order.instance_name || '').toUpperCase() === 'PROD' ? '#2E7D32' : '#E65100' }}>
+                    {(order.instance_name).toUpperCase()}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <TouchableOpacity style={styles.printReportButton} onPress={handlePrintReport}>
               <Ionicons name="document-text-outline" size={18} color="#1565C0" />
