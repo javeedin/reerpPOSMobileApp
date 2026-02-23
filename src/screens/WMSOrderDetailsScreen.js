@@ -217,52 +217,43 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     }
   };
 
-  // Non-Lot / Store confirm: Store = Pick + Ship, Non-Store = Pick only
-  const handleNonLotConfirm = async () => {
-    if (isStoreTransaction) {
-      setIsRunningSequence(true);
-      setSequenceError(null);
-      setAllCompleted(false);
-      setStep1Completed(false);
-      setStep2Completed(false);
+  // Store (S2V) confirm: Only Ship Confirm (processs2vauto/:P_LID)
+  const handleStoreConfirm = async () => {
+    setIsRunningSequence(true);
+    setSequenceError(null);
+    setAllCompleted(false);
+    setStep1Completed(false);
+    setStep2Completed(false);
 
-      try {
-        // Step 1: Pick Confirm (APEX PENDING_PICKING_DETAILS)
-        setCurrentStep(1);
-        const pickResult = await onConfirm(nonLotPayload, true);
-
-        if (pickResult && pickResult.success) {
+    try {
+      setCurrentStep(1);
+      if (linesId) {
+        const shipResult = await onShipConfirm(item, linesId, true);
+        if (shipResult && shipResult.success) {
           setStep1Completed(true);
-
-          // Step 2: Ship Confirm (APEX processs2vauto/:P_LID)
-          setCurrentStep(2);
-          if (linesId) {
-            const shipResult = await onShipConfirm(item, linesId, true);
-            if (shipResult && shipResult.success) {
-              setStep2Completed(true);
-              setAllCompleted(true);
-            } else {
-              setSequenceError(shipResult?.error || 'Ship confirm failed');
-            }
-          } else {
-            setSequenceError('No Lines ID available for Ship Confirm');
-          }
+          setAllCompleted(true);
         } else {
-          setSequenceError(pickResult?.error || 'Pick confirm failed');
+          setSequenceError(shipResult?.error || 'Ship confirm failed');
         }
-      } catch (error) {
-        setSequenceError(error.message || 'Unknown error');
-      } finally {
-        setIsRunningSequence(false);
+      } else {
+        setSequenceError('No Lines ID (P_LID) available for Ship Confirm');
       }
-    } else {
-      // Non-Store, Non-Lot: Just run Pick Confirm
-      await onConfirm(nonLotPayload);
+    } catch (error) {
+      setSequenceError(error.message || 'Unknown error');
+    } finally {
+      setIsRunningSequence(false);
     }
   };
 
+  // Non-Lot confirm (Sales only): Just run Pick Confirm
+  const handleNonLotConfirm = async () => {
+    await onConfirm(nonLotPayload);
+  };
+
   const handleConfirm = () => {
-    if (effectiveIsLotBased) {
+    if (isStoreTransaction) {
+      handleStoreConfirm();
+    } else if (effectiveIsLotBased) {
       handleLotBasedConfirm();
     } else {
       handleNonLotConfirm();
@@ -315,19 +306,19 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
 
   // Step labels based on order type
   const getStep1Label = () => {
-    if (isStoreTransaction) return 'Pick Confirm (S2V)';
+    if (isStoreTransaction) return 'Ship Confirm (S2V)';
     return effectiveIsLotBased ? 'Fusion Pick Transaction (ORD)' : 'Pick Confirm (ORD)';
   };
   const getStep1Sub = () => {
-    if (isStoreTransaction) return 'POST /PENDING_PICKING_DETAILS';
+    if (isStoreTransaction) return `POST /trip/processs2vauto/${linesId}`;
     return effectiveIsLotBased ? 'POST /pickTransactions' : 'POST /PENDING_PICKING_DETAILS';
   };
   const getStep2Label = () => {
-    if (isStoreTransaction) return 'Ship Confirm (S2V)';
+    if (isStoreTransaction) return '';
     return effectiveIsLotBased ? 'Update Pick Confirm Status (ORD)' : '';
   };
   const getStep2Sub = () => {
-    if (isStoreTransaction) return `POST /trip/processs2vauto/${linesId}`;
+    if (isStoreTransaction) return '';
     return effectiveIsLotBased ? 'POST /trip/updatepickconfirmstatus' : '';
   };
 
@@ -481,17 +472,19 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   currentStep === 1 && !step1Completed && isRunningSequence
                 )}
 
-                {/* Connecting Line */}
-                <View style={[styles.sequenceStatusLine, step1Completed && styles.sequenceStatusLineCompleted]} />
-
-                {/* Step 2 */}
-                {renderStatusRow(
-                  2,
-                  getStep2Label(),
-                  getStep2Sub(),
-                  step2Completed,
-                  currentStep === 2 && !step2Completed && isRunningSequence
-                )}
+                {/* Step 2 - only for non-Store (Sales Lot Based) */}
+                {!isStoreTransaction && getStep2Label() ? (
+                  <>
+                    <View style={[styles.sequenceStatusLine, step1Completed && styles.sequenceStatusLineCompleted]} />
+                    {renderStatusRow(
+                      2,
+                      getStep2Label(),
+                      getStep2Sub(),
+                      step2Completed,
+                      currentStep === 2 && !step2Completed && isRunningSequence
+                    )}
+                  </>
+                ) : null}
 
                 {/* Error */}
                 {sequenceError && (
@@ -530,54 +523,25 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                     <View style={styles.technicalDetailsContainer}>
                       {isStoreTransaction ? (
                         <>
-                          {/* Store (S2V): Step 1 - APEX Pick Confirm */}
+                          {/* Store (S2V): Ship Confirm only */}
                           <View style={styles.cpApiStepHeader}>
-                            <Text style={styles.cpApiStepTitle}>Step 1: Pick Confirm (S2V)</Text>
+                            <Text style={styles.cpApiStepTitle}>Ship Confirm (S2V)</Text>
                           </View>
                           <View style={styles.apiEndpointInfo}>
                             <View style={[styles.apiMethodBadge, { backgroundColor: '#1565C0' }]}>
                               <Text style={styles.apiMethodText}>POST</Text>
                             </View>
-                            <Text style={styles.apiEndpointText} numberOfLines={3}>{apexPickUrl}</Text>
-                          </View>
-                          <View style={styles.jsonPreviewContainer}>
-                            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
-                            <View style={styles.jsonCodeBlock}>
-                              <Text style={styles.jsonCodeText}>{nonLotJsonString}</Text>
-                            </View>
-                          </View>
-
-                          {/* Store (S2V): Step 2 - APEX Ship Confirm */}
-                          <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
-                            <Text style={styles.cpApiStepTitle}>Step 2: Ship Confirm (S2V)</Text>
-                          </View>
-                          <View style={styles.apiEndpointInfo}>
-                            <View style={[styles.apiMethodBadge, { backgroundColor: '#FF9800' }]}>
-                              <Text style={styles.apiMethodText}>POST</Text>
-                            </View>
                             <Text style={styles.apiEndpointText} numberOfLines={3}>{apexShipUrl}</Text>
                           </View>
                           <View style={styles.jsonPreviewContainer}>
-                            <Text style={styles.jsonPreviewTitle}>No body - Lines ID ({linesId}) in URL path</Text>
+                            <Text style={styles.jsonPreviewTitle}>No request body - P_LID in URL path</Text>
                           </View>
 
                           {/* Field mapping */}
                           <Text style={[styles.fieldDetailsTitle, { marginTop: 8 }]}>Field Mapping:</Text>
                           <View style={styles.fieldRow}>
-                            <Text style={styles.fieldLabel}>id:</Text>
-                            <Text style={styles.fieldValue}>{String(rawId) || '(empty)'}</Text>
-                          </View>
-                          <View style={styles.fieldRow}>
-                            <Text style={styles.fieldLabel}>lines_id (P_LID):</Text>
+                            <Text style={styles.fieldLabel}>P_LID (lines_id):</Text>
                             <Text style={styles.fieldValue}>{linesId || '(empty)'}</Text>
-                          </View>
-                          <View style={styles.fieldRow}>
-                            <Text style={styles.fieldLabel}>pickedQty:</Text>
-                            <Text style={styles.fieldValue}>{pickedQty}</Text>
-                          </View>
-                          <View style={styles.fieldRow}>
-                            <Text style={styles.fieldLabel}>pickedBy:</Text>
-                            <Text style={styles.fieldValue}>{pickerName || '(empty)'}</Text>
                           </View>
                           <View style={styles.fieldRow}>
                             <Text style={styles.fieldLabel}>instance:</Text>
