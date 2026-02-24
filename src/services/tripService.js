@@ -94,6 +94,37 @@ export const fetchOrderLineDetails = async (orderNumber) => {
 };
 
 /**
+ * Cancel a store order (S2V lot) via web service
+ * @param {string} orderLid - The order LID / identifier (P_LID)
+ * @returns {Promise<Object>} Result with success flag
+ */
+export const cancelStoreOrder = async (orderLid) => {
+  try {
+    const url = await appendInstanceParam(`${TRIP_MGMT_API_BASE}/trip/cancels2vlot/${orderLid}`);
+    console.log('[TripService] Cancelling store order:', url);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[TripService] Cancel store order response:', data);
+
+    return { success: true, data };
+  } catch (error) {
+    console.error('[TripService] Error cancelling store order:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Get cached trip data
  * @returns {Promise<Object|null>} Cached trip data or null
  */
@@ -332,6 +363,7 @@ export const getOrderDelivery = async (tripId, orderId) => {
 export default {
   fetchTrips,
   fetchOrderLineDetails,
+  cancelStoreOrder,
   getCachedTrips,
   clearTripCache,
   calculateTripStats,

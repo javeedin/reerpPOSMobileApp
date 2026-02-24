@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { fetchOrderLineDetails } from '../services/tripService';
+import { fetchOrderLineDetails, cancelStoreOrder } from '../services/tripService';
 import SignaturePad from '../components/SignaturePad';
 
 // Dark green theme colors
@@ -169,6 +169,8 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
 
   // Delivery status
   const isDelivered = isDeliveryConfirmed;
+  const [isCancelled, setIsCancelled] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     loadOrderLines();
@@ -184,6 +186,47 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
       console.error('[TripOrderDetail] Error loading lines:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCancelOrder = () => {
+    const orderLid = order.orderNumber;
+    const confirmMessage = `Are you sure you want to cancel order ${order.orderNumber}?`;
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(confirmMessage)) {
+        doCancel(orderLid);
+      }
+    } else {
+      Alert.alert(
+        'Cancel Order',
+        confirmMessage,
+        [
+          { text: 'No', style: 'cancel' },
+          {
+            text: 'Yes, Cancel',
+            style: 'destructive',
+            onPress: () => doCancel(orderLid),
+          },
+        ]
+      );
+    }
+  };
+
+  const doCancel = async (orderLid) => {
+    setCancelling(true);
+    try {
+      const result = await cancelStoreOrder(orderLid);
+      if (result.success) {
+        setIsCancelled(true);
+        showAlert('Order Cancelled', `Order ${order.orderNumber} has been cancelled.`);
+      } else {
+        showAlert('Error', result.error || 'Failed to cancel order. Please try again.');
+      }
+    } catch (error) {
+      showAlert('Error', error.message || 'Failed to cancel order.');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -940,7 +983,7 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
         {activeTab === 'delivery' && renderDeliveryTab()}
 
         {/* Action Buttons */}
-        {!isDelivered && (
+        {!isDelivered && !isCancelled && (
           <View style={styles.actionButtons}>
             {!isFullyVerified ? (
               <TouchableOpacity
@@ -980,6 +1023,33 @@ const TripOrderDetailScreen = ({ navigation, route }) => {
                 </LinearGradient>
               </TouchableOpacity>
             )}
+
+            {/* Cancel Order Button */}
+            <TouchableOpacity
+              style={styles.cancelOrderButton}
+              onPress={handleCancelOrder}
+              disabled={cancelling}
+            >
+              {cancelling ? (
+                <ActivityIndicator size="small" color={THEME.error} />
+              ) : (
+                <>
+                  <Ionicons name="close-circle-outline" size={22} color={THEME.error} />
+                  <Text style={styles.cancelOrderButtonText}>Mark as Cancel</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Cancelled Banner */}
+        {isCancelled && (
+          <View style={styles.cancelledBanner}>
+            <Ionicons name="close-circle" size={28} color={THEME.error} />
+            <View style={{ marginLeft: 12 }}>
+              <Text style={styles.cancelledBannerTitle}>Order Cancelled</Text>
+              <Text style={styles.cancelledBannerSubtitle}>This order has been cancelled.</Text>
+            </View>
           </View>
         )}
 
@@ -1594,6 +1664,43 @@ const styles = StyleSheet.create({
   deliveryButton: {
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  cancelOrderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderWidth: 2,
+    borderColor: THEME.error,
+    borderRadius: 12,
+    marginTop: 10,
+    gap: 8,
+  },
+  cancelOrderButtonText: {
+    color: THEME.error,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cancelledBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 16,
+    backgroundColor: THEME.error + '15',
+    borderWidth: 1,
+    borderColor: THEME.error,
+    borderRadius: 12,
+  },
+  cancelledBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: THEME.error,
+  },
+  cancelledBannerSubtitle: {
+    fontSize: 12,
+    color: THEME.textLight,
+    marginTop: 2,
   },
   confirmButton: {},
   printButton: {},
