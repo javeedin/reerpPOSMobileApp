@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, getInventoryStagedTransactions, deleteInventoryStagedTransaction } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import printerService from '../services/printerService';
 
@@ -95,6 +95,9 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const [isRunningSequence, setIsRunningSequence] = useState(false);
   const [sequenceError, setSequenceError] = useState(null);
   const [allCompleted, setAllCompleted] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryError, setRetryError] = useState(null);
+  const [retryStep, setRetryStep] = useState(0); // 1=fetching staged txns, 2=deleting, 3=ship confirm
 
   if (!item) return null;
 
@@ -253,6 +256,52 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
       setSequenceError(error.message || 'Unknown error');
     } finally {
       setIsRunningSequence(false);
+    }
+  };
+
+  // Store Orders retry: cleanup Fusion staged transactions then re-run ship confirm
+  const handleRetryStep2 = async () => {
+    setIsRetrying(true);
+    setRetryError(null);
+    setRetryStep(1);
+
+    try {
+      // Step A: Fetch staged transactions from Fusion
+      const stagedResult = await getInventoryStagedTransactions(instanceUpper);
+      if (!stagedResult.success) {
+        setRetryError(stagedResult.error || 'Failed to fetch staged transactions');
+        return;
+      }
+
+      const transactions = stagedResult.data?.items || [];
+      console.log('[Retry] Staged transactions to delete:', transactions.length);
+
+      // Step B: Delete each staged transaction
+      setRetryStep(2);
+      for (const txn of transactions) {
+        const deleteResult = await deleteInventoryStagedTransaction(txn.TransactionInterfaceId, instanceUpper);
+        if (!deleteResult.success) {
+          setRetryError(deleteResult.error || `Failed to delete transaction ${txn.TransactionInterfaceId}`);
+          return;
+        }
+      }
+
+      // Step C: Retry ship confirm (processs2vauto)
+      setRetryStep(3);
+      const shipResult = await onShipConfirm(item, linesId, true);
+      if (shipResult && shipResult.success) {
+        setStep2Completed(true);
+        setAllCompleted(true);
+        setSequenceError(null);
+        setRetryError(null);
+      } else {
+        setRetryError(shipResult?.error || 'Ship confirm still failing');
+      }
+    } catch (error) {
+      setRetryError(error.message || 'Unknown retry error');
+    } finally {
+      setIsRetrying(false);
+      setRetryStep(0);
     }
   };
 
@@ -472,7 +521,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
             </View>
 
             {/* Processing Status View */}
-            {(isRunningSequence || step1Completed || step2Completed || sequenceError) ? (
+            {(isRunningSequence || step1Completed || step2Completed || sequenceError || isRetrying) ? (
               <View style={styles.sequenceStatusContainer}>
                 {/* Step 1 */}
                 {renderStatusRow(
@@ -502,6 +551,24 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   <View style={styles.sequenceErrorContainer}>
                     <Ionicons name="alert-circle" size={20} color="#F44336" />
                     <Text style={styles.sequenceErrorText}>{sequenceError}</Text>
+                  </View>
+                )}
+
+                {/* Retry status rows (Store Orders only) */}
+                {isStoreTransaction && isRetrying && (
+                  <View style={[styles.sequenceStatusContainer, { marginTop: 8, backgroundColor: '#FFF8E1', borderRadius: 8, padding: 8 }]}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#FF9800', marginBottom: 4 }}>Retry in progress...</Text>
+                    {renderStatusRow('A', 'Fetch Staged Transactions', 'GET /inventoryStagedTransactions', retryStep > 1, retryStep === 1)}
+                    {renderStatusRow('B', 'Delete Staged Transactions', 'DELETE /inventoryStagedTransactions/{id}', retryStep > 2, retryStep === 2)}
+                    {renderStatusRow('C', 'Retry Ship Confirm', `POST /trip/processs2vauto/${linesId}`, false, retryStep === 3)}
+                  </View>
+                )}
+
+                {/* Retry error */}
+                {retryError && !isRetrying && (
+                  <View style={[styles.sequenceErrorContainer, { backgroundColor: '#FFF3E0', marginTop: 8 }]}>
+                    <Ionicons name="refresh-circle" size={20} color="#E65100" />
+                    <Text style={[styles.sequenceErrorText, { color: '#E65100' }]}>Retry failed: {retryError}</Text>
                   </View>
                 )}
 
@@ -693,11 +760,34 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
           </ScrollView>
 
           {/* Action Buttons */}
-          {(allCompleted || sequenceError) && !isRunningSequence ? (
+          {(allCompleted || sequenceError) && !isRunningSequence && !isRetrying ? (
             <View style={styles.confirmModalActions}>
+              {/* Retry button: only for Store Orders when step 1 passed but step 2 failed */}
+              {isStoreTransaction && step1Completed && !step2Completed && sequenceError && (
+                <TouchableOpacity
+                  style={[styles.confirmModalConfirmBtn, { backgroundColor: isRetrying ? '#999' : '#FF9800', flex: 1, marginRight: 8 }]}
+                  onPress={handleRetryStep2}
+                  disabled={isRetrying}
+                >
+                  {isRetrying ? (
+                    <>
+                      <ActivityIndicator size="small" color="#FFF" />
+                      <Text style={styles.confirmModalConfirmText}>
+                        {retryStep === 1 ? 'Fetching...' : retryStep === 2 ? 'Cleaning...' : 'Retrying...'}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="refresh" size={20} color="#FFF" />
+                      <Text style={styles.confirmModalConfirmText}>Retry</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={[styles.confirmModalConfirmBtn, allCompleted && { backgroundColor: '#4CAF50' }]}
+                style={[styles.confirmModalConfirmBtn, allCompleted && { backgroundColor: '#4CAF50' }, isRetrying && { opacity: 0.5 }]}
                 onPress={handleClose}
+                disabled={isRetrying}
               >
                 <Ionicons name={allCompleted ? 'checkmark-done' : 'close'} size={20} color="#FFF" />
                 <Text style={styles.confirmModalConfirmText}>

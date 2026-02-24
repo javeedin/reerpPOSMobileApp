@@ -1516,6 +1516,92 @@ export const fetchPickerPerformance = async (pickerName, fromDate, toDate, pickC
   }
 };
 
+/**
+ * Fetch inventory staged transactions from Fusion (for Store Orders retry cleanup)
+ * @param {string} instance - Instance name (PROD/TEST)
+ * @returns {Promise<Object>} { success, data }
+ */
+export const getInventoryStagedTransactions = async (instance) => {
+  try {
+    const instanceUpper = (instance || 'TEST').toUpperCase();
+    const fusionBaseUrl = getFusionBaseUrl(instanceUpper);
+    const url = `${fusionBaseUrl}/inventoryStagedTransactions?q=OrganizationName=GIC;TransactionTypeName=Direct Organization Transfer`;
+
+    console.log('[WMSService] Get Inventory Staged Transactions:', url);
+
+    const authHeader = await getFusionAuthHeader();
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('[WMSService] Get Staged Transactions status:', response.status);
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = {};
+    }
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}`, data, status: response.status };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error fetching staged transactions:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
+ * Delete a single inventory staged transaction from Fusion (for Store Orders retry cleanup)
+ * @param {string|number} transactionInterfaceId - TransactionInterfaceId to delete
+ * @param {string} instance - Instance name (PROD/TEST)
+ * @returns {Promise<Object>} { success, data }
+ */
+export const deleteInventoryStagedTransaction = async (transactionInterfaceId, instance) => {
+  try {
+    const instanceUpper = (instance || 'TEST').toUpperCase();
+    const fusionBaseUrl = getFusionBaseUrl(instanceUpper);
+    const url = `${fusionBaseUrl}/inventoryStagedTransactions/${transactionInterfaceId}`;
+
+    console.log('[WMSService] Delete Inventory Staged Transaction:', url);
+
+    const authHeader = await getFusionAuthHeader();
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log('[WMSService] Delete Staged Transaction status:', response.status);
+
+    // 204 No Content is a successful delete
+    if (response.status === 204 || response.ok) {
+      return { success: true, status: response.status };
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = {};
+    }
+
+    return { success: false, error: `HTTP ${response.status}`, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error deleting staged transaction:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
 export default {
   fetchShipmentsSummary,
   fetchShipmentLines,
@@ -1542,4 +1628,6 @@ export default {
   cancelOrderLine,
   getCancelOrderLineUrl,
   updateCancelStatus,
+  getInventoryStagedTransactions,
+  deleteInventoryStagedTransaction,
 };
