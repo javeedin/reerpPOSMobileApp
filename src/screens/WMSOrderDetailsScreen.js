@@ -2495,11 +2495,11 @@ const cancelModalStyles = StyleSheet.create({
   },
 });
 
-// Bulk Cancel Modal - shows all marked lines, 2-step cancel flow
-const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExecuteBulkCancel, isProcessing }) => {
+// Bulk Cancel Modal - shows all marked lines, 2-step cancel flow (Sales) / 1-step (Store Orders)
+const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExecuteBulkCancel, isProcessing, transactionType }) => {
   const [cancelReason, setCancelReason] = useState('OUT OF STOCK');
   const [showApiDetails, setShowApiDetails] = useState(false);
-  // Step tracking: null = not started, 'step1' = Fusion in progress, 'step2' = APEX in progress, 'done' = all done
+  // Step tracking: null = not started, 'step1' = S2V/Fusion in progress, 'step2' = APEX in progress, 'done' = all done
   const [currentStep, setCurrentStep] = useState(null);
   const [step1Result, setStep1Result] = useState(null);
   const [step2Result, setStep2Result] = useState(null);
@@ -2513,8 +2513,12 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
     }
   }, [visible]);
 
+  const txType = transactionType || order?.transaction_type || '';
+  const isStoreTransaction = txType.toLowerCase().includes('store');
+
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const instanceName = (instance || 'TEST').toUpperCase();
+  const cancelS2VBaseUrl = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT/trip/cancels2vlot/{P_LID}?p_instance_name=${instanceName}`;
 
   const fusionBase = instanceName === 'PROD'
     ? 'https://efmh.fa.em3.oraclecloud.com/fscmRestApi/resources/11.13.18.05'
@@ -2568,11 +2572,20 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
         <View style={cancelModalStyles.container}>
           {/* Header */}
           <View style={cancelModalStyles.header}>
-            <View style={cancelModalStyles.headerLeft}>
+            <View style={[cancelModalStyles.headerLeft, { flex: 1 }]}>
               <Ionicons name="close-circle" size={24} color="#D32F2F" />
-              <Text style={cancelModalStyles.headerTitle}>Cancel Lines ({markedItems.length})</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={cancelModalStyles.headerTitle}>Cancel Lines ({markedItems.length})</Text>
+                {isStoreTransaction && (
+                  <View style={{ flexDirection: 'row', marginTop: 2 }}>
+                    <View style={{ backgroundColor: '#D32F2F', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFF' }}>STORE ORDERS</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
             </View>
-            <TouchableOpacity onPress={onClose} disabled={isProcessing}>
+            <TouchableOpacity onPress={onClose} disabled={isProcessing} style={{ paddingLeft: 8 }}>
               <Ionicons name="close" size={22} color="#666" />
             </TouchableOpacity>
           </View>
@@ -2585,11 +2598,20 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
                   <Ionicons name="cube" size={16} color="#1565C0" />
                   <Text style={cancelModalStyles.itemNumber}>{item.item_number || 'N/A'}</Text>
                   <Text style={cancelModalStyles.lineNum}>Line #{item.line_number || '1'}</Text>
+                  {isStoreTransaction && (
+                    <View style={{ backgroundColor: '#1565C0', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, marginLeft: 4 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF' }}>S2V</Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={cancelModalStyles.itemDescription} numberOfLines={1}>{item.description || 'No Description'}</Text>
                 <View style={cancelModalStyles.itemQtyRow}>
                   <Text style={cancelModalStyles.itemQtyLabel}>Qty: {parseInt(item.qty) || 0}</Text>
-                  <Text style={cancelModalStyles.itemIdLabel}>FulfillLineId: {item.fulfill_line_id || item.FULFILL_LINE_ID || ''}</Text>
+                  {isStoreTransaction ? (
+                    <Text style={cancelModalStyles.itemIdLabel}>Lines ID: {item.lines_id || item.Lines_id || item.LINES_ID || '—'}</Text>
+                  ) : (
+                    <Text style={cancelModalStyles.itemIdLabel}>FulfillLineId: {item.fulfill_line_id || item.FULFILL_LINE_ID || ''}</Text>
+                  )}
                 </View>
               </View>
             ))}
@@ -2610,39 +2632,60 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
             {/* Steps Progress */}
             {currentStep && (
               <View style={cancelModalStyles.stepsSection}>
-                {/* Step 1 */}
-                <View style={cancelModalStyles.stepRow}>
-                  {currentStep === 'step1' && !step1Result ? (
-                    <ActivityIndicator size="small" color="#1565C0" style={{ width: 20 }} />
-                  ) : (
-                    <Ionicons name={getStepIcon('step1')} size={20} color={getStepColor('step1')} />
-                  )}
-                  <View style={cancelModalStyles.stepTextContainer}>
-                    <Text style={[cancelModalStyles.stepTitle, { color: getStepColor('step1') }]}>Step 1: Cancelling in Fusion</Text>
-                    {step1Result && (
-                      <Text style={cancelModalStyles.stepStatus}>
-                        {step1Result.success ? `Success (HTTP ${step1Result.status || 200})` : `Failed: ${step1Result.error || 'Unknown error'}`}
-                      </Text>
+                {isStoreTransaction ? (
+                  /* Store Orders: single step */
+                  <View style={cancelModalStyles.stepRow}>
+                    {currentStep === 'step1' && !step1Result ? (
+                      <ActivityIndicator size="small" color="#1565C0" style={{ width: 20 }} />
+                    ) : (
+                      <Ionicons name={getStepIcon('step1')} size={20} color={getStepColor('step1')} />
                     )}
+                    <View style={cancelModalStyles.stepTextContainer}>
+                      <Text style={[cancelModalStyles.stepTitle, { color: getStepColor('step1') }]}>Cancelling Store Orders (S2V)</Text>
+                      {step1Result && (
+                        <Text style={cancelModalStyles.stepStatus}>
+                          {step1Result.success
+                            ? `Success (${markedItems.length} line${markedItems.length > 1 ? 's' : ''} cancelled)`
+                            : `Failed: ${step1Result.error || 'Unknown error'}`}
+                        </Text>
+                      )}
+                    </View>
                   </View>
-                </View>
-
-                {/* Step 2 */}
-                <View style={cancelModalStyles.stepRow}>
-                  {currentStep === 'step2' && !step2Result ? (
-                    <ActivityIndicator size="small" color="#1565C0" style={{ width: 20 }} />
-                  ) : (
-                    <Ionicons name={getStepIcon('step2')} size={20} color={getStepColor('step2')} />
-                  )}
-                  <View style={cancelModalStyles.stepTextContainer}>
-                    <Text style={[cancelModalStyles.stepTitle, { color: getStepColor('step2') }]}>Step 2: Updating APEX Status</Text>
-                    {step2Result && (
-                      <Text style={cancelModalStyles.stepStatus}>
-                        {step2Result.success ? `Success (HTTP ${step2Result.status || 200})` : `Failed: ${step2Result.error || 'Unknown error'}`}
-                      </Text>
-                    )}
-                  </View>
-                </View>
+                ) : (
+                  /* Sales Orders: two steps */
+                  <>
+                    <View style={cancelModalStyles.stepRow}>
+                      {currentStep === 'step1' && !step1Result ? (
+                        <ActivityIndicator size="small" color="#1565C0" style={{ width: 20 }} />
+                      ) : (
+                        <Ionicons name={getStepIcon('step1')} size={20} color={getStepColor('step1')} />
+                      )}
+                      <View style={cancelModalStyles.stepTextContainer}>
+                        <Text style={[cancelModalStyles.stepTitle, { color: getStepColor('step1') }]}>Step 1: Cancelling in Fusion</Text>
+                        {step1Result && (
+                          <Text style={cancelModalStyles.stepStatus}>
+                            {step1Result.success ? `Success (HTTP ${step1Result.status || 200})` : `Failed: ${step1Result.error || 'Unknown error'}`}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <View style={cancelModalStyles.stepRow}>
+                      {currentStep === 'step2' && !step2Result ? (
+                        <ActivityIndicator size="small" color="#1565C0" style={{ width: 20 }} />
+                      ) : (
+                        <Ionicons name={getStepIcon('step2')} size={20} color={getStepColor('step2')} />
+                      )}
+                      <View style={cancelModalStyles.stepTextContainer}>
+                        <Text style={[cancelModalStyles.stepTitle, { color: getStepColor('step2') }]}>Step 2: Updating APEX Status</Text>
+                        {step2Result && (
+                          <Text style={cancelModalStyles.stepStatus}>
+                            {step2Result.success ? `Success (HTTP ${step2Result.status || 200})` : `Failed: ${step2Result.error || 'Unknown error'}`}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  </>
+                )}
               </View>
             )}
 
@@ -2660,53 +2703,75 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
 
             {showApiDetails && (
               <View style={cancelModalStyles.apiSection}>
-                {/* Step 1: Fusion API */}
-                <Text style={cancelModalStyles.apiStepLabel}>Step 1: Fusion Cancel</Text>
-                <View style={cancelModalStyles.apiMethodRow}>
-                  <View style={cancelModalStyles.methodBadge}>
-                    <Text style={cancelModalStyles.methodText}>PATCH</Text>
-                  </View>
-                  <Text style={cancelModalStyles.instanceBadgeText}>{instanceName}</Text>
-                </View>
-                <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={3}>{fusionUrl}</Text>
-                <Text style={cancelModalStyles.jsonLabel}>Request Body:</Text>
-                <View style={cancelModalStyles.jsonContainer}>
-                  <Text style={cancelModalStyles.jsonText} selectable>
-                    {JSON.stringify(fusionPayload, null, 2)}
-                  </Text>
-                </View>
-                {step1Result && (
-                  <View style={[cancelModalStyles.apiResultInline, { borderLeftColor: step1Result.success ? '#4CAF50' : '#D32F2F' }]}>
-                    <Text style={cancelModalStyles.apiResultLabel}>Response ({step1Result.status || '-'}):</Text>
-                    <Text style={cancelModalStyles.jsonText} selectable>
-                      {step1Result.data ? JSON.stringify(step1Result.data, null, 2) : step1Result.error || '-'}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Step 2: APEX API */}
-                <View style={cancelModalStyles.apiDivider} />
-                <Text style={cancelModalStyles.apiStepLabel}>Step 2: APEX Update Cancel Status</Text>
-                <View style={cancelModalStyles.apiMethodRow}>
-                  <View style={[cancelModalStyles.methodBadge, { backgroundColor: '#FF9800' }]}>
-                    <Text style={cancelModalStyles.methodText}>POST</Text>
-                  </View>
-                  <Text style={cancelModalStyles.instanceBadgeText}>{instanceName}</Text>
-                </View>
-                <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={3}>{apexBaseUrl}</Text>
-                <Text style={cancelModalStyles.jsonLabel}>Request Body:</Text>
-                <View style={cancelModalStyles.jsonContainer}>
-                  <Text style={cancelModalStyles.jsonText} selectable>
-                    {JSON.stringify({ P_TRANSACTION_ID: '{each line ID}', p_instance_name: instanceName }, null, 2)}
-                  </Text>
-                </View>
-                {step2Result && (
-                  <View style={[cancelModalStyles.apiResultInline, { borderLeftColor: step2Result.success ? '#4CAF50' : '#D32F2F' }]}>
-                    <Text style={cancelModalStyles.apiResultLabel}>Response ({step2Result.status || '-'}):</Text>
-                    <Text style={cancelModalStyles.jsonText} selectable>
-                      {step2Result.data ? JSON.stringify(step2Result.data, null, 2) : step2Result.error || '-'}
-                    </Text>
-                  </View>
+                {isStoreTransaction ? (
+                  /* Store Orders: single APEX POST per line */
+                  <>
+                    <Text style={cancelModalStyles.apiStepLabel}>Cancel S2V Lot — called per line (APEX)</Text>
+                    <View style={cancelModalStyles.apiMethodRow}>
+                      <View style={[cancelModalStyles.methodBadge, { backgroundColor: '#FF9800' }]}>
+                        <Text style={cancelModalStyles.methodText}>POST</Text>
+                      </View>
+                      <Text style={cancelModalStyles.instanceBadgeText}>{instanceName}</Text>
+                    </View>
+                    <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={4}>{cancelS2VBaseUrl}</Text>
+                    {step1Result && (
+                      <View style={[cancelModalStyles.apiResultInline, { borderLeftColor: step1Result.success ? '#4CAF50' : '#D32F2F' }]}>
+                        <Text style={cancelModalStyles.apiResultLabel}>Response:</Text>
+                        <Text style={cancelModalStyles.jsonText} selectable>
+                          {step1Result.data ? JSON.stringify(step1Result.data, null, 2) : step1Result.error || '-'}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  /* Sales Orders: Fusion PATCH + APEX POST */
+                  <>
+                    <Text style={cancelModalStyles.apiStepLabel}>Step 1: Fusion Cancel</Text>
+                    <View style={cancelModalStyles.apiMethodRow}>
+                      <View style={cancelModalStyles.methodBadge}>
+                        <Text style={cancelModalStyles.methodText}>PATCH</Text>
+                      </View>
+                      <Text style={cancelModalStyles.instanceBadgeText}>{instanceName}</Text>
+                    </View>
+                    <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={3}>{fusionUrl}</Text>
+                    <Text style={cancelModalStyles.jsonLabel}>Request Body:</Text>
+                    <View style={cancelModalStyles.jsonContainer}>
+                      <Text style={cancelModalStyles.jsonText} selectable>
+                        {JSON.stringify(fusionPayload, null, 2)}
+                      </Text>
+                    </View>
+                    {step1Result && (
+                      <View style={[cancelModalStyles.apiResultInline, { borderLeftColor: step1Result.success ? '#4CAF50' : '#D32F2F' }]}>
+                        <Text style={cancelModalStyles.apiResultLabel}>Response ({step1Result.status || '-'}):</Text>
+                        <Text style={cancelModalStyles.jsonText} selectable>
+                          {step1Result.data ? JSON.stringify(step1Result.data, null, 2) : step1Result.error || '-'}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={cancelModalStyles.apiDivider} />
+                    <Text style={cancelModalStyles.apiStepLabel}>Step 2: APEX Update Cancel Status</Text>
+                    <View style={cancelModalStyles.apiMethodRow}>
+                      <View style={[cancelModalStyles.methodBadge, { backgroundColor: '#FF9800' }]}>
+                        <Text style={cancelModalStyles.methodText}>POST</Text>
+                      </View>
+                      <Text style={cancelModalStyles.instanceBadgeText}>{instanceName}</Text>
+                    </View>
+                    <Text style={cancelModalStyles.apiUrl} selectable numberOfLines={3}>{apexBaseUrl}</Text>
+                    <Text style={cancelModalStyles.jsonLabel}>Request Body:</Text>
+                    <View style={cancelModalStyles.jsonContainer}>
+                      <Text style={cancelModalStyles.jsonText} selectable>
+                        {JSON.stringify({ P_TRANSACTION_ID: '{each line ID}', p_instance_name: instanceName }, null, 2)}
+                      </Text>
+                    </View>
+                    {step2Result && (
+                      <View style={[cancelModalStyles.apiResultInline, { borderLeftColor: step2Result.success ? '#4CAF50' : '#D32F2F' }]}>
+                        <Text style={cancelModalStyles.apiResultLabel}>Response ({step2Result.status || '-'}):</Text>
+                        <Text style={cancelModalStyles.jsonText} selectable>
+                          {step2Result.data ? JSON.stringify(step2Result.data, null, 2) : step2Result.error || '-'}
+                        </Text>
+                      </View>
+                    )}
+                  </>
                 )}
               </View>
             )}
@@ -4218,13 +4283,56 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     }
   };
 
-  // Execute bulk cancel: Step 1 = Fusion (all lines in one call), Step 2 = APEX (per line)
+  // Execute bulk cancel:
+  // Store Orders: POST cancels2vlot per line (no Fusion PATCH)
+  // Sales Orders: Step 1 = Fusion PATCH (all lines), Step 2 = APEX update per line
   const executeBulkCancel = async (items, cancelReason, setCurrentStep, setStep1Result, setStep2Result) => {
     setIsCancellingLine(true);
     const instanceName = await getInstance();
+    const isStore = (order?.transaction_type || '').toLowerCase().includes('store');
+
     try {
-      // Step 1: Cancel all in Fusion
       setCurrentStep('step1');
+
+      if (isStore) {
+        // Store Orders: call cancelS2VLot for each line
+        const results = [];
+        for (const item of items) {
+          const linesId = item.lines_id || item.Lines_id || item.LINES_ID || '';
+          console.log('[WMSOrderDetails] Bulk Cancel Store Order (S2V Lot), linesId:', linesId);
+          const r = await cancelS2VLot(linesId);
+          results.push({ linesId, ...r });
+        }
+        const allSuccess = results.every(r => r.success);
+        setStep1Result({
+          success: allSuccess,
+          data: results,
+          status: allSuccess ? 200 : results.find(r => !r.success)?.status,
+          error: allSuccess ? null : results.find(r => !r.success)?.error || 'Some lines failed',
+        });
+
+        // Update local state
+        const cancelledIds = new Set(items.map(item => getItemId(item)));
+        setLines(prev =>
+          prev.map(line =>
+            cancelledIds.has(getItemId(line))
+              ? {
+                  ...line,
+                  cancelled_status: 'YES',
+                  cancel_status: 'CANCELLED',
+                  cancelled_date: new Date().toISOString(),
+                  cancelled_by: pickerName,
+                  cancel_reason: cancelReason || 'OUT OF STOCK',
+                }
+              : line
+          )
+        );
+        setMarkedForCancel(new Set());
+        setCurrentStep('done');
+        return { success: allSuccess };
+      }
+
+      // Sales Orders: Step 1 = Fusion PATCH (all lines in one call)
       const payload = {
         orderNumber: orderNumber,
         lines: items.map(item => ({
@@ -4571,6 +4679,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         instance={user?.instance || 'TEST'}
         onExecuteBulkCancel={executeBulkCancel}
         isProcessing={isCancellingLine}
+        transactionType={order?.transaction_type}
       />
 
       {/* API Response Modal */}
