@@ -1894,7 +1894,9 @@ const CancelOrderModal = ({ visible, onClose, onConfirm, item, order, isProcessi
 
   if (!item) return null;
 
-  const isStoreTransaction = (transactionType || '').toLowerCase().includes('store');
+  // Use transactionType prop first, fall back to order.transaction_type
+  const txType = transactionType || order?.transaction_type || '';
+  const isStoreTransaction = txType.toLowerCase().includes('store');
 
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const fulfillLineId = item.fulfill_line_id || item.FULFILL_LINE_ID || '';
@@ -1948,13 +1950,22 @@ const CancelOrderModal = ({ visible, onClose, onConfirm, item, order, isProcessi
         <View style={cancelModalStyles.container}>
           {/* Header */}
           <View style={cancelModalStyles.header}>
-            <View style={cancelModalStyles.headerLeft}>
+            <View style={[cancelModalStyles.headerLeft, { flex: 1 }]}>
               <Ionicons name="close-circle" size={24} color="#D32F2F" />
-              <Text style={cancelModalStyles.headerTitle}>
-                {isStoreTransaction ? 'Cancel Order Line (Store Orders)' : 'Cancel Order Line'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={cancelModalStyles.headerTitle} numberOfLines={2}>
+                  {isStoreTransaction ? 'Cancel Order Line' : 'Cancel Order Line'}
+                </Text>
+                {isStoreTransaction && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                    <View style={{ backgroundColor: '#D32F2F', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFF' }}>STORE ORDERS</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
             </View>
-            <TouchableOpacity onPress={onClose} disabled={isProcessing}>
+            <TouchableOpacity onPress={onClose} disabled={isProcessing} style={{ paddingLeft: 8 }}>
               <Ionicons name="close" size={22} color="#666" />
             </TouchableOpacity>
           </View>
@@ -1966,11 +1977,20 @@ const CancelOrderModal = ({ visible, onClose, onConfirm, item, order, isProcessi
                 <Ionicons name="cube" size={16} color="#1565C0" />
                 <Text style={cancelModalStyles.itemNumber}>{item.item_number || 'N/A'}</Text>
                 <Text style={cancelModalStyles.lineNum}>Line #{item.line_number || '1'}</Text>
+                {isStoreTransaction && (
+                  <View style={{ backgroundColor: '#1565C0', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, marginLeft: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF' }}>S2V</Text>
+                  </View>
+                )}
               </View>
               <Text style={cancelModalStyles.itemDescription}>{item.description || 'No Description'}</Text>
               <View style={cancelModalStyles.itemQtyRow}>
                 <Text style={cancelModalStyles.itemQtyLabel}>Qty: {parseInt(item.qty) || 0}</Text>
-                <Text style={cancelModalStyles.itemIdLabel}>FulfillLineId: {fulfillLineId}</Text>
+                {isStoreTransaction ? (
+                  <Text style={cancelModalStyles.itemIdLabel}>Lines ID: {linesId || '—'}</Text>
+                ) : (
+                  <Text style={cancelModalStyles.itemIdLabel}>FulfillLineId: {fulfillLineId}</Text>
+                )}
               </View>
             </View>
 
