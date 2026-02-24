@@ -1517,6 +1517,46 @@ export const fetchPickerPerformance = async (pickerName, fromDate, toDate, pickC
 };
 
 /**
+ * Cancel Store Order (S2V Lot) - single POST, no Fusion PATCH
+ * @param {string|number} linesId - P_LID (lines_id / Lines_id)
+ * @returns {Promise<Object>} { success, data, status }
+ */
+export const cancelS2VLot = async (linesId) => {
+  try {
+    if (!linesId) {
+      return { success: false, error: 'Lines ID (P_LID) is required', data: null };
+    }
+
+    const TRIP_BASE = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT';
+    const url = await appendInstanceParam(`${TRIP_BASE}/trip/cancels2vlot/${linesId}`);
+
+    console.log('[WMSService] Cancel S2V Lot:', url);
+
+    const response = await fetch(url, { method: 'POST' });
+
+    console.log('[WMSService] Cancel S2V Lot response status:', response.status);
+
+    let data;
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      data = JSON.parse(responseText);
+    } catch (e) {
+      data = { message: responseText.substring(0, 500) || 'Response received' };
+    }
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}`, data, status: response.status };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error cancel S2V lot:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
  * Fetch inventory staged transactions from Fusion (for Store Orders retry cleanup)
  * @param {string} instance - Instance name (PROD/TEST)
  * @returns {Promise<Object>} { success, data }
@@ -1628,6 +1668,7 @@ export default {
   cancelOrderLine,
   getCancelOrderLineUrl,
   updateCancelStatus,
+  cancelS2VLot,
   getInventoryStagedTransactions,
   deleteInventoryStagedTransaction,
 };
