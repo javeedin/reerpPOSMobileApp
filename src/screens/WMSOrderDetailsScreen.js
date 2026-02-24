@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import printerService from '../services/printerService';
 
@@ -217,7 +217,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     }
   };
 
-  // Store (S2V) confirm: Only Ship Confirm (processs2vauto/:P_LID)
+  // Store (S2V) confirm: Step 1 = updatePickedQty, Step 2 = Ship Confirm (processs2vauto/:P_LID)
   const handleStoreConfirm = async () => {
     setIsRunningSequence(true);
     setSequenceError(null);
@@ -226,17 +226,28 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     setStep2Completed(false);
 
     try {
+      if (!linesId) {
+        setSequenceError('No Lines ID (P_LID) available');
+        return;
+      }
+
+      // Step 1: Update Picked Qty
       setCurrentStep(1);
-      if (linesId) {
-        const shipResult = await onShipConfirm(item, linesId, true);
-        if (shipResult && shipResult.success) {
-          setStep1Completed(true);
-          setAllCompleted(true);
-        } else {
-          setSequenceError(shipResult?.error || 'Ship confirm failed');
-        }
+      const updateResult = await updatePickedQty(linesId, instanceUpper, parseInt(pickedQty) || 0);
+      if (!updateResult || !updateResult.success) {
+        setSequenceError(updateResult?.error || 'Update picked qty failed');
+        return;
+      }
+      setStep1Completed(true);
+
+      // Step 2: Ship Confirm (processs2vauto)
+      setCurrentStep(2);
+      const shipResult = await onShipConfirm(item, linesId, true);
+      if (shipResult && shipResult.success) {
+        setStep2Completed(true);
+        setAllCompleted(true);
       } else {
-        setSequenceError('No Lines ID (P_LID) available for Ship Confirm');
+        setSequenceError(shipResult?.error || 'Ship confirm failed');
       }
     } catch (error) {
       setSequenceError(error.message || 'Unknown error');
@@ -306,19 +317,19 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
 
   // Step labels based on order type
   const getStep1Label = () => {
-    if (isStoreTransaction) return 'Ship Confirm (S2V)';
+    if (isStoreTransaction) return 'Update Picked Qty (S2V)';
     return effectiveIsLotBased ? 'Fusion Pick Transaction (ORD)' : 'Pick Confirm (ORD)';
   };
   const getStep1Sub = () => {
-    if (isStoreTransaction) return `POST /trip/processs2vauto/${linesId}`;
+    if (isStoreTransaction) return 'POST /updatepickedqty';
     return effectiveIsLotBased ? 'POST /pickTransactions' : 'POST /PENDING_PICKING_DETAILS';
   };
   const getStep2Label = () => {
-    if (isStoreTransaction) return '';
+    if (isStoreTransaction) return 'Ship Confirm (S2V)';
     return effectiveIsLotBased ? 'Update Pick Confirm Status (ORD)' : '';
   };
   const getStep2Sub = () => {
-    if (isStoreTransaction) return '';
+    if (isStoreTransaction) return `POST /trip/processs2vauto/${linesId}`;
     return effectiveIsLotBased ? 'POST /trip/updatepickconfirmstatus' : '';
   };
 
@@ -472,8 +483,8 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   currentStep === 1 && !step1Completed && isRunningSequence
                 )}
 
-                {/* Step 2 - only for non-Store (Sales Lot Based) */}
-                {!isStoreTransaction && getStep2Label() ? (
+                {/* Step 2 - Store (S2V) Ship Confirm or Sales Lot Based Update Status */}
+                {getStep2Label() ? (
                   <>
                     <View style={[styles.sequenceStatusLine, step1Completed && styles.sequenceStatusLineCompleted]} />
                     {renderStatusRow(
@@ -523,9 +534,28 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                     <View style={styles.technicalDetailsContainer}>
                       {isStoreTransaction ? (
                         <>
-                          {/* Store (S2V): Ship Confirm only */}
+                          {/* Store (S2V): Step 1 - Update Picked Qty */}
                           <View style={styles.cpApiStepHeader}>
-                            <Text style={styles.cpApiStepTitle}>Ship Confirm (S2V)</Text>
+                            <Text style={styles.cpApiStepTitle}>Step 1: Update Picked Qty (S2V)</Text>
+                          </View>
+                          <View style={styles.apiEndpointInfo}>
+                            <View style={[styles.apiMethodBadge, { backgroundColor: '#1565C0' }]}>
+                              <Text style={styles.apiMethodText}>POST</Text>
+                            </View>
+                            <Text style={styles.apiEndpointText} numberOfLines={3}>
+                              /WAREHOUSEMANAGEMENT/updatepickedqty
+                            </Text>
+                          </View>
+                          <View style={styles.jsonPreviewContainer}>
+                            <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
+                            <View style={styles.jsonCodeBlock}>
+                              <Text style={styles.jsonCodeText}>{JSON.stringify({ p_lid: linesId, p_instance_name: instanceUpper, p_pickedQty: parseInt(pickedQty) || 0 }, null, 2)}</Text>
+                            </View>
+                          </View>
+
+                          {/* Store (S2V): Step 2 - Ship Confirm */}
+                          <View style={[styles.cpApiStepHeader, { marginTop: 12 }]}>
+                            <Text style={styles.cpApiStepTitle}>Step 2: Ship Confirm (S2V)</Text>
                           </View>
                           <View style={styles.apiEndpointInfo}>
                             <View style={[styles.apiMethodBadge, { backgroundColor: '#1565C0' }]}>
@@ -540,12 +570,16 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                           {/* Field mapping */}
                           <Text style={[styles.fieldDetailsTitle, { marginTop: 8 }]}>Field Mapping:</Text>
                           <View style={styles.fieldRow}>
-                            <Text style={styles.fieldLabel}>P_LID (lines_id):</Text>
+                            <Text style={styles.fieldLabel}>p_lid (lines_id):</Text>
                             <Text style={styles.fieldValue}>{linesId || '(empty)'}</Text>
                           </View>
                           <View style={styles.fieldRow}>
-                            <Text style={styles.fieldLabel}>instance:</Text>
+                            <Text style={styles.fieldLabel}>p_instance_name:</Text>
                             <Text style={styles.fieldValue}>{instanceUpper}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>p_pickedQty:</Text>
+                            <Text style={styles.fieldValue}>{pickedQty}</Text>
                           </View>
                         </>
                       ) : effectiveIsLotBased ? (

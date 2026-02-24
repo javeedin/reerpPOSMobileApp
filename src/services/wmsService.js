@@ -535,6 +535,77 @@ export const confirmPickPending = async (payload) => {
 };
 
 /**
+ * Update picked quantity for a Store (S2V) line before ship confirm
+ * @param {string|number} linesId - Lines ID (P_LID)
+ * @param {string} instanceName - Instance name (e.g. 'TEST' or 'PROD')
+ * @param {number} pickedQty - Picked quantity
+ * @returns {Promise<Object>} Result with success flag and data
+ */
+export const updatePickedQty = async (linesId, instanceName, pickedQty) => {
+  try {
+    if (!linesId) {
+      return { success: false, error: 'Lines ID (p_lid) is required', data: null };
+    }
+
+    const url = `${WMS_API_BASE}/updatepickedqty`;
+    const payload = {
+      p_lid: linesId,
+      p_instance_name: instanceName || 'TEST',
+      p_pickedQty: parseInt(pickedQty) || 0,
+    };
+
+    console.log('[WMSService] Update picked qty:', url);
+    console.log('[WMSService] Payload:', JSON.stringify(payload));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('[WMSService] Update picked qty response status:', response.status);
+
+    let data;
+    let responseText = '';
+    try {
+      responseText = await response.text();
+      console.log('[WMSService] Update picked qty response first 500 chars:', responseText.substring(0, 500));
+    } catch (textError) {
+      console.error('[WMSService] Error reading response text:', textError);
+      responseText = 'Error reading response';
+    }
+
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+        const titleMatch = responseText.match(/<title>(.*?)<\/title>/i);
+        const h1Match = responseText.match(/<h1[^>]*>(.*?)<\/h1>/i);
+        const errorMatch = responseText.match(/error[:\s]*(.*?)(?:<|$)/i);
+        const errorMessage = titleMatch?.[1] || h1Match?.[1] || errorMatch?.[1] || 'Server returned HTML error page';
+        data = { error: errorMessage, type: 'HTML_ERROR', status: response.status, preview: responseText.substring(0, 300) };
+      } else {
+        data = { message: responseText.substring(0, 500), type: 'TEXT_RESPONSE' };
+      }
+    }
+
+    console.log('[WMSService] Update picked qty response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}`, data, status: response.status };
+    }
+
+    return { success: true, data, status: response.status };
+  } catch (error) {
+    console.error('[WMSService] Error update picked qty:', error);
+    return { success: false, error: error.message, data: { error: error.message } };
+  }
+};
+
+/**
  * Ship confirm via trip/processs2vauto endpoint
  * @param {string} deliveryDetailId - Delivery detail ID (Lines_id)
  * @returns {Promise<Object>} Ship confirmation result with full response data
