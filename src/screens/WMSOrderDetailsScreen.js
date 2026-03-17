@@ -3902,6 +3902,75 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // Fetch Fusion Order Lines - syncs lines from Fusion then refreshes
   const [fetchingFusionLines, setFetchingFusionLines] = useState(false);
   const [fusionRecordCount, setFusionRecordCount] = useState(null);
+
+  // Sync Modal state
+  const [syncModalVisible, setSyncModalVisible] = useState(false);
+  const [syncApiStatuses, setSyncApiStatuses] = useState([
+    { key: 'callpickwave', label: 'Call Pick Wave', status: 'pending', message: '' },
+    { key: 'getopenpicksbyorder', label: 'Get Open Picks', status: 'pending', message: '' },
+    { key: 'getlotsforpicks', label: 'Get Lots for Picks', status: 'pending', message: '' },
+  ]);
+
+  const handleSync = async () => {
+    if (fetchingFusionLines) return;
+    const orgCode = order?.organization_name || 'GIC';
+    const instanceName = await getInstance();
+    const BASE = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT';
+
+    setSyncApiStatuses([
+      { key: 'callpickwave', label: 'Call Pick Wave', status: 'pending', message: '' },
+      { key: 'getopenpicksbyorder', label: 'Get Open Picks', status: 'pending', message: '' },
+      { key: 'getlotsforpicks', label: 'Get Lots for Picks', status: 'pending', message: '' },
+    ]);
+    setSyncModalVisible(true);
+    setFetchingFusionLines(true);
+
+    const updateStatus = (key, status, message) => {
+      setSyncApiStatuses(prev => prev.map(s => s.key === key ? { ...s, status, message } : s));
+    };
+
+    // API 1: callpickwave
+    try {
+      updateStatus('callpickwave', 'loading', '');
+      const url1 = `${BASE}/trip/callpickwave?warehouse=${orgCode}&order_number=${orderNumber}&p_instance_name=${instanceName}`;
+      const res1 = await fetch(url1);
+      const data1 = await res1.json();
+      const msg1 = data1?.message || data1?.status || JSON.stringify(data1).slice(0, 80);
+      updateStatus('callpickwave', 'success', msg1);
+    } catch (e) {
+      updateStatus('callpickwave', 'error', e.message || 'Failed');
+    }
+
+    // API 2: getopenpicksbyorder
+    try {
+      updateStatus('getopenpicksbyorder', 'loading', '');
+      const url2 = `${BASE}/trips/getopenpicksbyorder?organization_code=${orgCode}&order_number=${orderNumber}&p_instance_name=${instanceName}`;
+      const res2 = await fetch(url2);
+      const data2 = await res2.json();
+      const count2 = Array.isArray(data2?.items) ? data2.items.length : (data2?.count || data2?.recordcount || '');
+      const msg2 = count2 !== '' ? `${count2} pick(s) found` : (data2?.message || JSON.stringify(data2).slice(0, 80));
+      updateStatus('getopenpicksbyorder', 'success', msg2);
+    } catch (e) {
+      updateStatus('getopenpicksbyorder', 'error', e.message || 'Failed');
+    }
+
+    // API 3: getlotsforpicks
+    try {
+      updateStatus('getlotsforpicks', 'loading', '');
+      const url3 = `${BASE}/trip/getlotsforpicks?source_order_number=${orderNumber}&p_instance_name=${instanceName}`;
+      const res3 = await fetch(url3);
+      const data3 = await res3.json();
+      const count3 = Array.isArray(data3?.items) ? data3.items.length : (data3?.count || data3?.recordcount || '');
+      const msg3 = count3 !== '' ? `${count3} lot(s) found` : (data3?.message || JSON.stringify(data3).slice(0, 80));
+      updateStatus('getlotsforpicks', 'success', msg3);
+    } catch (e) {
+      updateStatus('getlotsforpicks', 'error', e.message || 'Failed');
+    }
+
+    setFetchingFusionLines(false);
+    await loadOrderLines();
+  };
+
   const handleFetchFusionOrderLines = async () => {
     if (fetchingFusionLines) return;
     setFetchingFusionLines(true);
@@ -4022,10 +4091,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // Filter items based on search text
   const filteredLines = filterText.trim()
     ? lines.filter(item =>
-        (item.item_number || '').toLowerCase().includes(filterText.toLowerCase()) ||
-        (item.description || '').toLowerCase().includes(filterText.toLowerCase()) ||
-        (item.delivery_detail_id || '').toLowerCase().includes(filterText.toLowerCase()) ||
-        (item.barcode || '').toLowerCase().includes(filterText.toLowerCase())
+        String(item.item_number || '').toLowerCase().includes(filterText.toLowerCase()) ||
+        String(item.description || '').toLowerCase().includes(filterText.toLowerCase()) ||
+        String(item.delivery_detail_id || '').toLowerCase().includes(filterText.toLowerCase()) ||
+        String(item.barcode || '').toLowerCase().includes(filterText.toLowerCase())
       )
     : lines;
 
@@ -4034,8 +4103,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     if (!filterText.trim()) return [];
     const suggestions = lines
       .filter(item =>
-        (item.item_number || '').toLowerCase().includes(filterText.toLowerCase()) ||
-        (item.description || '').toLowerCase().includes(filterText.toLowerCase())
+        String(item.item_number || '').toLowerCase().includes(filterText.toLowerCase()) ||
+        String(item.description || '').toLowerCase().includes(filterText.toLowerCase())
       )
       .slice(0, 5)
       .map(item => ({
@@ -4842,16 +4911,16 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             <Ionicons name="qr-code" size={16} color="#FFF" />
             <Text style={styles.printQRButtonText}>Print QR</Text>
           </TouchableOpacity>
-          {/* Fetch Fusion Lines Button */}
+          {/* Sync Button */}
           <TouchableOpacity
             style={[styles.shipAllButton, { backgroundColor: '#0288D1' }]}
-            onPress={handleFetchFusionOrderLines}
+            onPress={handleSync}
             disabled={fetchingFusionLines}
           >
             {fetchingFusionLines ? (
               <ActivityIndicator size="small" color="#FFF" />
             ) : (
-              <Ionicons name="cloud-download" size={16} color="#FFF" />
+              <Ionicons name="sync" size={16} color="#FFF" />
             )}
             <Text style={styles.shipAllButtonText}>Sync</Text>
           </TouchableOpacity>
@@ -5050,6 +5119,48 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         onRefresh={handleRefresh}
         isRefreshing={refreshing}
       />
+
+      {/* Sync Status Modal */}
+      <Modal
+        visible={syncModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { if (!fetchingFusionLines) setSyncModalVisible(false); }}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#FFF', borderRadius: 12, padding: 24, width: '100%', maxWidth: 400 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#1565C0', marginBottom: 4 }}>Syncing Order</Text>
+            <Text style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>{orderNumber}</Text>
+            {syncApiStatuses.map((api) => (
+              <View key={api.key} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: api.status === 'success' ? '#4CAF50' : api.status === 'error' ? '#D32F2F' : api.status === 'loading' ? '#0288D1' : '#E0E0E0', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 2 }}>
+                  {api.status === 'loading' ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : api.status === 'success' ? (
+                    <Ionicons name="checkmark" size={16} color="#FFF" />
+                  ) : api.status === 'error' ? (
+                    <Ionicons name="close" size={16} color="#FFF" />
+                  ) : (
+                    <Ionicons name="ellipse-outline" size={14} color="#999" />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#333' }}>{api.label}</Text>
+                  {api.message ? <Text style={{ fontSize: 12, color: api.status === 'error' ? '#D32F2F' : '#666', marginTop: 2 }} numberOfLines={2}>{api.message}</Text> : null}
+                </View>
+              </View>
+            ))}
+            {!fetchingFusionLines && (
+              <TouchableOpacity
+                style={{ marginTop: 8, backgroundColor: '#1565C0', borderRadius: 8, padding: 12, alignItems: 'center' }}
+                onPress={() => setSyncModalVisible(false)}
+              >
+                <Text style={{ color: '#FFF', fontWeight: '600', fontSize: 15 }}>Close</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
