@@ -108,8 +108,13 @@ const YouScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{user?.userName || user?.username || 'You'}</Text>
-        <Text style={styles.headerSubtitle}>Account</Text>
+        <View>
+          <Text style={styles.headerTitle}>{user?.userName || user?.username || 'You'}</Text>
+          <Text style={styles.headerSubtitle}>Account</Text>
+        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
+          <Ionicons name="close" size={22} color="#666" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
@@ -259,6 +264,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  closeBtn: {
+    padding: 4,
   },
   headerTitle: {
     fontSize: 18,
