@@ -593,6 +593,7 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
 
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [desktopIp, setDesktopIp] = useState('');
+  const [desktopPort, setDesktopPort] = useState('8766');
   const [notifExpanded, setNotifExpanded] = useState(false);
   const [testingNotif, setTestingNotif] = useState(false);
   const [detecting, setDetecting] = useState(false);
@@ -603,20 +604,22 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
       getNotifSettings().then(s => {
         setNotifEnabled(s.enabled);
         setDesktopIp(s.desktopIp || '');
+        setDesktopPort(s.desktopPort || '8766');
       });
     }
   }, [visible]);
 
   const handleToggleNotif = async (value) => {
     setNotifEnabled(value);
-    await saveNotifSettings({ enabled: value, desktopIp });
+    await saveNotifSettings({ enabled: value, desktopIp, desktopPort });
     if (value && !notifExpanded) setNotifExpanded(true);
   };
 
   const handleSaveIp = async () => {
     const trimmed = desktopIp.trim();
-    await saveNotifSettings({ enabled: notifEnabled, desktopIp: trimmed });
-    Alert.alert('Saved', `Desktop IP set to ${trimmed}`);
+    const port = desktopPort.trim() || '8766';
+    await saveNotifSettings({ enabled: notifEnabled, desktopIp: trimmed, desktopPort: port });
+    Alert.alert('Saved', `Desktop set to ${trimmed}:${port}`);
   };
 
   const handleTestNotif = async () => {
@@ -624,7 +627,7 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
     if (!trimmed) { Alert.alert('No IP', 'Enter the desktop IP address first.'); return; }
     setTestingNotif(true);
     try {
-      const ok = await sendTestNotification(trimmed);
+      const ok = await sendTestNotification(trimmed, desktopPort.trim() || '8766');
       Alert.alert(ok ? 'Success' : 'Failed', ok ? 'Test notification sent!' : 'Desktop did not respond. Check IP and that the server is running.');
     } catch (e) {
       Alert.alert('Error', 'Could not reach desktop: ' + e.message);
@@ -640,8 +643,8 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
       const found = await autoDetectDesktopIp(setDetectProgress);
       if (found) {
         setDesktopIp(found);
-        await saveNotifSettings({ enabled: notifEnabled, desktopIp: found });
-        Alert.alert('Found!', `Desktop detected at ${found}\nIP has been saved automatically.`);
+        await saveNotifSettings({ enabled: notifEnabled, desktopIp: found, desktopPort });
+        Alert.alert('Found!', `Desktop detected at ${found}:${desktopPort}\nSaved automatically.`);
       } else {
         Alert.alert('Not Found', 'No desktop server found on this WiFi network.\nMake sure the desktop app is running on port 8766.');
       }
@@ -734,7 +737,7 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
                   <View>
                     <Text style={styles.notifTitle}>Desktop Notifications</Text>
                     <Text style={styles.notifSubtitle}>
-                      {notifEnabled ? (desktopIp ? `→ ${desktopIp}:8766` : 'Enabled — set IP below') : 'Disabled'}
+                      {notifEnabled ? (desktopIp ? `→ ${desktopIp}:${desktopPort || '8766'}` : 'Enabled — set IP below') : 'Disabled'}
                     </Text>
                   </View>
                 </View>
@@ -748,15 +751,26 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
 
               {notifExpanded && (
                 <View style={styles.notifBody}>
-                  <Text style={styles.notifLabel}>Desktop IP Address</Text>
+                  <Text style={styles.notifLabel}>Desktop Address</Text>
                   <View style={styles.notifIpRow}>
                     <TextInput
                       style={[styles.notifIpInput, { flex: 1 }]}
                       value={desktopIp}
                       onChangeText={setDesktopIp}
-                      placeholder="e.g. 192.168.1.100"
+                      placeholder="IP e.g. 192.168.1.100"
                       placeholderTextColor="#BDBDBD"
                       keyboardType="decimal-pad"
+                      autoCorrect={false}
+                      editable={!detecting}
+                    />
+                    <Text style={styles.notifPortSep}>:</Text>
+                    <TextInput
+                      style={styles.notifPortInput}
+                      value={desktopPort}
+                      onChangeText={setDesktopPort}
+                      placeholder="8766"
+                      placeholderTextColor="#BDBDBD"
+                      keyboardType="number-pad"
                       autoCorrect={false}
                       editable={!detecting}
                     />
@@ -2382,18 +2396,35 @@ const styles = StyleSheet.create({
   notifIpRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     marginBottom: 6,
   },
   notifIpInput: {
     borderWidth: 1,
     borderColor: '#D0D8EA',
     borderRadius: 7,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 8,
-    fontSize: 14,
+    fontSize: 13,
     color: '#1A1A1A',
     backgroundColor: '#FFF',
+  },
+  notifPortSep: {
+    fontSize: 16,
+    color: '#999',
+    fontWeight: '600',
+  },
+  notifPortInput: {
+    width: 58,
+    borderWidth: 1,
+    borderColor: '#D0D8EA',
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#1A1A1A',
+    backgroundColor: '#FFF',
+    textAlign: 'center',
   },
   notifDetectBtn: {
     width: 38,

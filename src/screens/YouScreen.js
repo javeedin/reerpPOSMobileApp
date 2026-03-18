@@ -24,6 +24,7 @@ const YouScreen = () => {
   // Notification settings state
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [desktopIp, setDesktopIp] = useState('');
+  const [desktopPort, setDesktopPort] = useState('8766');
   const [notifExpanded, setNotifExpanded] = useState(false);
   const [testingNotif, setTestingNotif] = useState(false);
   const [detecting, setDetecting] = useState(false);
@@ -33,19 +34,21 @@ const YouScreen = () => {
     getNotifSettings().then(s => {
       setNotifEnabled(s.enabled);
       setDesktopIp(s.desktopIp || '');
+      setDesktopPort(s.desktopPort || '8766');
     });
   }, []);
 
   const handleToggleNotif = async (value) => {
     setNotifEnabled(value);
-    await saveNotifSettings({ enabled: value, desktopIp });
+    await saveNotifSettings({ enabled: value, desktopIp, desktopPort });
     if (value && !notifExpanded) setNotifExpanded(true);
   };
 
   const handleSaveIp = async () => {
     const trimmed = desktopIp.trim();
-    await saveNotifSettings({ enabled: notifEnabled, desktopIp: trimmed });
-    Alert.alert('Saved', `Desktop IP set to ${trimmed}`);
+    const port = desktopPort.trim() || '8766';
+    await saveNotifSettings({ enabled: notifEnabled, desktopIp: trimmed, desktopPort: port });
+    Alert.alert('Saved', `Desktop set to ${trimmed}:${port}`);
   };
 
   const handleDetect = async () => {
@@ -55,8 +58,8 @@ const YouScreen = () => {
       const found = await autoDetectDesktopIp(setDetectProgress);
       if (found) {
         setDesktopIp(found);
-        await saveNotifSettings({ enabled: notifEnabled, desktopIp: found });
-        Alert.alert('Found!', `Desktop detected at ${found}\nIP has been saved automatically.`);
+        await saveNotifSettings({ enabled: notifEnabled, desktopIp: found, desktopPort });
+        Alert.alert('Found!', `Desktop detected at ${found}:${desktopPort}\nIP has been saved automatically.`);
       } else {
         Alert.alert('Not Found', 'No desktop server found on this WiFi network.\nMake sure the desktop app is running on port 8766.');
       }
@@ -76,7 +79,7 @@ const YouScreen = () => {
     }
     setTestingNotif(true);
     try {
-      const ok = await sendTestNotification(trimmed);
+      const ok = await sendTestNotification(trimmed, desktopPort.trim() || '8766');
       Alert.alert(ok ? 'Success' : 'Failed', ok ? 'Test notification sent!' : 'Desktop did not respond. Check IP and that the server is running.');
     } catch (e) {
       Alert.alert('Error', 'Could not reach desktop: ' + e.message);
@@ -108,12 +111,12 @@ const YouScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>{user?.userName || user?.username || 'You'}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{user?.userName || user?.username || 'You'}</Text>
           <Text style={styles.headerSubtitle}>Account</Text>
         </View>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
-          <Ionicons name="close" size={22} color="#666" />
+        <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.closeBtn}>
+          <Ionicons name="close-circle" size={28} color="#BDBDBD" />
         </TouchableOpacity>
       </View>
 
@@ -169,7 +172,7 @@ const YouScreen = () => {
               <View>
                 <Text style={styles.menuItemTitle}>Desktop Notifications</Text>
                 <Text style={styles.notifSubtitle}>
-                  {notifEnabled ? (desktopIp ? `→ ${desktopIp}:8766` : 'Enabled — set IP below') : 'Disabled'}
+                  {notifEnabled ? (desktopIp ? `→ ${desktopIp}:${desktopPort || '8766'}` : 'Enabled — set IP below') : 'Disabled'}
                 </Text>
               </View>
             </View>
@@ -184,15 +187,26 @@ const YouScreen = () => {
           {/* Expandable IP section */}
           {notifExpanded && (
             <View style={styles.notifBody}>
-              <Text style={styles.notifLabel}>Desktop Computer IP Address</Text>
+              <Text style={styles.notifLabel}>Desktop Address</Text>
               <View style={styles.ipRow}>
                 <TextInput
                   style={[styles.ipInput, { flex: 1 }]}
                   value={desktopIp}
                   onChangeText={setDesktopIp}
-                  placeholder="e.g. 192.168.1.100"
+                  placeholder="IP e.g. 192.168.1.100"
                   placeholderTextColor="#BDBDBD"
                   keyboardType="decimal-pad"
+                  autoCorrect={false}
+                  editable={!detecting}
+                />
+                <Text style={styles.portSep}>:</Text>
+                <TextInput
+                  style={[styles.portInput]}
+                  value={desktopPort}
+                  onChangeText={setDesktopPort}
+                  placeholder="8766"
+                  placeholderTextColor="#BDBDBD"
+                  keyboardType="number-pad"
                   autoCorrect={false}
                   editable={!detecting}
                 />
@@ -399,18 +413,35 @@ const styles = StyleSheet.create({
   ipRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     marginBottom: 6,
   },
   ipInput: {
     borderWidth: 1,
     borderColor: '#E0E0E0',
     borderRadius: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: 14,
     color: '#1A1A1A',
     backgroundColor: '#FAFAFA',
+  },
+  portSep: {
+    fontSize: 18,
+    color: '#999',
+    fontWeight: '600',
+  },
+  portInput: {
+    width: 62,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#1A1A1A',
+    backgroundColor: '#FAFAFA',
+    textAlign: 'center',
   },
   detectBtn: {
     width: 42,

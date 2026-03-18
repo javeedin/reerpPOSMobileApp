@@ -57,9 +57,9 @@ export const autoDetectDesktopIp = async (onProgress) => {
 export const getNotifSettings = async () => {
   try {
     const json = await AsyncStorage.getItem(STORAGE_KEY);
-    return json ? JSON.parse(json) : { enabled: false, desktopIp: '' };
+    return json ? JSON.parse(json) : { enabled: false, desktopIp: '', desktopPort: String(NOTIF_PORT) };
   } catch {
-    return { enabled: false, desktopIp: '' };
+    return { enabled: false, desktopIp: '', desktopPort: String(NOTIF_PORT) };
   }
 };
 
@@ -76,7 +76,8 @@ export const sendPickNotification = async ({ orderNumber, pickerName, qty, itemD
     const settings = await getNotifSettings();
     if (!settings.enabled || !settings.desktopIp) return;
 
-    const url = `http://${settings.desktopIp}:${NOTIF_PORT}/notify`;
+    const port = settings.desktopPort || NOTIF_PORT;
+    const url = `http://${settings.desktopIp}:${port}/notify`;
     await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -94,8 +95,9 @@ export const sendPickNotification = async ({ orderNumber, pickerName, qty, itemD
   }
 };
 
-export const sendTestNotification = async (desktopIp) => {
-  const url = `http://${desktopIp}:${NOTIF_PORT}/notify`;
+export const sendTestNotification = async (desktopIp, desktopPort) => {
+  const port = desktopPort || NOTIF_PORT;
+  const url = `http://${desktopIp}:${port}/notify`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
