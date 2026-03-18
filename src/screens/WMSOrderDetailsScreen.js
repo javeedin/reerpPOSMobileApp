@@ -3929,9 +3929,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       setSyncApiStatuses(prev => prev.map(s => s.key === key ? { ...s, status, message } : s));
     };
 
-    const safeJsonFetch = async (label, url) => {
-      console.log(`[Sync][${label}] → GET ${url}`);
-      const res = await fetch(url);
+    const safeJsonPost = async (label, url, body) => {
+      console.log(`[Sync][${label}] → POST ${url}`, JSON.stringify(body));
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       console.log(`[Sync][${label}] ← HTTP ${res.status} ${res.statusText}`);
       const text = await res.text();
       console.log(`[Sync][${label}] Raw response (first 300 chars):`, text.slice(0, 300));
@@ -3949,8 +3953,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     // API 1: callpickwave
     try {
       updateStatus('callpickwave', 'loading', '');
-      const url1 = `${BASE}/trip/callpickwave?warehouse=${orgCode}&order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const data1 = await safeJsonFetch('callpickwave', url1);
+      const url1 = `${BASE}/trip/callpickwave`;
+      const data1 = await safeJsonPost('callpickwave', url1, { warehouse: orgCode, order_number: orderNumber, p_instance_name: instanceName });
       const msg1 = data1?.message || data1?.status || JSON.stringify(data1).slice(0, 80);
       updateStatus('callpickwave', 'success', msg1);
     } catch (e) {
@@ -3961,8 +3965,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     // API 2: getopenpicksbyorder
     try {
       updateStatus('getopenpicksbyorder', 'loading', '');
-      const url2 = `${BASE}/trips/getopenpicksbyorder?organization_code=${orgCode}&order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const data2 = await safeJsonFetch('getopenpicksbyorder', url2);
+      const url2 = `${BASE}/trips/getopenpicksbyorder`;
+      const data2 = await safeJsonPost('getopenpicksbyorder', url2, { organization_code: orgCode, order_number: orderNumber, p_instance_name: instanceName });
       const count2 = Array.isArray(data2?.items) ? data2.items.length : (data2?.count || data2?.recordcount || '');
       const msg2 = count2 !== '' ? `${count2} pick(s) found` : (data2?.message || JSON.stringify(data2).slice(0, 80));
       updateStatus('getopenpicksbyorder', 'success', msg2);
@@ -3974,8 +3978,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     // API 3: getlotsforpicks
     try {
       updateStatus('getlotsforpicks', 'loading', '');
-      const url3 = `${BASE}/trip/getlotsforpicks?source_order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const data3 = await safeJsonFetch('getlotsforpicks', url3);
+      const url3 = `${BASE}/trip/getlotsforpicks`;
+      const data3 = await safeJsonPost('getlotsforpicks', url3, { source_order_number: orderNumber, p_instance_name: instanceName });
       const count3 = Array.isArray(data3?.items) ? data3.items.length : (data3?.count || data3?.recordcount || '');
       const msg3 = count3 !== '' ? `${count3} lot(s) found` : (data3?.message || JSON.stringify(data3).slice(0, 80));
       updateStatus('getlotsforpicks', 'success', msg3);
