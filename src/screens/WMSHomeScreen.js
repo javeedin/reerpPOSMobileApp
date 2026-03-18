@@ -12,6 +12,8 @@ import {
   TextInput,
   Dimensions,
   Platform,
+  Switch,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +31,7 @@ import {
 } from '../services/wmsService';
 import { getInstance } from '../services/api';
 import colors from '../theme/colors';
+import { getNotifSettings, saveNotifSettings, sendTestNotification } from '../services/notificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -588,6 +591,46 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
     return new Date(dateString).toLocaleString();
   };
 
+  const [notifEnabled, setNotifEnabled] = useState(false);
+  const [desktopIp, setDesktopIp] = useState('');
+  const [notifExpanded, setNotifExpanded] = useState(false);
+  const [testingNotif, setTestingNotif] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      getNotifSettings().then(s => {
+        setNotifEnabled(s.enabled);
+        setDesktopIp(s.desktopIp || '');
+      });
+    }
+  }, [visible]);
+
+  const handleToggleNotif = async (value) => {
+    setNotifEnabled(value);
+    await saveNotifSettings({ enabled: value, desktopIp });
+    if (value && !notifExpanded) setNotifExpanded(true);
+  };
+
+  const handleSaveIp = async () => {
+    const trimmed = desktopIp.trim();
+    await saveNotifSettings({ enabled: notifEnabled, desktopIp: trimmed });
+    Alert.alert('Saved', `Desktop IP set to ${trimmed}`);
+  };
+
+  const handleTestNotif = async () => {
+    const trimmed = desktopIp.trim();
+    if (!trimmed) { Alert.alert('No IP', 'Enter the desktop IP address first.'); return; }
+    setTestingNotif(true);
+    try {
+      const ok = await sendTestNotification(trimmed);
+      Alert.alert(ok ? 'Success' : 'Failed', ok ? 'Test notification sent!' : 'Desktop did not respond. Check IP and that the server is running.');
+    } catch (e) {
+      Alert.alert('Error', 'Could not reach desktop: ' + e.message);
+    } finally {
+      setTestingNotif(false);
+    }
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
@@ -653,6 +696,65 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
                   <Text style={styles.profileDetailValue}>{formatDate(user?.loginTime)}</Text>
                 </View>
               </View>
+            </View>
+
+            {/* Desktop Notifications */}
+            <View style={styles.notifCard}>
+              <TouchableOpacity
+                style={styles.notifHeaderRow}
+                onPress={() => setNotifExpanded(v => !v)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={[styles.notifIconBox, { backgroundColor: notifEnabled ? '#E8F5E9' : '#F0F4FF' }]}>
+                    <Ionicons name="desktop-outline" size={20} color={notifEnabled ? '#388E3C' : '#1565C0'} />
+                  </View>
+                  <View>
+                    <Text style={styles.notifTitle}>Desktop Notifications</Text>
+                    <Text style={styles.notifSubtitle}>
+                      {notifEnabled ? (desktopIp ? `→ ${desktopIp}:8766` : 'Enabled — set IP below') : 'Disabled'}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={notifEnabled}
+                  onValueChange={handleToggleNotif}
+                  trackColor={{ false: '#E0E0E0', true: '#A5D6A7' }}
+                  thumbColor={notifEnabled ? '#388E3C' : '#9E9E9E'}
+                />
+              </TouchableOpacity>
+
+              {notifExpanded && (
+                <View style={styles.notifBody}>
+                  <Text style={styles.notifLabel}>Desktop IP Address</Text>
+                  <TextInput
+                    style={styles.notifIpInput}
+                    value={desktopIp}
+                    onChangeText={setDesktopIp}
+                    placeholder="e.g. 192.168.1.100"
+                    placeholderTextColor="#BDBDBD"
+                    keyboardType="decimal-pad"
+                    autoCorrect={false}
+                  />
+                  <Text style={styles.notifHint}>Desktop must be running on port 8766</Text>
+                  <View style={styles.notifActions}>
+                    <TouchableOpacity style={styles.notifSaveBtn} onPress={handleSaveIp}>
+                      <Ionicons name="save-outline" size={15} color="#FFF" />
+                      <Text style={styles.notifSaveBtnText}>Save</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.notifTestBtn, testingNotif && { opacity: 0.6 }]}
+                      onPress={handleTestNotif}
+                      disabled={testingNotif}
+                    >
+                      {testingNotif
+                        ? <ActivityIndicator size="small" color="#1565C0" />
+                        : <Ionicons name="paper-plane-outline" size={15} color="#1565C0" />}
+                      <Text style={styles.notifTestBtnText}>{testingNotif ? 'Sending…' : 'Test'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
 
             {/* Logout Button */}
@@ -2186,6 +2288,103 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#1A1A1A',
+  },
+  // Notification styles (ProfileModal)
+  notifCard: {
+    width: '100%',
+    backgroundColor: '#F8FAFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E3EAF6',
+    marginBottom: 14,
+    overflow: 'hidden',
+  },
+  notifHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+  },
+  notifIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  notifTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  notifSubtitle: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 1,
+  },
+  notifBody: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E3EAF6',
+    paddingTop: 10,
+  },
+  notifLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+  },
+  notifIpInput: {
+    borderWidth: 1,
+    borderColor: '#D0D8EA',
+    borderRadius: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#1A1A1A',
+    backgroundColor: '#FFF',
+    marginBottom: 6,
+  },
+  notifHint: {
+    fontSize: 10,
+    color: '#AAA',
+    marginBottom: 10,
+  },
+  notifActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  notifSaveBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#1565C0',
+    borderRadius: 7,
+    paddingVertical: 9,
+  },
+  notifSaveBtnText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  notifTestBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 7,
+    paddingVertical: 9,
+  },
+  notifTestBtnText: {
+    color: '#1565C0',
+    fontWeight: '600',
+    fontSize: 13,
   },
   logoutButton: {
     flexDirection: 'row',
