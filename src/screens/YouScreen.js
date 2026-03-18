@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import colors from '../theme/colors';
-import { getNotifSettings, saveNotifSettings, sendTestNotification } from '../services/notificationService';
+import { getNotifSettings, saveNotifSettings, sendTestNotification, autoDetectDesktopIp } from '../services/notificationService';
 
 const YouScreen = () => {
   const navigation = useNavigation();
@@ -26,6 +26,8 @@ const YouScreen = () => {
   const [desktopIp, setDesktopIp] = useState('');
   const [notifExpanded, setNotifExpanded] = useState(false);
   const [testingNotif, setTestingNotif] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectProgress, setDetectProgress] = useState(0);
 
   useEffect(() => {
     getNotifSettings().then(s => {
@@ -44,6 +46,26 @@ const YouScreen = () => {
     const trimmed = desktopIp.trim();
     await saveNotifSettings({ enabled: notifEnabled, desktopIp: trimmed });
     Alert.alert('Saved', `Desktop IP set to ${trimmed}`);
+  };
+
+  const handleDetect = async () => {
+    setDetecting(true);
+    setDetectProgress(0);
+    try {
+      const found = await autoDetectDesktopIp(setDetectProgress);
+      if (found) {
+        setDesktopIp(found);
+        await saveNotifSettings({ enabled: notifEnabled, desktopIp: found });
+        Alert.alert('Found!', `Desktop detected at ${found}\nIP has been saved automatically.`);
+      } else {
+        Alert.alert('Not Found', 'No desktop server found on this WiFi network.\nMake sure the desktop app is running on port 8766.');
+      }
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setDetecting(false);
+      setDetectProgress(0);
+    }
   };
 
   const handleTestNotif = async () => {
@@ -158,17 +180,36 @@ const YouScreen = () => {
           {notifExpanded && (
             <View style={styles.notifBody}>
               <Text style={styles.notifLabel}>Desktop Computer IP Address</Text>
-              <TextInput
-                style={styles.ipInput}
-                value={desktopIp}
-                onChangeText={setDesktopIp}
-                placeholder="e.g. 192.168.1.100"
-                placeholderTextColor="#BDBDBD"
-                keyboardType="decimal-pad"
-                autoCorrect={false}
-              />
+              <View style={styles.ipRow}>
+                <TextInput
+                  style={[styles.ipInput, { flex: 1 }]}
+                  value={desktopIp}
+                  onChangeText={setDesktopIp}
+                  placeholder="e.g. 192.168.1.100"
+                  placeholderTextColor="#BDBDBD"
+                  keyboardType="decimal-pad"
+                  autoCorrect={false}
+                  editable={!detecting}
+                />
+                <TouchableOpacity
+                  style={[styles.detectBtn, detecting && { opacity: 0.6 }]}
+                  onPress={handleDetect}
+                  disabled={detecting}
+                >
+                  {detecting
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <Ionicons name="wifi" size={16} color="#FFF" />}
+                </TouchableOpacity>
+              </View>
+              {detecting && (
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressFill, { width: `${detectProgress}%` }]} />
+                </View>
+              )}
               <Text style={styles.notifHint}>
-                The desktop app must be running and listening on port 8766.
+                {detecting
+                  ? `Scanning WiFi network… ${detectProgress}%`
+                  : 'Tap the WiFi icon to auto-detect, or enter IP manually. Desktop must be running on port 8766.'}
               </Text>
               <View style={styles.notifActions}>
                 <TouchableOpacity style={styles.saveIpBtn} onPress={handleSaveIp}>
@@ -344,6 +385,12 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 8,
   },
+  ipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
   ipInput: {
     borderWidth: 1,
     borderColor: '#E0E0E0',
@@ -353,7 +400,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#1A1A1A',
     backgroundColor: '#FAFAFA',
-    marginBottom: 8,
+  },
+  detectBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: '#1565C0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: '#E3EAF6',
+    borderRadius: 2,
+    marginBottom: 6,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 4,
+    backgroundColor: '#1565C0',
+    borderRadius: 2,
   },
   notifHint: {
     fontSize: 11,

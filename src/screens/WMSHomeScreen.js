@@ -31,7 +31,7 @@ import {
 } from '../services/wmsService';
 import { getInstance } from '../services/api';
 import colors from '../theme/colors';
-import { getNotifSettings, saveNotifSettings, sendTestNotification } from '../services/notificationService';
+import { getNotifSettings, saveNotifSettings, sendTestNotification, autoDetectDesktopIp } from '../services/notificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -595,6 +595,8 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
   const [desktopIp, setDesktopIp] = useState('');
   const [notifExpanded, setNotifExpanded] = useState(false);
   const [testingNotif, setTestingNotif] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectProgress, setDetectProgress] = useState(0);
 
   useEffect(() => {
     if (visible) {
@@ -628,6 +630,26 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
       Alert.alert('Error', 'Could not reach desktop: ' + e.message);
     } finally {
       setTestingNotif(false);
+    }
+  };
+
+  const handleDetect = async () => {
+    setDetecting(true);
+    setDetectProgress(0);
+    try {
+      const found = await autoDetectDesktopIp(setDetectProgress);
+      if (found) {
+        setDesktopIp(found);
+        await saveNotifSettings({ enabled: notifEnabled, desktopIp: found });
+        Alert.alert('Found!', `Desktop detected at ${found}\nIP has been saved automatically.`);
+      } else {
+        Alert.alert('Not Found', 'No desktop server found on this WiFi network.\nMake sure the desktop app is running on port 8766.');
+      }
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setDetecting(false);
+      setDetectProgress(0);
     }
   };
 
@@ -727,16 +749,37 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
               {notifExpanded && (
                 <View style={styles.notifBody}>
                   <Text style={styles.notifLabel}>Desktop IP Address</Text>
-                  <TextInput
-                    style={styles.notifIpInput}
-                    value={desktopIp}
-                    onChangeText={setDesktopIp}
-                    placeholder="e.g. 192.168.1.100"
-                    placeholderTextColor="#BDBDBD"
-                    keyboardType="decimal-pad"
-                    autoCorrect={false}
-                  />
-                  <Text style={styles.notifHint}>Desktop must be running on port 8766</Text>
+                  <View style={styles.notifIpRow}>
+                    <TextInput
+                      style={[styles.notifIpInput, { flex: 1 }]}
+                      value={desktopIp}
+                      onChangeText={setDesktopIp}
+                      placeholder="e.g. 192.168.1.100"
+                      placeholderTextColor="#BDBDBD"
+                      keyboardType="decimal-pad"
+                      autoCorrect={false}
+                      editable={!detecting}
+                    />
+                    <TouchableOpacity
+                      style={[styles.notifDetectBtn, detecting && { opacity: 0.6 }]}
+                      onPress={handleDetect}
+                      disabled={detecting}
+                    >
+                      {detecting
+                        ? <ActivityIndicator size="small" color="#FFF" />
+                        : <Ionicons name="wifi" size={15} color="#FFF" />}
+                    </TouchableOpacity>
+                  </View>
+                  {detecting && (
+                    <View style={styles.notifProgressBar}>
+                      <View style={[styles.notifProgressFill, { width: `${detectProgress}%` }]} />
+                    </View>
+                  )}
+                  <Text style={styles.notifHint}>
+                    {detecting
+                      ? `Scanning WiFi network… ${detectProgress}%`
+                      : 'Tap the WiFi icon to auto-detect, or enter IP manually. Desktop must be running on port 8766.'}
+                  </Text>
                   <View style={styles.notifActions}>
                     <TouchableOpacity style={styles.notifSaveBtn} onPress={handleSaveIp}>
                       <Ionicons name="save-outline" size={15} color="#FFF" />
@@ -2336,6 +2379,12 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 6,
   },
+  notifIpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
   notifIpInput: {
     borderWidth: 1,
     borderColor: '#D0D8EA',
@@ -2345,7 +2394,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1A1A1A',
     backgroundColor: '#FFF',
+  },
+  notifDetectBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 7,
+    backgroundColor: '#1565C0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notifProgressBar: {
+    height: 4,
+    backgroundColor: '#E3EAF6',
+    borderRadius: 2,
     marginBottom: 6,
+    overflow: 'hidden',
+  },
+  notifProgressFill: {
+    height: 4,
+    backgroundColor: '#1565C0',
+    borderRadius: 2,
   },
   notifHint: {
     fontSize: 10,

@@ -32,6 +32,7 @@
     "expo-intent-launcher": "^13.0.8",
     "expo-linear-gradient": "~15.0.8",
     "expo-media-library": "~18.2.1",
+    "expo-network": "^55.0.9",
     "expo-print": "^15.0.8",
     "expo-sharing": "^14.0.8",
     "expo-sqlite": "~16.0.10",
