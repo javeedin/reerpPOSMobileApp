@@ -3929,15 +3929,20 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       setSyncApiStatuses(prev => prev.map(s => s.key === key ? { ...s, status, message } : s));
     };
 
-    const safeJsonFetch = async (url) => {
+    const safeJsonFetch = async (label, url) => {
+      console.log(`[Sync][${label}] → GET ${url}`);
       const res = await fetch(url);
+      console.log(`[Sync][${label}] ← HTTP ${res.status} ${res.statusText}`);
       const text = await res.text();
+      console.log(`[Sync][${label}] Raw response (first 300 chars):`, text.slice(0, 300));
       if (!text || text.trim() === '') throw new Error('Empty response from server');
-      if (text.trim().startsWith('<')) throw new Error('Server returned an error page. Check API connection or credentials.');
+      if (text.trim().startsWith('<')) throw new Error('Server returned HTML error page — check APEX URL or connectivity');
       try {
-        return JSON.parse(text);
+        const json = JSON.parse(text);
+        console.log(`[Sync][${label}] Parsed JSON:`, JSON.stringify(json, null, 2).slice(0, 500));
+        return json;
       } catch (e) {
-        throw new Error(`Invalid response: ${text.slice(0, 60)}`);
+        throw new Error(`JSON parse failed: ${text.slice(0, 80)}`);
       }
     };
 
@@ -3945,10 +3950,11 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     try {
       updateStatus('callpickwave', 'loading', '');
       const url1 = `${BASE}/trip/callpickwave?warehouse=${orgCode}&order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const data1 = await safeJsonFetch(url1);
+      const data1 = await safeJsonFetch('callpickwave', url1);
       const msg1 = data1?.message || data1?.status || JSON.stringify(data1).slice(0, 80);
       updateStatus('callpickwave', 'success', msg1);
     } catch (e) {
+      console.error('[Sync][callpickwave] Error:', e.message);
       updateStatus('callpickwave', 'error', e.message || 'Failed');
     }
 
@@ -3956,11 +3962,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     try {
       updateStatus('getopenpicksbyorder', 'loading', '');
       const url2 = `${BASE}/trips/getopenpicksbyorder?organization_code=${orgCode}&order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const data2 = await safeJsonFetch(url2);
+      const data2 = await safeJsonFetch('getopenpicksbyorder', url2);
       const count2 = Array.isArray(data2?.items) ? data2.items.length : (data2?.count || data2?.recordcount || '');
       const msg2 = count2 !== '' ? `${count2} pick(s) found` : (data2?.message || JSON.stringify(data2).slice(0, 80));
       updateStatus('getopenpicksbyorder', 'success', msg2);
     } catch (e) {
+      console.error('[Sync][getopenpicksbyorder] Error:', e.message);
       updateStatus('getopenpicksbyorder', 'error', e.message || 'Failed');
     }
 
@@ -3968,11 +3975,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     try {
       updateStatus('getlotsforpicks', 'loading', '');
       const url3 = `${BASE}/trip/getlotsforpicks?source_order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const data3 = await safeJsonFetch(url3);
+      const data3 = await safeJsonFetch('getlotsforpicks', url3);
       const count3 = Array.isArray(data3?.items) ? data3.items.length : (data3?.count || data3?.recordcount || '');
       const msg3 = count3 !== '' ? `${count3} lot(s) found` : (data3?.message || JSON.stringify(data3).slice(0, 80));
       updateStatus('getlotsforpicks', 'success', msg3);
     } catch (e) {
+      console.error('[Sync][getlotsforpicks] Error:', e.message);
       updateStatus('getlotsforpicks', 'error', e.message || 'Failed');
     }
 
