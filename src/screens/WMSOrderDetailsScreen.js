@@ -3868,22 +3868,27 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const orderNumber = order?.order_number || order?.source_order_number || '';
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
 
+  const syncModeRef = useRef('sync'); // 'sync' | 'shipconfirm'
+
   const loadOrderLines = useCallback(async () => {
     if (!orderNumber) {
       setLoading(false);
-      return;
+      return null;
     }
 
     try {
       const result = await fetchShipmentLines(orderNumber);
       if (result.success && result.data?.items) {
         setLines(result.data.items);
+        return result.data.items.length;
       } else {
         setLines([]);
+        return 0;
       }
     } catch (error) {
       console.error('[WMSOrderDetails] Error loading lines:', error);
       Alert.alert('Error', 'Failed to load order details');
+      return null;
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -3911,8 +3916,14 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     { key: 'getlotsforpicks', label: 'Get Lots for Picks', status: 'pending', message: '' },
   ]);
 
+  const handleShipConfirmWithSync = () => {
+    syncModeRef.current = 'shipconfirm';
+    handleSync();
+  };
+
   const handleSync = async () => {
     if (fetchingFusionLines) return;
+    const beforeTotal = lines.length;
     const orgCode = order?.organization_name || 'GIC';
     const instanceName = await getInstance();
     const BASE = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/TRIPMANAGEMENT';
@@ -3989,7 +4000,22 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     }
 
     setFetchingFusionLines(false);
-    await loadOrderLines();
+    const afterTotal = await loadOrderLines();
+
+    if (syncModeRef.current === 'shipconfirm') {
+      syncModeRef.current = 'sync';
+      setSyncModalVisible(false);
+      if (afterTotal !== null && afterTotal !== beforeTotal) {
+        const diff = afterTotal - beforeTotal;
+        Alert.alert(
+          'New Items to Pick',
+          `${diff > 0 ? diff + ' new item(s) were added.' : 'Item count changed.'} Please pick all items before confirming shipment.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        setSalesShipModalVisible(true);
+      }
+    }
   };
 
   const handleFetchFusionOrderLines = async () => {
@@ -4954,7 +4980,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           )}
           {/* Sales Ship Confirm Button - Only for Sales Orders when all lines are pick confirmed and not yet shipped */}
           {lines.length > 0 && summary.pendingLines === 0 && summary.shippedLines < lines.length && !(order?.transaction_type || '').toLowerCase().includes('store') && (
-            <TouchableOpacity style={[styles.shipAllButton, { backgroundColor: '#7B1FA2' }]} onPress={() => setSalesShipModalVisible(true)}>
+            <TouchableOpacity style={[styles.shipAllButton, { backgroundColor: '#7B1FA2' }]} onPress={handleShipConfirmWithSync}>
               <Ionicons name="airplane" size={16} color="#FFF" />
               <Text style={styles.shipAllButtonText}>Ship Confirm</Text>
             </TouchableOpacity>
