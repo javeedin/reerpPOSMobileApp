@@ -667,7 +667,7 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.profileContent}>
+          <ScrollView style={styles.profileContent} contentContainerStyle={{ alignItems: 'center', paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {/* User Avatar */}
             <View style={styles.profileAvatarContainer}>
               <LinearGradient
@@ -819,7 +819,7 @@ const ProfileModal = ({ visible, onClose, user, onLogout }) => {
               <Ionicons name="log-out-outline" size={22} color="#FFF" />
               <Text style={styles.logoutButtonText}>Logout</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -2083,6 +2083,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     width: width - 40,
     maxWidth: 400,
+    maxHeight: '90%',
     overflow: 'hidden',
   },
   modalHeader: {
@@ -2308,8 +2309,7 @@ const styles = StyleSheet.create({
   },
   // Profile Modal Styles
   profileContent: {
-    padding: 24,
-    alignItems: 'center',
+    padding: 16,
   },
   profileAvatarContainer: {
     marginBottom: 24,
