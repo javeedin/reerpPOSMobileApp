@@ -157,26 +157,19 @@ const OrderCard = ({ order, onPress }) => {
         ) : null}
       </View>
 
-      {/* Lines Breakdown Row */}
+      {/* Lines Status Row */}
       <View style={styles.linesBreakdownRow}>
-        <View style={[styles.linesBadge, { backgroundColor: '#E8F5E9' }]}>
-          <Ionicons name="checkmark-circle" size={12} color="#4CAF50" />
-          <Text style={[styles.linesBadgeLabel, { color: '#4CAF50' }]}>Picked</Text>
-          <Text style={[styles.linesBadgeCount, { color: '#2E7D32' }]}>
-            {(isPicked || isShipped) ? (order.no_of_lines || 0) : 0}/{order.no_of_lines || 0}
-          </Text>
+        <View style={[styles.linesBadge, (isPicked || isShipped) ? { backgroundColor: '#E8F5E9' } : { backgroundColor: '#F5F5F5' }]}>
+          <Ionicons name="checkmark-circle" size={12} color={(isPicked || isShipped) ? '#4CAF50' : '#BDBDBD'} />
+          <Text style={[styles.linesBadgeLabel, { color: (isPicked || isShipped) ? '#4CAF50' : '#BDBDBD' }]}>Picked</Text>
         </View>
-        <View style={[styles.linesBadge, { backgroundColor: '#F3E5F5' }]}>
-          <Ionicons name="airplane" size={12} color="#9C27B0" />
-          <Text style={[styles.linesBadgeLabel, { color: '#9C27B0' }]}>Shipped</Text>
-          <Text style={[styles.linesBadgeCount, { color: '#6A1B9A' }]}>
-            {isShipped ? (order.no_of_lines || 0) : 0}/{order.no_of_lines || 0}
-          </Text>
+        <View style={[styles.linesBadge, isShipped ? { backgroundColor: '#F3E5F5' } : { backgroundColor: '#F5F5F5' }]}>
+          <Ionicons name="airplane" size={12} color={isShipped ? '#9C27B0' : '#BDBDBD'} />
+          <Text style={[styles.linesBadgeLabel, { color: isShipped ? '#9C27B0' : '#BDBDBD' }]}>Shipped</Text>
         </View>
-        <View style={[styles.linesBadge, { backgroundColor: '#FAFAFA' }]}>
-          <Ionicons name="close-circle" size={12} color="#999" />
-          <Text style={[styles.linesBadgeLabel, { color: '#999' }]}>Cancelled</Text>
-          <Text style={[styles.linesBadgeCount, { color: '#999' }]}>-</Text>
+        <View style={[styles.linesBadge, { backgroundColor: '#F5F5F5' }]}>
+          <Ionicons name="close-circle" size={12} color="#BDBDBD" />
+          <Text style={[styles.linesBadgeLabel, { color: '#BDBDBD' }]}>Cancelled</Text>
         </View>
       </View>
 
@@ -1823,11 +1816,7 @@ const styles = StyleSheet.create({
   },
   linesBadgeLabel: {
     fontSize: 10,
-    fontWeight: '500',
-  },
-  linesBadgeCount: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   shipConfirmReadyBanner: {
     flexDirection: 'row',
