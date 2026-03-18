@@ -3929,12 +3929,23 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       setSyncApiStatuses(prev => prev.map(s => s.key === key ? { ...s, status, message } : s));
     };
 
+    const safeJsonFetch = async (url) => {
+      const res = await fetch(url);
+      const text = await res.text();
+      if (!text || text.trim() === '') throw new Error('Empty response from server');
+      if (text.trim().startsWith('<')) throw new Error('Server returned an error page. Check API connection or credentials.');
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Invalid response: ${text.slice(0, 60)}`);
+      }
+    };
+
     // API 1: callpickwave
     try {
       updateStatus('callpickwave', 'loading', '');
       const url1 = `${BASE}/trip/callpickwave?warehouse=${orgCode}&order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const res1 = await fetch(url1);
-      const data1 = await res1.json();
+      const data1 = await safeJsonFetch(url1);
       const msg1 = data1?.message || data1?.status || JSON.stringify(data1).slice(0, 80);
       updateStatus('callpickwave', 'success', msg1);
     } catch (e) {
@@ -3945,8 +3956,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     try {
       updateStatus('getopenpicksbyorder', 'loading', '');
       const url2 = `${BASE}/trips/getopenpicksbyorder?organization_code=${orgCode}&order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const res2 = await fetch(url2);
-      const data2 = await res2.json();
+      const data2 = await safeJsonFetch(url2);
       const count2 = Array.isArray(data2?.items) ? data2.items.length : (data2?.count || data2?.recordcount || '');
       const msg2 = count2 !== '' ? `${count2} pick(s) found` : (data2?.message || JSON.stringify(data2).slice(0, 80));
       updateStatus('getopenpicksbyorder', 'success', msg2);
@@ -3958,8 +3968,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     try {
       updateStatus('getlotsforpicks', 'loading', '');
       const url3 = `${BASE}/trip/getlotsforpicks?source_order_number=${orderNumber}&p_instance_name=${instanceName}`;
-      const res3 = await fetch(url3);
-      const data3 = await res3.json();
+      const data3 = await safeJsonFetch(url3);
       const count3 = Array.isArray(data3?.items) ? data3.items.length : (data3?.count || data3?.recordcount || '');
       const msg3 = count3 !== '' ? `${count3} lot(s) found` : (data3?.message || JSON.stringify(data3).slice(0, 80));
       updateStatus('getlotsforpicks', 'success', msg3);

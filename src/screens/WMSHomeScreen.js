@@ -146,8 +146,10 @@ const OrderCard = ({ order, onPress }) => {
           <Text style={styles.metaText}>{order.picker_name || '-'}</Text>
         </View>
         <View style={styles.metaItem}>
-          <Ionicons name="layers-outline" size={14} color="#666" />
-          <Text style={styles.metaText}>{order.no_of_lines || 0} lines</Text>
+          <Ionicons name="layers-outline" size={14} color={isShipped ? '#9C27B0' : isPicked ? '#4CAF50' : '#FF9800'} />
+          <Text style={[styles.metaText, { color: isShipped ? '#9C27B0' : isPicked ? '#4CAF50' : '#FF9800', fontWeight: '600' }]}>
+            {isShipped ? order.no_of_lines || 0 : isPicked ? order.no_of_lines || 0 : 0}/{order.no_of_lines || 0} lines
+          </Text>
         </View>
         <View style={styles.metaItem}>
           <Ionicons name="pricetag-outline" size={14} color="#666" />
