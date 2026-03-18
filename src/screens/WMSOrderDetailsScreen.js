@@ -26,6 +26,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import printerService from '../services/printerService';
+import { sendPickNotification } from '../services/notificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -4195,6 +4196,14 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           )
         );
 
+        // Fire-and-forget desktop notification
+        sendPickNotification({
+          orderNumber: orderNumber,
+          pickerName: pickerName,
+          qty: confirmPickItem?.qty,
+          itemDescription: confirmPickItem?.item_description || confirmPickItem?.description || '',
+        });
+
         if (silentMode) {
           // Return result for chained operations (Store orders)
           return { success: true };
@@ -4269,6 +4278,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                     : line
                 )
               );
+              // Fire-and-forget desktop notification
+              sendPickNotification({
+                orderNumber: orderNumber,
+                pickerName: pickerName,
+                qty: confirmPickItem?.qty,
+                itemDescription: confirmPickItem?.item_description || confirmPickItem?.description || '',
+              });
               return { success: true, data: updateResult.data };
             } else {
               return { success: false, error: updateResult.error || 'Update pick confirm status failed' };
