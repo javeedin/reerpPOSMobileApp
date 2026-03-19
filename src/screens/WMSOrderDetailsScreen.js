@@ -3903,10 +3903,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     loadOrderLines();
   }, [loadOrderLines]);
 
-  // Auto-run sync (pick wave + open picks + lots) once per order per app session
+  // Auto-run sync once per order per session, only for pending orders
   useEffect(() => {
-    if (!orderNumber || syncedOrdersThisSession.has(orderNumber)) return;
+    const isPending = order?.pick_confirm_status !== 'YES' && order?.shipped_status !== 'YES';
+    if (!orderNumber || !isPending || syncedOrdersThisSession.has(orderNumber)) return;
     syncedOrdersThisSession.add(orderNumber);
+    syncModeRef.current = 'auto';
     handleSync();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -4025,6 +4027,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       } else {
         setSalesShipModalVisible(true);
       }
+    } else if (syncModeRef.current === 'auto') {
+      syncModeRef.current = 'sync';
+      setSyncModalVisible(false);
     }
   };
 
