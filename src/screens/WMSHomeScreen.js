@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   Platform,
   Switch,
   Alert,
+  Vibration,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,7 +32,7 @@ import {
 } from '../services/wmsService';
 import { getInstance } from '../services/api';
 import colors from '../theme/colors';
-import { getNotifSettings, saveNotifSettings, sendTestNotification, autoDetectDesktopIp } from '../services/notificationService';
+import { getNotifSettings, saveNotifSettings, sendTestNotification, autoDetectDesktopIp, startDesktopListener, stopDesktopListener } from '../services/notificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -850,6 +851,11 @@ const WMSHomeScreen = ({ navigation }) => {
 
   const [currentInstance, setCurrentInstance] = useState('');
 
+  // Desktop push notification popup state
+  const [pushNotif, setPushNotif] = useState(null); // { type, orderNumber, message, sender }
+  const pushQueue = useRef([]);
+  const pushShowing = useRef(false);
+
   // Get picker name from user data
   const pickerName = user?.PICKER_NAME || user?.picker_name || user?.username || '';
 
@@ -857,6 +863,40 @@ const WMSHomeScreen = ({ navigation }) => {
   useEffect(() => {
     getInstance().then(inst => setCurrentInstance((inst || 'TEST').toUpperCase()));
   }, []);
+
+  // Start WebSocket listener for desktop → mobile push notifications
+  useEffect(() => {
+    let active = true;
+    getNotifSettings().then(s => {
+      if (!active) return;
+      if (s.enabled && s.desktopIp) {
+        startDesktopListener(s.desktopIp, s.desktopPort || '8766', (msg) => {
+          // Queue messages so they show one at a time
+          pushQueue.current.push(msg);
+          if (!pushShowing.current) showNextPush();
+        });
+      }
+    });
+    return () => {
+      active = false;
+      stopDesktopListener();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const showNextPush = () => {
+    if (pushQueue.current.length === 0) { pushShowing.current = false; return; }
+    pushShowing.current = true;
+    const next = pushQueue.current.shift();
+    // Vibrate: short-long-short pattern
+    Vibration.vibrate([0, 300, 150, 300, 150, 600]);
+    setPushNotif(next);
+  };
+
+  const dismissPush = () => {
+    setPushNotif(null);
+    // Show next queued message after a short gap
+    setTimeout(showNextPush, 400);
+  };
 
   // Check if user is a PICKER
   const isPicker = (user?.userType || '').toUpperCase() === 'PICKER';
@@ -991,6 +1031,36 @@ const WMSHomeScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1565C0" />
+
+      {/* Desktop → Mobile push notification popup */}
+      <Modal visible={!!pushNotif} transparent animationType="slide" onRequestClose={dismissPush}>
+        <View style={styles.pushOverlay}>
+          <View style={styles.pushCard}>
+            <View style={styles.pushIconRow}>
+              <View style={styles.pushIconBox}>
+                <Text style={styles.pushIcon}>
+                  {pushNotif?.type === 'ship_confirm' ? '🚚' : pushNotif?.type === 'order_update' ? '📦' : '📣'}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pushTitle}>
+                  {pushNotif?.type === 'ship_confirm' ? 'Ship Confirmed' : pushNotif?.type === 'order_update' ? 'Order Update' : 'Message from Desktop'}
+                </Text>
+                {!!pushNotif?.orderNumber && (
+                  <Text style={styles.pushOrder}>Order: {pushNotif.orderNumber}</Text>
+                )}
+              </View>
+            </View>
+            <Text style={styles.pushMessage}>{pushNotif?.message}</Text>
+            {!!pushNotif?.sender && pushNotif.sender !== 'Desktop' && (
+              <Text style={styles.pushSender}>— {pushNotif.sender}</Text>
+            )}
+            <TouchableOpacity style={styles.pushDismiss} onPress={dismissPush}>
+              <Text style={styles.pushDismissText}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Header */}
       <LinearGradient colors={['#1565C0', '#0D47A1']} style={styles.header}>
@@ -2500,6 +2570,74 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginLeft: 8,
+  },
+
+  // Desktop push notification popup
+  pushOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+  },
+  pushCard: {
+    backgroundColor: '#0D2137',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#1E3A5F',
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  pushIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  pushIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#1565C0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pushIcon: { fontSize: 22 },
+  pushTitle: {
+    color: '#4FC3F7',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  pushOrder: {
+    color: '#90CAF9',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  pushMessage: {
+    color: '#E3F2FD',
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  pushSender: {
+    color: '#78909C',
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  pushDismiss: {
+    backgroundColor: '#1565C0',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  pushDismissText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
   },
 });
 

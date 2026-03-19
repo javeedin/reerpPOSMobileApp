@@ -4,6 +4,57 @@ import * as Network from 'expo-network';
 const STORAGE_KEY = '@notif_settings';
 const NOTIF_PORT = 8766;
 
+// ─── Desktop → Mobile WebSocket listener ─────────────────────────────────────
+let _ws = null;
+let _reconnectTimer = null;
+let _onMessageCb = null;
+let _activeIp = null;
+let _activePort = null;
+
+export const startDesktopListener = (ip, port, onMessage) => {
+  stopDesktopListener();
+  if (!ip) return;
+  _onMessageCb = onMessage;
+  _activeIp = ip;
+  _activePort = port || NOTIF_PORT;
+  _connectWs();
+};
+
+function _connectWs() {
+  try {
+    const ws = new WebSocket(`ws://${_activeIp}:${_activePort}`);
+    _ws = ws;
+
+    ws.onopen = () => console.log('[Notif] WS connected to desktop');
+    ws.onmessage = (e) => {
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        // Only handle messages pushed from desktop (not echo of our own sends)
+        if (data.from === 'desktop' && _onMessageCb) _onMessageCb(data);
+      } catch {}
+    };
+    ws.onerror = () => {}; // handled by onclose
+    ws.onclose = () => {
+      _ws = null;
+      // Auto-reconnect after 5s if listener is still active
+      if (_activeIp) {
+        _reconnectTimer = setTimeout(_connectWs, 5000);
+      }
+    };
+  } catch (e) {
+    console.warn('[Notif] WS connect failed:', e.message);
+  }
+}
+
+export const stopDesktopListener = () => {
+  _activeIp = null;
+  _activePort = null;
+  _onMessageCb = null;
+  if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+  if (_ws) { try { _ws.close(); } catch {} _ws = null; }
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Probe a single IP on the notify port with a short timeout
 const probeIp = (ip) =>
   new Promise((resolve) => {
