@@ -3803,6 +3803,9 @@ const BottomToolbar = ({ onHome, onBack, onRefresh, onLotsLocators, isRefreshing
   </View>
 );
 
+// Tracks which orders have already been auto-synced this app session
+const syncedOrdersThisSession = new Set();
+
 const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const { order } = route.params || {};
   const { user } = useAuth();
@@ -3900,11 +3903,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     loadOrderLines();
   }, [loadOrderLines]);
 
-  // Auto-run sync (pick wave + open picks + lots) once when order screen first opens
-  const hasAutoSynced = useRef(false);
+  // Auto-run sync (pick wave + open picks + lots) once per order per app session
   useEffect(() => {
-    if (hasAutoSynced.current) return;
-    hasAutoSynced.current = true;
+    if (!orderNumber || syncedOrdersThisSession.has(orderNumber)) return;
+    syncedOrdersThisSession.add(orderNumber);
     handleSync();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
