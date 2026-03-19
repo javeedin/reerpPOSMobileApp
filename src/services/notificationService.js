@@ -95,6 +95,30 @@ export const sendPickNotification = async ({ orderNumber, pickerName, qty, itemD
   }
 };
 
+export const sendShipNotification = async ({ orderNumber, pickerName, itemCount }) => {
+  try {
+    const settings = await getNotifSettings();
+    if (!settings.enabled || !settings.desktopIp) return;
+
+    const port = settings.desktopPort || NOTIF_PORT;
+    const url = `http://${settings.desktopIp}:${port}/notify`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'ship_confirm',
+        orderNumber,
+        message: `Order ${orderNumber} ship confirmed by ${pickerName}`,
+        sender: pickerName,
+        data: { itemCount },
+      }),
+    });
+    console.log('[Notif] Sent ship notification for', orderNumber);
+  } catch (e) {
+    console.warn('[Notif] Failed to send ship notification:', e.message);
+  }
+};
+
 export const sendTestNotification = async (desktopIp, desktopPort) => {
   const port = desktopPort || NOTIF_PORT;
   const url = `http://${desktopIp}:${port}/notify`;

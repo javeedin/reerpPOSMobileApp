@@ -26,7 +26,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import printerService from '../services/printerService';
-import { sendPickNotification } from '../services/notificationService';
+import { sendPickNotification, sendShipNotification } from '../services/notificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -4579,6 +4579,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               : line
           )
         );
+
+        // Fire-and-forget ship notification
+        sendShipNotification({
+          orderNumber,
+          pickerName,
+          itemCount: 1,
+        });
       }
 
       if (silentMode) {
@@ -4705,6 +4712,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         if (finalResult.success) {
           setBulkFinalStatus('success');
           console.log('[WMSOrderDetails] S2V shipment processed successfully:', finalResult.data);
+
+          // Fire-and-forget ship notification for entire order
+          sendShipNotification({
+            orderNumber,
+            pickerName,
+            itemCount: pickedItems.length,
+          });
         } else {
           setBulkFinalStatus('error');
           console.error('[WMSOrderDetails] S2V shipment failed:', finalResult.error);
@@ -4858,6 +4872,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           if (result?.success) {
             // Refresh lines after successful ship confirm
             loadOrderLines();
+
+            // Fire-and-forget ship notification
+            sendShipNotification({
+              orderNumber,
+              pickerName,
+              itemCount: result?.itemCount || undefined,
+            });
           }
         }}
       />
