@@ -3900,6 +3900,14 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     loadOrderLines();
   }, [loadOrderLines]);
 
+  // Auto-run sync (pick wave + open picks + lots) once when order screen first opens
+  const hasAutoSynced = useRef(false);
+  useEffect(() => {
+    if (hasAutoSynced.current) return;
+    hasAutoSynced.current = true;
+    handleSync();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleRefresh = () => {
     setRefreshing(true);
     loadOrderLines();
@@ -3918,8 +3926,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   ]);
 
   const handleShipConfirmWithSync = () => {
-    syncModeRef.current = 'shipconfirm';
-    handleSync();
+    setSalesShipModalVisible(true);
   };
 
   const handleSync = async () => {
