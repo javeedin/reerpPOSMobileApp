@@ -848,6 +848,7 @@ const WMSHomeScreen = ({ navigation }) => {
   const [showOverview, setShowOverview] = useState(false); // Overview collapsed by default
   const [searchText, setSearchText] = useState('');
   const [showPendingOnly, setShowPendingOnly] = useState(true); // Default to Pending
+  const [sortByPriority, setSortByPriority] = useState(false);
 
   const [currentInstance, setCurrentInstance] = useState('');
 
@@ -1019,6 +1020,15 @@ const WMSHomeScreen = ({ navigation }) => {
       filtered = filtered.filter(s => s.pick_confirm_status === 'YES' && s.shipped_status !== 'YES');
     } else if (selectedStatus === 'shipped') {
       filtered = filtered.filter(s => s.shipped_status === 'YES');
+    }
+
+    // Sort by priority ascending in list view
+    if (sortByPriority) {
+      filtered.sort((a, b) => {
+        const pA = parseInt(a.order_priority) || 99;
+        const pB = parseInt(b.order_priority) || 99;
+        return pA - pB;
+      });
     }
 
     return filtered;
@@ -1354,6 +1364,20 @@ const WMSHomeScreen = ({ navigation }) => {
                 ]}>Pending</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Sort by Priority button (list view only) */}
+            {viewMode === 'list' && (
+              <TouchableOpacity
+                style={[styles.sortPriorityButton, sortByPriority && styles.sortPriorityButtonActive]}
+                onPress={() => setSortByPriority(prev => !prev)}
+              >
+                <Ionicons
+                  name="podium-outline"
+                  size={16}
+                  color={sortByPriority ? '#FFF' : '#666'}
+                />
+              </TouchableOpacity>
+            )}
 
             <View style={styles.viewModeToggle}>
               {VIEW_MODES.map(mode => (
@@ -1769,6 +1793,15 @@ const styles = StyleSheet.create({
   resultCount: {
     fontSize: 13,
     color: '#666',
+  },
+  sortPriorityButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#E0E0E0',
+    marginRight: 6,
+  },
+  sortPriorityButtonActive: {
+    backgroundColor: '#1565C0',
   },
   viewModeToggle: {
     flexDirection: 'row',
