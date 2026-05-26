@@ -30,7 +30,7 @@ export const fetchShipmentsSummary = async (pickerName, fromDate, toDate, pickCo
     const from = formatDateForAPI(fromDate);
     const to = formatDateForAPI(toDate);
 
-    let rawUrl = `${WMS_API_BASE}/SHIPMENTSSUMMARYFORAPP?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
+    let rawUrl = `${WMS_API_BASE}/SHIPMENTSSUMMARYFORAPP?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}&limit=500`;
 
     if (pickConfirmStatus) {
       rawUrl += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
@@ -419,7 +419,7 @@ export const getWMSDateRange = () => {
  */
 export const fetchShipmentLines = async (orderNumber) => {
   try {
-    const url = await appendInstanceParam(`${WMS_API_BASE}/SHIPMENTLINESFORAPP?p_SOURCE_ORDER_NUMBER=${encodeURIComponent(orderNumber)}`);
+    const url = await appendInstanceParam(`${WMS_API_BASE}/SHIPMENTLINESFORAPP?p_SOURCE_ORDER_NUMBER=${encodeURIComponent(orderNumber)}&limit=500`);
 
     console.log('[WMSService] Fetching shipment lines:', url);
 
@@ -861,7 +861,7 @@ export const fetchItemOnhand = async (organizationCode, subinventoryCode, itemNu
   try {
     const currentInstance = await getInstance();
     const fusionBaseUrl = getFusionBaseUrl(currentInstance);
-    const url = `${fusionBaseUrl}/inventoryOnhandBalances?q=OrganizationCode=${encodeURIComponent(organizationCode)};SubinventoryCode=${encodeURIComponent(subinventoryCode)};ItemNumber=${encodeURIComponent(itemNumber)}`;
+    const url = `${fusionBaseUrl}/inventoryOnhandBalances?q=OrganizationCode=${encodeURIComponent(organizationCode)};SubinventoryCode=${encodeURIComponent(subinventoryCode)};ItemNumber=${encodeURIComponent(itemNumber)}&limit=500`;
 
     console.log('[WMSService] Fetching item onhand:', url);
 
@@ -1486,7 +1486,7 @@ export const fetchPickerPerformance = async (pickerName, fromDate, toDate, pickC
     const from = formatDateForAPI(fromDate);
     const to = formatDateForAPI(toDate);
 
-    let rawUrl = `${WMS_API_BASE}/PICKERPERFORMANCE?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}`;
+    let rawUrl = `${WMS_API_BASE}/PICKERPERFORMANCE?pickerName=${encodeURIComponent(pickerName)}&P_fromDate=${from}&P_todate=${to}&limit=500`;
 
     if (pickConfirmStatus) {
       rawUrl += `&pickConfirmStatus=${encodeURIComponent(pickConfirmStatus)}`;
@@ -1565,7 +1565,7 @@ export const getInventoryStagedTransactions = async (instance) => {
   try {
     const instanceUpper = (instance || 'TEST').toUpperCase();
     const fusionBaseUrl = getFusionBaseUrl(instanceUpper);
-    const url = `${fusionBaseUrl}/inventoryStagedTransactions?q=OrganizationName=GIC;TransactionTypeName=Direct Organization Transfer`;
+    const url = `${fusionBaseUrl}/inventoryStagedTransactions?q=OrganizationName=GIC;TransactionTypeName=Direct Organization Transfer&limit=500`;
 
     console.log('[WMSService] Get Inventory Staged Transactions:', url);
 
