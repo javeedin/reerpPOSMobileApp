@@ -88,10 +88,10 @@ const getExpiryColor = (days) => {
 };
 
 // Confirm Pick Modal Component - Enhanced with Lot Based / Non Lot toggle
-const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onShipConfirm, item, order, pickerName, instance, isProcessing, transactionType }) => {
+const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onShipConfirm, item, order, pickerName, instance, isProcessing, transactionType, bogoSetItems }) => {
   const [showDetails, setShowDetails] = useState(false);
-  const [isLotBased, setIsLotBased] = useState(true); // Default: Lot Based (Sales only)
-  const [currentStep, setCurrentStep] = useState(0); // 0 = not started, 1 = Pick/Fusion, 2 = UpdateStatus/Ship
+  const [isLotBased, setIsLotBased] = useState(true);
+  const [currentStep, setCurrentStep] = useState(0);
   const [step1Completed, setStep1Completed] = useState(false);
   const [step2Completed, setStep2Completed] = useState(false);
   const [isRunningSequence, setIsRunningSequence] = useState(false);
@@ -99,7 +99,17 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const [allCompleted, setAllCompleted] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryError, setRetryError] = useState(null);
-  const [retryStep, setRetryStep] = useState(0); // 1=fetching staged txns, 2=deleting, 3=ship confirm
+  const [retryStep, setRetryStep] = useState(0);
+
+  // BOGO set state
+  const [checkedBogoIds, setCheckedBogoIds] = useState(new Set());
+  const [bogoResults, setBogoResults] = useState([]); // [{itemId, label, status, error}]
+
+  useEffect(() => {
+    if (bogoSetItems && bogoSetItems.length > 0) {
+      setCheckedBogoIds(new Set(bogoSetItems.map(i => getItemId(i))));
+    }
+  }, [bogoSetItems]);
 
   if (!item) return null;
 
@@ -312,8 +322,117 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     await onConfirm(nonLotPayload);
   };
 
+  // Build payloads for any item (used by BOGO multi-confirm)
+  const buildPayloadsForItem = (anItem) => {
+    const aRawId = anItem.id || anItem.source_delivery_detail_id || anItem.delivery_detail_id || '';
+    const aDeliveryDetailId = anItem.delivery_detail_id || anItem.DELIVERY_DETAIL_ID || aRawId;
+    const aLinesId = anItem.lines_id || anItem.Lines_id || anItem.LINES_ID || '';
+    const aAccountCode = anItem.account_code || anItem.ACCOUNT_CODE || order?.account_code || order?.ACCOUNT_CODE || '';
+    const aLotNumber = anItem.lot_number || '';
+    const aPickedQty = anItem.qty || '0';
+    return {
+      rawId: aRawId,
+      deliveryDetailId: aDeliveryDetailId,
+      linesId: aLinesId,
+      lotNumber: aLotNumber,
+      pickedQty: aPickedQty,
+      fusionPayload: {
+        deliveryDetailId: aDeliveryDetailId,
+        linesId: aLinesId,
+        pickedQty: parseInt(aPickedQty) || 0,
+        subinventoryCode: 'DUTY PAID',
+        lot: aLotNumber,
+        lotQty: parseInt(aPickedQty) || 0,
+      },
+      nonLotPayload: {
+        id: String(aRawId),
+        line_number: String(anItem.line_number || '1'),
+        lot: aLotNumber,
+        pickedQty: String(aPickedQty),
+        pickedBy: pickerName || '',
+        pickConfirmDate: formatDateTimeForAPI(new Date()),
+        pickConfirmStatus: 'YES',
+        instance: instance || 'TEST',
+        account_code: aAccountCode,
+      },
+      updatePayload: {
+        P_TRANSACTION_ID: aRawId,
+        p_instance_name: instanceUpper,
+        p_pickedQty: parseInt(aPickedQty) || 0,
+      },
+    };
+  };
+
+  // BOGO multi-item confirm: process each checked item sequentially
+  const handleConfirmAll = async () => {
+    const toProcess = (bogoSetItems || []).filter(i => checkedBogoIds.has(getItemId(i)));
+    if (toProcess.length === 0) return;
+
+    setIsRunningSequence(true);
+    setSequenceError(null);
+    setAllCompleted(false);
+    setBogoResults(toProcess.map(i => ({ itemId: getItemId(i), label: i.item_number, desc: i.description, status: 'pending' })));
+
+    let anyError = false;
+
+    for (const anItem of toProcess) {
+      const id = getItemId(anItem);
+      setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'processing' } : r));
+      const p = buildPayloadsForItem(anItem);
+
+      try {
+        if (isStoreTransaction) {
+          const updateResult = await updatePickedQty(p.linesId, instanceUpper, parseInt(p.pickedQty) || 0);
+          if (!updateResult?.success) {
+            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: updateResult?.error || 'Update qty failed' } : r));
+            anyError = true;
+            continue;
+          }
+          const shipResult = await onShipConfirm(anItem, p.linesId, true);
+          if (shipResult?.success) {
+            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'success' } : r));
+          } else {
+            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: shipResult?.error || 'Ship confirm failed' } : r));
+            anyError = true;
+          }
+        } else if (effectiveIsLotBased) {
+          const fusionResult = await onLotBasedConfirm(p.fusionPayload, anItem);
+          if (!fusionResult?.success) {
+            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: fusionResult?.error || 'Fusion pick failed' } : r));
+            anyError = true;
+            continue;
+          }
+          const updateResult = await fusionResult.updatePickStatus({ transactionId: p.rawId, pickedQty: parseInt(p.pickedQty) || 0 });
+          if (updateResult?.success) {
+            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'success' } : r));
+          } else {
+            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: updateResult?.error || 'Update status failed' } : r));
+            anyError = true;
+          }
+        } else {
+          const result = await onConfirm(p.nonLotPayload, true, anItem);
+          if (result?.success) {
+            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'success' } : r));
+          } else {
+            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: result?.error || 'Confirm failed' } : r));
+            anyError = true;
+          }
+        }
+      } catch (err) {
+        setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: err.message } : r));
+        anyError = true;
+      }
+    }
+
+    setIsRunningSequence(false);
+    if (!anyError) setAllCompleted(true);
+    else setSequenceError('One or more items failed. Check results above.');
+  };
+
   const handleConfirm = () => {
-    if (isStoreTransaction) {
+    if (bogoSetItems && bogoSetItems.length > 0) {
+      handleConfirmAll();
+    } else if (isStoreTransaction) {
       handleStoreConfirm();
     } else if (effectiveIsLotBased) {
       handleLotBasedConfirm();
@@ -330,6 +449,8 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     setSequenceError(null);
     setAllCompleted(false);
     setShowDetails(false);
+    setBogoResults([]);
+    if (bogoSetItems) setCheckedBogoIds(new Set(bogoSetItems.map(i => getItemId(i))));
     onClose();
   };
 
@@ -429,10 +550,72 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
               </Text>
             </View>
 
+            {/* BOGO Set: checkbox selection for each item */}
+            {bogoSetItems && bogoSetItems.length > 0 && (
+              <View style={styles.bogoPickSection}>
+                <View style={styles.bogoPickHeader}>
+                  <Ionicons name="gift-outline" size={14} color="#E65100" />
+                  <Text style={styles.bogoPickHeaderText}>BOGO SET — select items to confirm</Text>
+                </View>
+                {bogoSetItems.map((bItem) => {
+                  const bid = getItemId(bItem);
+                  const isChecked = checkedBogoIds.has(bid);
+                  const result = bogoResults.find(r => r.itemId === bid);
+                  return (
+                    <TouchableOpacity
+                      key={bid}
+                      style={[styles.bogoPickRow, isChecked && styles.bogoPickRowChecked]}
+                      onPress={() => {
+                        if (isRunningSequence) return;
+                        setCheckedBogoIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(bid)) next.delete(bid); else next.add(bid);
+                          return next;
+                        });
+                      }}
+                      disabled={isRunningSequence}
+                    >
+                      <View style={[styles.bogoCheckbox, isChecked && styles.bogoCheckboxChecked]}>
+                        {isChecked && <Ionicons name="checkmark" size={14} color="#FFF" />}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.bogoPickItemCode}>{bItem.item_number}</Text>
+                        <Text style={styles.bogoPickItemDesc} numberOfLines={1}>{bItem.description}</Text>
+                        <Text style={styles.bogoPickItemQty}>Qty: {bItem.qty} {bItem.lot_number ? `| Lot: ${bItem.lot_number}` : ''}</Text>
+                      </View>
+                      {result && (
+                        <Ionicons
+                          name={result.status === 'success' ? 'checkmark-circle' : result.status === 'error' ? 'close-circle' : result.status === 'processing' ? 'hourglass-outline' : 'ellipse-outline'}
+                          size={20}
+                          color={result.status === 'success' ? '#4CAF50' : result.status === 'error' ? '#F44336' : result.status === 'processing' ? '#FF9800' : '#CCC'}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+                {bogoResults.some(r => r.status === 'error') && (
+                  <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+                    {bogoResults.filter(r => r.status === 'error').map(r => (
+                      <Text key={r.itemId} style={{ fontSize: 11, color: '#F44336' }}>{r.label}: {r.error}</Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Item Info */}
             <View style={styles.modalItemInfo}>
               <Text style={styles.modalItemNumber}>{item.item_number || 'N/A'}</Text>
               <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
+              {(order?.account_name || order?.ACCOUNT_NAME || order?.customer_name) ? (
+                <View style={styles.modalAccountRow}>
+                  <Ionicons name="business-outline" size={13} color="#1565C0" />
+                  <Text style={styles.modalAccountText}>
+                    {order.account_code || order.ACCOUNT_CODE || ''}{(order.account_code || order.ACCOUNT_CODE) ? ' — ' : ''}
+                    {order.account_name || order.ACCOUNT_NAME || order.customer_name}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             {/* Toggle: Lot Based / Non Lot Based - Only for Sales Orders (ORD) */}
@@ -523,10 +706,35 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
             </View>
 
             {/* Processing Status View */}
-            {(isRunningSequence || step1Completed || step2Completed || sequenceError || isRetrying) ? (
+            {(isRunningSequence || step1Completed || step2Completed || sequenceError || isRetrying || bogoResults.length > 0) ? (
               <View style={styles.sequenceStatusContainer}>
-                {/* Step 1 */}
-                {renderStatusRow(
+                {/* BOGO multi-item results (shown instead of step rows when BOGO mode) */}
+                {bogoResults.length > 0 && bogoResults.map((r) => (
+                  <View key={r.itemId} style={styles.sequenceStatusRow}>
+                    <View style={[
+                      styles.sequenceStatusCircle,
+                      r.status === 'success' && styles.sequenceStatusCircleCompleted,
+                      r.status === 'processing' && styles.sequenceStatusCircleProcessing,
+                      r.status === 'error' && { backgroundColor: '#F44336' },
+                    ]}>
+                      {r.status === 'success' ? <Ionicons name="checkmark" size={20} color="#FFF" /> :
+                       r.status === 'processing' ? <ActivityIndicator size="small" color="#FFF" /> :
+                       r.status === 'error' ? <Ionicons name="close" size={18} color="#FFF" /> :
+                       <Text style={styles.sequenceStatusNumber}>•</Text>}
+                    </View>
+                    <View style={styles.sequenceStatusTextContainer}>
+                      <Text style={[styles.sequenceStatusLabel, r.status === 'success' && styles.sequenceStatusLabelCompleted, r.status === 'processing' && styles.sequenceStatusLabelProcessing]}>
+                        {r.label}
+                      </Text>
+                      {r.status === 'success' && <Text style={styles.sequenceStatusSuccess}>Picked ✓</Text>}
+                      {r.status === 'processing' && <Text style={styles.sequenceStatusProcessing}>Processing...</Text>}
+                      {r.status === 'error' && <Text style={{ fontSize: 11, color: '#F44336' }}>{r.error}</Text>}
+                    </View>
+                  </View>
+                ))}
+
+                {/* Single-item step rows (hidden in BOGO mode) */}
+                {bogoResults.length === 0 && renderStatusRow(
                   1,
                   getStep1Label(),
                   getStep1Sub(),
@@ -534,8 +742,8 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   currentStep === 1 && !step1Completed && isRunningSequence
                 )}
 
-                {/* Step 2 - Store (S2V) Ship Confirm or Sales Lot Based Update Status */}
-                {getStep2Label() ? (
+                {/* Step 2 (single-item only) */}
+                {bogoResults.length === 0 && getStep2Label() ? (
                   <>
                     <View style={[styles.sequenceStatusLine, step1Completed && styles.sequenceStatusLineCompleted]} />
                     {renderStatusRow(
@@ -3869,6 +4077,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
   // BOGO sets: Map of item_number → partner item_number
   const [bogoSets, setBogoSets] = useState(new Map());
+  // Items to pass to ConfirmPickModal as a BOGO set (null = single item)
+  const [bogoSetConfirmItems, setBogoSetConfirmItems] = useState(null);
 
   // Report Preview Modal state
   const [reportModalVisible, setReportModalVisible] = useState(false);
@@ -4232,31 +4442,39 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     return suggestions;
   };
 
-  // Open confirm pick modal with item details
+  // Open confirm pick modal with item details (BOGO-aware)
   const handleConfirmPick = (item) => {
+    const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
+    const partner = partnerCode ? lines.find(l => (l.item_number || '').toUpperCase() === partnerCode) : null;
+    const partnerPending = partner &&
+      (parseInt(partner.picked_qty) || 0) === 0 &&
+      partner.cancelled_status !== 'YES' &&
+      (partner.cancel_status || '').toUpperCase() !== 'CANCELLED';
+
     setConfirmPickItem(item);
+    setBogoSetConfirmItems(partnerPending ? [item, partner] : null);
     setConfirmPickModalVisible(true);
   };
 
   // Execute the confirm pick API call
   // silentMode: if true, returns result without showing alert (used for chained operations)
-  const executeConfirmPick = async (payload, silentMode = false) => {
+  // targetItem: override confirmPickItem for BOGO multi-item processing
+  const executeConfirmPick = async (payload, silentMode = false, targetItem = null) => {
     setIsConfirmingPick(true);
+    const activeItem = targetItem || confirmPickItem;
     try {
       console.log('[WMSOrderDetails] Confirm Pick Payload:', JSON.stringify(payload, null, 2));
 
-      // Call the PENDING_PICKING_DETAILS API
       const result = await confirmPickPending(payload);
 
       if (result.success) {
-        // Update local state to reflect the confirmed pick (only the selected item)
-        const confirmedItemId = getItemId(confirmPickItem);
+        const confirmedItemId = getItemId(activeItem);
         setLines(prev =>
           prev.map(line =>
             getItemId(line) === confirmedItemId && confirmedItemId !== ''
               ? {
                   ...line,
-                  picked_qty: confirmPickItem.qty,
+                  picked_qty: activeItem.qty,
                   pick_confirm_status: 'YES',
                   pick_confirm_date: new Date().toISOString(),
                   pick_confirm_by: pickerName,
@@ -4265,19 +4483,16 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           )
         );
 
-        // Fire-and-forget desktop notification
         sendPickNotification({
           orderNumber: orderNumber,
           pickerName: pickerName,
-          qty: confirmPickItem?.qty,
-          itemDescription: confirmPickItem?.item_description || confirmPickItem?.description || '',
+          qty: activeItem?.qty,
+          itemDescription: activeItem?.item_description || activeItem?.description || '',
         });
 
         if (silentMode) {
-          // Return result for chained operations (Store orders)
           return { success: true };
         } else {
-          // Show alert and close modal (non-Store orders)
           Alert.alert('Success', 'Pick confirmed successfully', [
             {
               text: 'OK',
@@ -4308,12 +4523,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   };
 
   // Execute Lot-Based confirm pick: Step 1 = Fusion, returns handler for Step 2
-  const executeLotBasedConfirm = async (fusionPayload) => {
+  // targetItem: override confirmPickItem for BOGO multi-item processing
+  const executeLotBasedConfirm = async (fusionPayload, targetItem = null) => {
     setIsConfirmingPick(true);
+    const activeItem = targetItem || confirmPickItem;
     try {
       console.log('[WMSOrderDetails] Lot-Based Confirm - Fusion Payload:', JSON.stringify(fusionPayload, null, 2));
 
-      // Step 1: Fusion pickTransactions
       const fusionResult = await fusionPickTransaction(fusionPayload);
 
       if (!fusionResult.success) {
@@ -4321,7 +4537,6 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         return { success: false, error: fusionResult.error || 'Fusion pick transaction failed' };
       }
 
-      // Return success with Step 2 handler
       return {
         success: true,
         data: fusionResult.data,
@@ -4332,14 +4547,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             const updateResult = await updatePickConfirmStatus(updatePayload);
 
             if (updateResult.success) {
-              // Update local state
-              const confirmedItemId = getItemId(confirmPickItem);
+              const confirmedItemId = getItemId(activeItem);
               setLines(prev =>
                 prev.map(line =>
                   getItemId(line) === confirmedItemId && confirmedItemId !== ''
                     ? {
                         ...line,
-                        picked_qty: confirmPickItem.qty,
+                        picked_qty: activeItem.qty,
                         pick_confirm_status: 'YES',
                         pick_confirm_date: new Date().toISOString(),
                         pick_confirm_by: pickerName,
@@ -4347,12 +4561,11 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                     : line
                 )
               );
-              // Fire-and-forget desktop notification
               sendPickNotification({
                 orderNumber: orderNumber,
                 pickerName: pickerName,
-                qty: confirmPickItem?.qty,
-                itemDescription: confirmPickItem?.item_description || confirmPickItem?.description || '',
+                qty: activeItem?.qty,
+                itemDescription: activeItem?.item_description || activeItem?.description || '',
               });
               return { success: true, data: updateResult.data };
             } else {
@@ -4864,6 +5077,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         onClose={() => {
           setConfirmPickModalVisible(false);
           setConfirmPickItem(null);
+          setBogoSetConfirmItems(null);
         }}
         onConfirm={executeConfirmPick}
         onLotBasedConfirm={executeLotBasedConfirm}
@@ -4874,6 +5088,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         instance={user?.instance || 'TEST'}
         isProcessing={isConfirmingPick}
         transactionType={order?.transaction_type}
+        bogoSetItems={bogoSetConfirmItems}
       />
 
       {/* Cancel Order Line Modal (single line - legacy) */}
@@ -5248,7 +5463,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                   <View key={`bogo-set-${index}`} style={styles.bogoSetWrapper}>
                     <View style={styles.bogoSetHeader}>
                       <Ionicons name="gift-outline" size={14} color="#E65100" />
-                      <Text style={styles.bogoSetHeaderText}>BOGO SET</Text>
+                      <Text style={styles.bogoSetHeaderText} numberOfLines={1}>
+                        {main.description || main.item_number || 'BOGO SET'}
+                      </Text>
                     </View>
                     <LineItemCard
                       item={main}
@@ -5379,6 +5596,87 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  // Modal account row
+  modalAccountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  modalAccountText: {
+    fontSize: 12,
+    color: '#1565C0',
+    fontWeight: '500',
+    flex: 1,
+  },
+  // BOGO pick section in ConfirmPickModal
+  bogoPickSection: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderWidth: 1.5,
+    borderColor: '#FF9800',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  bogoPickHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  bogoPickHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E65100',
+  },
+  bogoPickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 0.5,
+    borderTopColor: '#FFE0B2',
+    backgroundColor: '#FFF',
+  },
+  bogoPickRowChecked: {
+    backgroundColor: '#FFF8F0',
+  },
+  bogoCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: '#FF9800',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+  bogoCheckboxChecked: {
+    backgroundColor: '#FF9800',
+    borderColor: '#FF9800',
+  },
+  bogoPickItemCode: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1565C0',
+  },
+  bogoPickItemDesc: {
+    fontSize: 12,
+    color: '#555',
+    marginTop: 1,
+  },
+  bogoPickItemQty: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 2,
   },
   bogoSetWrapper: {
     marginBottom: 8,
