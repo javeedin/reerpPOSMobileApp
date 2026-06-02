@@ -30,6 +30,19 @@ export const AuthProvider = ({ children }) => {
         if (savedMenuData) {
           setMenuDataState(savedMenuData);
         }
+        // Sync BOGO for PICKER users (non-pickers get it via checkAndSyncData)
+        const isPicker = (userData.userType || '').toUpperCase() === 'PICKER';
+        if (isPicker) {
+          const meta = await getSyncMetadata();
+          if (!meta.bogo?.lastSync) {
+            setSyncProgress('Fetching BOGO promotions...');
+            setIsSyncing(true);
+            syncBogo((p) => setSyncProgress(p.status || '')).finally(() => {
+              setIsSyncing(false);
+              setSyncProgress('');
+            });
+          }
+        }
       }
     } catch (error) {
       console.error('Session check error:', error);
@@ -103,13 +116,17 @@ export const AuthProvider = ({ children }) => {
 
           setIsLoading(false);
 
-          // Skip sync for PICKER users - they only need WMS access
+          // PICKER users only need BOGO; non-pickers get full sync
           const isPicker = (fullUserData.userType || '').toUpperCase() === 'PICKER';
           if (!isPicker) {
-            // Check and sync data after login (runs in background)
             checkAndSyncData(fullUserData);
           } else {
-            console.log('[AuthContext] PICKER user detected - skipping data sync');
+            setSyncProgress('Fetching BOGO promotions...');
+            setIsSyncing(true);
+            syncBogo((p) => setSyncProgress(p.status || '')).finally(() => {
+              setIsSyncing(false);
+              setSyncProgress('');
+            });
           }
 
           return { success: true };

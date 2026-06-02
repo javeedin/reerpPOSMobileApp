@@ -33,6 +33,7 @@ import {
 import { getInstance } from '../services/api';
 import colors from '../theme/colors';
 import { getNotifSettings, saveNotifSettings, sendTestNotification, autoDetectDesktopIp, startDesktopListener, stopDesktopListener } from '../services/notificationService';
+import { getSyncMetadata, syncBogo } from '../services/syncService';
 
 const { width } = Dimensions.get('window');
 
@@ -852,6 +853,10 @@ const WMSHomeScreen = ({ navigation }) => {
 
   const [currentInstance, setCurrentInstance] = useState('');
 
+  // BOGO sync state
+  const [bogoSyncing, setBogoSyncing] = useState(false);
+  const [bogoSyncMsg, setBogoSyncMsg] = useState('');
+
   // Desktop push notification popup state
   const [pushNotif, setPushNotif] = useState(null); // { type, orderNumber, message, sender }
   const pushQueue = useRef([]);
@@ -943,10 +948,23 @@ const WMSHomeScreen = ({ navigation }) => {
     }
   }, [pickerName, selectedDate]);
 
+  const checkAndSyncBogo = useCallback(async () => {
+    const meta = await getSyncMetadata();
+    if (meta.bogo?.lastSync) return; // already synced
+    setBogoSyncing(true);
+    setBogoSyncMsg('Fetching BOGO promotions...');
+    await syncBogo((progress) => {
+      setBogoSyncMsg(progress.status || 'Syncing BOGO...');
+    });
+    setBogoSyncing(false);
+    setBogoSyncMsg('');
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+      checkAndSyncBogo();
+    }, [loadData, checkAndSyncBogo])
   );
 
   const onRefresh = async () => {
@@ -1103,6 +1121,14 @@ const WMSHomeScreen = ({ navigation }) => {
           )}
         </View>
       </LinearGradient>
+
+      {/* BOGO Sync Progress Banner */}
+      {bogoSyncing && (
+        <View style={styles.bogoSyncBanner}>
+          <ActivityIndicator size="small" color="#FFF" />
+          <Text style={styles.bogoSyncBannerText}>{bogoSyncMsg || 'Syncing BOGO promotions...'}</Text>
+        </View>
+      )}
 
       {/* Query Modal */}
       <QueryModal
@@ -1463,6 +1489,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  bogoSyncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1565C0',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  bogoSyncBannerText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '500',
   },
   header: {
     paddingTop: 50,

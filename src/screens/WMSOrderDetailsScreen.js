@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
 import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
+import { getAllBogo } from '../services/syncService';
 import printerService from '../services/printerService';
 import { sendPickNotification, sendShipNotification } from '../services/notificationService';
 
@@ -3866,6 +3867,9 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const [markedForCancel, setMarkedForCancel] = useState(new Set());
   const [bulkCancelModalVisible, setBulkCancelModalVisible] = useState(false);
 
+  // BOGO sets: Map of item_number → partner item_number
+  const [bogoSets, setBogoSets] = useState(new Map());
+
   // Report Preview Modal state
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
@@ -3902,6 +3906,29 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   useEffect(() => {
     loadOrderLines();
   }, [loadOrderLines]);
+
+  // Build BOGO set map after lines load
+  useEffect(() => {
+    if (lines.length === 0) return;
+    (async () => {
+      const allBogo = await getAllBogo();
+      if (!allBogo || allBogo.length === 0) return;
+
+      const itemCodes = new Set(lines.map(l => (l.item_number || '').toUpperCase()));
+      const map = new Map();
+
+      allBogo.forEach(bogo => {
+        const main = (bogo.main_item_code || '').toUpperCase();
+        const promo = (bogo.promo_item_code || '').toUpperCase();
+        if (itemCodes.has(main) && itemCodes.has(promo)) {
+          map.set(main, promo);
+          map.set(promo, main); // bidirectional so promo knows its partner
+        }
+      });
+
+      setBogoSets(map);
+    })();
+  }, [lines]);
 
   // Auto-run sync once per order per session, only for pending orders
   useEffect(() => {
@@ -4160,6 +4187,34 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       )
     : lines;
 
+  // Group filtered lines into BOGO sets for rendering
+  const displayGroups = useMemo(() => {
+    const groups = [];
+    const usedIds = new Set();
+
+    filteredLines.forEach(item => {
+      const id = getItemId(item);
+      if (usedIds.has(id)) return;
+
+      const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
+      if (partnerCode) {
+        const partner = filteredLines.find(l => (l.item_number || '').toUpperCase() === partnerCode);
+        if (partner && !usedIds.has(getItemId(partner))) {
+          usedIds.add(id);
+          usedIds.add(getItemId(partner));
+          // Determine which is main vs promo based on bogoSets direction
+          groups.push({ type: 'bogo_set', main: item, promo: partner });
+          return;
+        }
+      }
+
+      usedIds.add(id);
+      groups.push({ type: 'single', item });
+    });
+
+    return groups;
+  }, [filteredLines, bogoSets]);
+
   // Get unique item suggestions for autocomplete
   const getFilterSuggestions = () => {
     if (!filterText.trim()) return [];
@@ -4326,12 +4381,18 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // Toggle mark for cancel on a line
   const handleToggleMarkCancel = (item) => {
     const itemId = getItemId(item);
+    const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
+    const partnerLine = partnerCode ? lines.find(l => (l.item_number || '').toUpperCase() === partnerCode) : null;
+    const partnerId = partnerLine ? getItemId(partnerLine) : null;
+
     setMarkedForCancel(prev => {
       const next = new Set(prev);
       if (next.has(itemId)) {
         next.delete(itemId);
+        if (partnerId) next.delete(partnerId);
       } else {
         next.add(itemId);
+        if (partnerId) next.add(partnerId); // mark BOGO partner together
       }
       return next;
     });
@@ -5180,24 +5241,75 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               <Text style={styles.emptyStateSubtext}>Try a different search term</Text>
             </View>
           ) : (
-            filteredLines.map((item, index) => (
-              <LineItemCard
-                key={`line-${item.delivery_detail_id || item.line_number || index}-${index}`}
-                item={item}
-                transactionType={order?.transaction_type}
-                onConfirmPick={handleConfirmPick}
-                onCancelPick={handleCancelPick}
-                onShipConfirm={handleShipConfirm}
-                onUndoPick={handleUndoPick}
-                onSearchLots={handleSearchLots}
-                isConfirming={confirmingId === item.delivery_detail_id}
-                isCancelling={cancellingId === item.delivery_detail_id}
-                isShipping={shippingId === item.delivery_detail_id}
-                isUndoing={undoingId === item.delivery_detail_id}
-                isMarkedForCancel={markedForCancel.has(getItemId(item))}
-                onToggleMarkCancel={handleToggleMarkCancel}
-              />
-            ))
+            displayGroups.map((group, index) => {
+              if (group.type === 'bogo_set') {
+                const { main, promo } = group;
+                return (
+                  <View key={`bogo-set-${index}`} style={styles.bogoSetWrapper}>
+                    <View style={styles.bogoSetHeader}>
+                      <Ionicons name="gift-outline" size={14} color="#E65100" />
+                      <Text style={styles.bogoSetHeaderText}>BOGO SET</Text>
+                    </View>
+                    <LineItemCard
+                      item={main}
+                      transactionType={order?.transaction_type}
+                      onConfirmPick={handleConfirmPick}
+                      onCancelPick={handleCancelPick}
+                      onShipConfirm={handleShipConfirm}
+                      onUndoPick={handleUndoPick}
+                      onSearchLots={handleSearchLots}
+                      isConfirming={confirmingId === main.delivery_detail_id}
+                      isCancelling={cancellingId === main.delivery_detail_id}
+                      isShipping={shippingId === main.delivery_detail_id}
+                      isUndoing={undoingId === main.delivery_detail_id}
+                      isMarkedForCancel={markedForCancel.has(getItemId(main))}
+                      onToggleMarkCancel={handleToggleMarkCancel}
+                    />
+                    <View style={styles.bogoSetConnector}>
+                      <View style={styles.bogoSetConnectorLine} />
+                      <View style={styles.bogoSetConnectorBadge}>
+                        <Text style={styles.bogoSetConnectorText}>+ PROMO</Text>
+                      </View>
+                      <View style={styles.bogoSetConnectorLine} />
+                    </View>
+                    <LineItemCard
+                      item={promo}
+                      transactionType={order?.transaction_type}
+                      onConfirmPick={handleConfirmPick}
+                      onCancelPick={handleCancelPick}
+                      onShipConfirm={handleShipConfirm}
+                      onUndoPick={handleUndoPick}
+                      onSearchLots={handleSearchLots}
+                      isConfirming={confirmingId === promo.delivery_detail_id}
+                      isCancelling={cancellingId === promo.delivery_detail_id}
+                      isShipping={shippingId === promo.delivery_detail_id}
+                      isUndoing={undoingId === promo.delivery_detail_id}
+                      isMarkedForCancel={markedForCancel.has(getItemId(promo))}
+                      onToggleMarkCancel={handleToggleMarkCancel}
+                    />
+                  </View>
+                );
+              }
+              const item = group.item;
+              return (
+                <LineItemCard
+                  key={`line-${item.delivery_detail_id || item.line_number || index}-${index}`}
+                  item={item}
+                  transactionType={order?.transaction_type}
+                  onConfirmPick={handleConfirmPick}
+                  onCancelPick={handleCancelPick}
+                  onShipConfirm={handleShipConfirm}
+                  onUndoPick={handleUndoPick}
+                  onSearchLots={handleSearchLots}
+                  isConfirming={confirmingId === item.delivery_detail_id}
+                  isCancelling={cancellingId === item.delivery_detail_id}
+                  isShipping={shippingId === item.delivery_detail_id}
+                  isUndoing={undoingId === item.delivery_detail_id}
+                  isMarkedForCancel={markedForCancel.has(getItemId(item))}
+                  onToggleMarkCancel={handleToggleMarkCancel}
+                />
+              );
+            })
           )}
         </ScrollView>
       )}
@@ -5267,6 +5379,51 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  bogoSetWrapper: {
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: '#FF9800',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  bogoSetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  bogoSetHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E65100',
+    letterSpacing: 0.5,
+  },
+  bogoSetConnector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  bogoSetConnectorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#FFB74D',
+  },
+  bogoSetConnectorBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginHorizontal: 8,
+  },
+  bogoSetConnectorText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
   },
   header: {
     paddingTop: 50,
