@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction, fetchFusionShipmentLines } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import { getAllBogo } from '../services/syncService';
 import printerService from '../services/printerService';
@@ -3174,6 +3174,29 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
       </View>
 
       {/* Barcode Info */}
+      {/* OrderLine + LineStatus badges from Fusion */}
+      {(item.order_line || item.line_status) && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+          {item.order_line && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#E3F2FD', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 }}>
+              <Ionicons name="layers-outline" size={12} color="#1565C0" />
+              <Text style={{ fontSize: 11, color: '#1565C0', fontWeight: '600' }}>Line {item.order_line}</Text>
+            </View>
+          )}
+          {item.line_status && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: item.line_status === 'Staged' ? '#E8F5E9' : item.line_status === 'Backordered' ? '#FFF3E0' : '#F3E5F5', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 }}>
+              <Ionicons name={item.line_status === 'Staged' ? 'checkmark-circle-outline' : item.line_status === 'Backordered' ? 'time-outline' : 'ellipse-outline'} size={12} color={item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A'} />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A' }}>{item.line_status}</Text>
+            </View>
+          )}
+          {item.fusion_only && (
+            <View style={{ backgroundColor: '#FFF9C4', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 }}>
+              <Text style={{ fontSize: 10, color: '#F57F17', fontWeight: '700' }}>FUSION ONLY</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       <View style={styles.barcodeRow}>
         <Ionicons name="barcode-outline" size={14} color="#666" />
         <Text style={styles.barcodeText}>Barcode: {item.barcode || 'N/A'}</Text>
@@ -4080,6 +4103,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // Items to pass to ConfirmPickModal as a BOGO set (null = single item)
   const [bogoSetConfirmItems, setBogoSetConfirmItems] = useState(null);
 
+  // Fusion shipment lines (4th API): keyed by item code (uppercase)
+  // Provides: orderLine, lineStatus, sourceOrderFulfillmentLineId, requestedQuantity
+  const [fusionLineMap, setFusionLineMap] = useState(new Map());
+
   // Report Preview Modal state
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
@@ -4095,10 +4122,71 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     }
 
     try {
-      const result = await fetchShipmentLines(orderNumber);
-      if (result.success && result.data?.items) {
-        setLines(result.data.items);
-        return result.data.items.length;
+      // Run APEX lines + Fusion shipment lines in parallel
+      const [apexResult, fusionResult] = await Promise.all([
+        fetchShipmentLines(orderNumber),
+        fetchFusionShipmentLines(orderNumber, user?.instance),
+      ]);
+
+      // Build fusion map: ITEM_CODE → fusion line data
+      const fMap = new Map();
+      if (fusionResult.success && fusionResult.items.length > 0) {
+        fusionResult.items.forEach(fl => {
+          const key = (fl.item || '').toUpperCase();
+          // Keep the entry with the lowest orderLine (most relevant)
+          if (!fMap.has(key) || fl.orderLine < fMap.get(key).orderLine) {
+            fMap.set(key, fl);
+          }
+        });
+        setFusionLineMap(fMap);
+      }
+
+      if (apexResult.success && apexResult.data?.items) {
+        // Merge Fusion data into APEX lines
+        const merged = apexResult.data.items.map(line => {
+          const key = (line.item_number || '').toUpperCase();
+          const fl = fMap.get(key);
+          if (!fl) return line;
+          return {
+            ...line,
+            order_line: fl.orderLine,
+            line_status: fl.lineStatus,
+            // Only fill fulfill_line_id from Fusion if not already present
+            fulfill_line_id: line.fulfill_line_id || line.FULFILL_LINE_ID || fl.sourceOrderFulfillmentLineId || '',
+            fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
+            fusion_requested_qty: fl.requestedQuantity,
+          };
+        });
+
+        // Add Fusion-only lines (not present in APEX at all) as supplemental lines
+        const apexItemCodes = new Set(merged.map(l => (l.item_number || '').toUpperCase()));
+        const fusionOnlyLines = [];
+        fusionResult.items.forEach(fl => {
+          const key = (fl.item || '').toUpperCase();
+          if (!apexItemCodes.has(key)) {
+            fusionOnlyLines.push({
+              id: `fusion_${fl.sourceOrderFulfillmentLineId || fl.orderLine}`,
+              delivery_detail_id: '',
+              item_number: fl.item,
+              description: fl.itemDescription,
+              qty: fl.requestedQuantity,
+              picked_qty: 0,
+              pick_confirm_status: 'NO',
+              shipped_status: 'NO',
+              cancel_status: '',
+              cancelled_status: 'NO',
+              order_line: fl.orderLine,
+              line_status: fl.lineStatus,
+              fulfill_line_id: fl.sourceOrderFulfillmentLineId,
+              fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
+              fusion_only: true, // flag: came only from Fusion
+            });
+          }
+        });
+
+        const allLines = [...merged, ...fusionOnlyLines];
+        setLines(allLines);
+        return allLines.length;
       } else {
         setLines([]);
         return 0;
@@ -4111,7 +4199,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [orderNumber]);
+  }, [orderNumber, user?.instance]);
 
   useEffect(() => {
     loadOrderLines();
@@ -4397,8 +4485,40 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       )
     : lines;
 
-  // Group filtered lines into BOGO sets for rendering
+  // Group filtered lines by OrderLine prefix (e.g. "1.1","1.2","1.3" → group "1")
+  // Falls back to BOGO grouping when no OrderLine data is available
   const displayGroups = useMemo(() => {
+    const hasOrderLines = filteredLines.some(l => l.order_line);
+
+    if (hasOrderLines) {
+      // OrderLine grouping: prefix is the integer part before the first dot
+      const groupMap = new Map(); // prefix → [lines]
+      const noLineItems = [];
+
+      filteredLines.forEach(item => {
+        const ol = item.order_line || '';
+        if (!ol) { noLineItems.push(item); return; }
+        const prefix = ol.split('.')[0]; // "1" from "1.1"
+        if (!groupMap.has(prefix)) groupMap.set(prefix, []);
+        groupMap.get(prefix).push(item);
+      });
+
+      const groups = [];
+      // Sort group keys numerically
+      const sortedKeys = [...groupMap.keys()].sort((a, b) => parseInt(a) - parseInt(b));
+      sortedKeys.forEach(prefix => {
+        const members = groupMap.get(prefix);
+        if (members.length > 1) {
+          groups.push({ type: 'order_set', prefix, items: members });
+        } else {
+          groups.push({ type: 'single', item: members[0] });
+        }
+      });
+      noLineItems.forEach(item => groups.push({ type: 'single', item }));
+      return groups;
+    }
+
+    // Fallback: BOGO grouping
     const groups = [];
     const usedIds = new Set();
 
@@ -4412,7 +4532,6 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         if (partner && !usedIds.has(getItemId(partner))) {
           usedIds.add(id);
           usedIds.add(getItemId(partner));
-          // Determine which is main vs promo based on bogoSets direction
           groups.push({ type: 'bogo_set', main: item, promo: partner });
           return;
         }
@@ -5457,6 +5576,51 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             </View>
           ) : (
             displayGroups.map((group, index) => {
+              // OrderLine-based set (primary grouping when Fusion data available)
+              if (group.type === 'order_set') {
+                const { prefix, items: setItems } = group;
+                return (
+                  <View key={`order-set-${prefix}-${index}`} style={styles.bogoSetWrapper}>
+                    <View style={styles.bogoSetHeader}>
+                      <Ionicons name="layers-outline" size={14} color="#E65100" />
+                      <Text style={styles.bogoSetHeaderText}>
+                        Order Line {prefix}
+                        <Text style={{ fontWeight: '400', fontSize: 11 }}>  ({setItems.length} items)</Text>
+                      </Text>
+                    </View>
+                    {setItems.map((setItem, si) => (
+                      <React.Fragment key={`set-item-${getItemId(setItem) || si}`}>
+                        {si > 0 && (
+                          <View style={styles.bogoSetConnector}>
+                            <View style={styles.bogoSetConnectorLine} />
+                            <View style={[styles.bogoSetConnectorBadge, { backgroundColor: '#78909C' }]}>
+                              <Text style={styles.bogoSetConnectorText}>{setItem.order_line}</Text>
+                            </View>
+                            <View style={styles.bogoSetConnectorLine} />
+                          </View>
+                        )}
+                        <LineItemCard
+                          item={setItem}
+                          transactionType={order?.transaction_type}
+                          onConfirmPick={handleConfirmPick}
+                          onCancelPick={handleCancelPick}
+                          onShipConfirm={handleShipConfirm}
+                          onUndoPick={handleUndoPick}
+                          onSearchLots={handleSearchLots}
+                          isConfirming={confirmingId === setItem.delivery_detail_id}
+                          isCancelling={cancellingId === setItem.delivery_detail_id}
+                          isShipping={shippingId === setItem.delivery_detail_id}
+                          isUndoing={undoingId === setItem.delivery_detail_id}
+                          isMarkedForCancel={markedForCancel.has(getItemId(setItem))}
+                          onToggleMarkCancel={handleToggleMarkCancel}
+                        />
+                      </React.Fragment>
+                    ))}
+                  </View>
+                );
+              }
+
+              // BOGO fallback set
               if (group.type === 'bogo_set') {
                 const { main, promo } = group;
                 return (
@@ -5507,6 +5671,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                   </View>
                 );
               }
+
+              // Single item
               const item = group.item;
               return (
                 <LineItemCard

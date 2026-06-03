@@ -1642,6 +1642,58 @@ export const deleteInventoryStagedTransaction = async (transactionInterfaceId, i
   }
 };
 
+/**
+ * Fetch Fusion shipment lines for an order (4th sync call)
+ * Returns only the fields needed: Order, OrderLine, RequestedQuantity, LineStatus,
+ * Item, ItemDescription, SourceOrderFulfillmentLineId
+ * Used to get additional lines (Staged / Backordered) not returned by APEX
+ */
+export const fetchFusionShipmentLines = async (orderNumber, instance) => {
+  try {
+    const currentInstance = (instance || (await getInstance())).toUpperCase();
+    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+    const url = `${fusionBaseUrl}/shipmentLines?q=Order=${encodeURIComponent(orderNumber)}&limit=500`;
+
+    console.log('[WMSService] Fetching Fusion shipment lines:', url);
+
+    const authHeader = await getFusionAuthHeader();
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      return { success: false, error: `HTTP ${response.status}`, items: [] };
+    }
+
+    const data = await response.json();
+    const rawItems = data?.items || [];
+
+    // Extract only the fields we need
+    const items = rawItems.map(r => ({
+      order: r.Order,
+      orderLine: r.OrderLine,             // e.g. "1.1", "2.3"
+      requestedQuantity: r.RequestedQuantity,
+      lineStatus: r.LineStatus,            // "Staged", "Backordered", etc.
+      item: r.Item,                        // item code (maps to item_number)
+      itemDescription: r.ItemDescription,
+      sourceOrderFulfillmentLineId: r.SourceOrderFulfillmentLineId,
+      fulfillmentLine: r.SourceOrderFulfillmentLine, // e.g. "1.1.1"
+    }));
+
+    console.log(`[WMSService] Fusion shipment lines: ${items.length} records`);
+    return { success: true, items };
+  } catch (error) {
+    console.error('[WMSService] Error fetching Fusion shipment lines:', error);
+    return { success: false, error: error.message, items: [] };
+  }
+};
+
 export default {
   fetchShipmentsSummary,
   fetchShipmentLines,
@@ -1671,4 +1723,5 @@ export default {
   cancelS2VLot,
   getInventoryStagedTransactions,
   deleteInventoryStagedTransaction,
+  fetchFusionShipmentLines,
 };
