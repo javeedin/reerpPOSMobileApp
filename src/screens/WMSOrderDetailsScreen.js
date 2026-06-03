@@ -5276,10 +5276,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     totalQty: lines.reduce((sum, l) => sum + (parseInt(l.qty) || 0), 0),
     pickedQty: lines.reduce((sum, l) => sum + (parseInt(l.picked_qty) || 0), 0),
     // Pending: picked_qty = 0 and not cancelled; Picked: picked_qty > 0 and not shipped and not cancelled
-    pendingLines: lines.filter(l => (parseInt(l.picked_qty) || 0) === 0 && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES').length,
-    pickedLines: lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 && l.shipped_status !== 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES').length,
-    shippedLines: lines.filter(l => l.shipped_status === 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES').length,
-    cancelledLines: lines.filter(l => l.cancelled_status === 'YES' || (l.cancel_status || '').toUpperCase() === 'CANCELLED' || (l.cancel_status || '').toUpperCase() === 'YES').length,
+    pendingLines: lines.filter(l => (parseInt(l.picked_qty) || 0) === 0 && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES' && !/^cancel/i.test(l.line_status || '')).length,
+    pickedLines: lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 && l.shipped_status !== 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES' && !/^cancel/i.test(l.line_status || '')).length,
+    shippedLines: lines.filter(l => l.shipped_status === 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES' && !/^cancel/i.test(l.line_status || '')).length,
+    cancelledLines: lines.filter(l => l.cancelled_status === 'YES' || (l.cancel_status || '').toUpperCase() === 'CANCELLED' || (l.cancel_status || '').toUpperCase() === 'YES' || /^cancel/i.test(l.line_status || '')).length,
   };
 
   return (
