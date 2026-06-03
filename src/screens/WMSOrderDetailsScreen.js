@@ -4837,14 +4837,16 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // Toggle mark for cancel on a line
   const handleToggleMarkCancel = (item, groupItems) => {
     const itemId = getItemId(item);
+    console.log(`[Cancel] toggle item=${item.item_number} id=${itemId} fulfillId=${item.fulfill_line_id}`);
 
-    // Collect all IDs that should toggle together
     const idsToToggle = new Set();
     idsToToggle.add(itemId);
 
-    // If part of an order_set group, include all siblings
     if (groupItems && groupItems.length > 1) {
-      groupItems.forEach(gi => idsToToggle.add(getItemId(gi)));
+      groupItems.forEach(gi => {
+        console.log(`[Cancel] group member item=${gi.item_number} id=${getItemId(gi)} fulfillId=${gi.fulfill_line_id}`);
+        idsToToggle.add(getItemId(gi));
+      });
     } else {
       // BOGO partner fallback
       const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
