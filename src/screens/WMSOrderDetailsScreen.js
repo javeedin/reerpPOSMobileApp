@@ -4204,7 +4204,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         fetchFusionShipmentLines(orderNumber, user?.instance),
       ]);
 
-      // Build fusion map keyed by sourceOrderFulfillmentLineId
+      // Build Fusion map: SourceOrderFulfillmentLineId → fusion line
       const fMapById = new Map();
       if (fusionResult.success && fusionResult.items.length > 0) {
         fusionResult.items.forEach(fl => {
@@ -4213,41 +4213,35 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           }
         });
         setFusionLineMap(fMapById);
-        console.log('[Merge] Fusion lines:', fusionResult.items.map(fl => `id=${fl.sourceOrderFulfillmentLineId} orderLine=${fl.orderLine} item=${fl.item}`));
+        console.log('[Merge] Fusion lines:', fusionResult.items.map(fl =>
+          `id=${fl.sourceOrderFulfillmentLineId} orderLine=${fl.orderLine} item=${fl.item}`));
       }
 
       if (apexResult.success && apexResult.data?.items) {
-        // Step 1: Enrich APEX lines with Fusion line_status via fulfillmentLineId match.
-        // order_line comes DIRECTLY from APEX (ORDER_LINE field) — not from Fusion.
-        // Fusion is only used for line_status enrichment + adding staged/backordered-only rows.
+        // Log raw APEX fields to confirm field names
+        if (apexResult.data.items.length > 0) {
+          console.log('[Merge] APEX raw fields:', JSON.stringify(Object.keys(apexResult.data.items[0])));
+          console.log('[Merge] APEX raw sample:', JSON.stringify(apexResult.data.items[0]));
+        }
+
+        // Step 1: Join pickslip lines with Fusion shipmentLines via fulfillment line ID.
+        // Each matched pickslip line gets OrderLine + LineStatus from Fusion.
         const matchedFusionIds = new Set();
-        const merged = apexResult.data.items.map((line, idx) => {
-          if (idx === 0) {
-            console.log('[Merge] APEX raw fields:', JSON.stringify(Object.keys(line)));
-            console.log('[Merge] APEX raw sample:', JSON.stringify(line));
-          }
-
-          // Read order_line directly from APEX (try common Oracle ORDS field names)
-          const apexOrderLine = String(
-            line.ORDER_LINE || line.order_line || line.ORDER_LINE_NUMBER ||
-            line.order_line_number || line.LINE_NUMBER || line.line_number || ''
-          ).trim();
-
-          // Read fulfillmentLineId from APEX to match Fusion for line_status
+        const merged = apexResult.data.items.map(line => {
           const apexFulfillId = String(
             line.FULFILLMENT_LINE_ID || line.fulfillment_line_id ||
-            line.FULFILL_LINE_ID || line.fulfill_line_id || ''
+            line.FULFILL_LINE_ID    || line.fulfill_line_id      || ''
           ).trim();
 
-          console.log(`[Merge] APEX item=${line.item_number} orderLine=${apexOrderLine} fulfillId=${apexFulfillId}`);
+          console.log(`[Merge] pickslip item=${line.item_number} fulfillId=${apexFulfillId}`);
 
           if (apexFulfillId && fMapById.has(apexFulfillId)) {
             const fl = fMapById.get(apexFulfillId);
             matchedFusionIds.add(apexFulfillId);
-            console.log(`[Merge]   → Fusion match lineStatus=${fl.lineStatus} fusionOrderLine=${fl.orderLine}`);
+            console.log(`[Merge]   → OrderLine=${fl.orderLine} LineStatus=${fl.lineStatus}`);
             return {
               ...line,
-              order_line: apexOrderLine || fl.orderLine, // prefer APEX, fall back to Fusion
+              order_line: fl.orderLine,
               line_status: fl.lineStatus,
               fulfill_line_id: apexFulfillId,
               fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
@@ -4255,40 +4249,34 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             };
           }
 
-          // No Fusion match — still use APEX order_line for grouping
-          return {
-            ...line,
-            order_line: apexOrderLine || line.order_line || '',
-          };
+          console.log(`[Merge]   → no match (fulfillId not in Fusion map)`);
+          return line;
         });
 
-        // Step 2: Fusion lines not matched to any APEX line → add as fusion-only.
-        // Skip lines with no sourceOrderFulfillmentLineId (ambiguous).
+        // Step 2: Fusion lines NOT in pickslip → add as supplemental rows.
+        // They carry OrderLine + SourceOrderFulfillmentLineId so they group correctly.
         const fusionOnlyLines = [];
         fusionResult.items.forEach(fl => {
           const flId = String(fl.sourceOrderFulfillmentLineId || '').trim();
-          if (!flId) return; // skip if no ID
-          if (!matchedFusionIds.has(flId)) {
-            console.log(`[Merge] Fusion-only: id=${flId} orderLine=${fl.orderLine} item=${fl.item}`);
-
-            fusionOnlyLines.push({
-              id: `fusion_${fl.sourceOrderFulfillmentLineId || fl.orderLine}`,
-              delivery_detail_id: '',
-              item_number: fl.item,
-              description: fl.itemDescription,
-              qty: fl.requestedQuantity,
-              picked_qty: 0,
-              pick_confirm_status: 'NO',
-              shipped_status: 'NO',
-              cancel_status: '',
-              cancelled_status: 'NO',
-              order_line: fl.orderLine,
-              line_status: fl.lineStatus,
-              fulfill_line_id: fl.sourceOrderFulfillmentLineId,
-              fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
-              fusion_only: true, // flag: came only from Fusion
-            });
-          }
+          if (!flId || matchedFusionIds.has(flId)) return;
+          console.log(`[Merge] Fusion-only: OrderLine=${fl.orderLine} id=${flId} item=${fl.item}`);
+          fusionOnlyLines.push({
+            id: `fusion_${flId}`,
+            delivery_detail_id: '',
+            item_number: fl.item,
+            description: fl.itemDescription,
+            qty: fl.requestedQuantity,
+            picked_qty: 0,
+            pick_confirm_status: 'NO',
+            shipped_status: 'NO',
+            cancel_status: '',
+            cancelled_status: 'NO',
+            order_line: fl.orderLine,
+            line_status: fl.lineStatus,
+            fulfill_line_id: flId,
+            fusion_fulfill_line_id: flId,
+            fusion_only: true,
+          });
         });
 
         const allLines = [...merged, ...fusionOnlyLines];
