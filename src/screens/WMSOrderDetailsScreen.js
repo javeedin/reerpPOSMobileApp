@@ -4229,6 +4229,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         // subsequent duplicates are matched to the next unmatched Fusion line for that item.
         const matchedFusionIds = new Set();
         const merged = apexResult.data.items.map(line => {
+          // Log every line's key fields to diagnose duplicates
+          console.log(`[Merge] APEX row: item=${line.item_number} delivery_detail_id=${line.delivery_detail_id} FULFILLMENT_LINE_ID=${line.FULFILLMENT_LINE_ID} fulfill_line_id=${line.fulfill_line_id}`);
           const apexFulfillId = String(
             line.FULFILLMENT_LINE_ID || line.fulfillment_line_id ||
             line.FULFILL_LINE_ID    || line.fulfill_line_id      || ''
