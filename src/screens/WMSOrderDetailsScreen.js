@@ -4225,7 +4225,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         }
 
         // Step 1: Join pickslip lines with Fusion shipmentLines via fulfillment line ID.
-        // Each matched pickslip line gets OrderLine + LineStatus from Fusion.
+        // If the same fulfillId appears on multiple APEX rows (APEX data issue),
+        // subsequent duplicates are matched to the next unmatched Fusion line for that item.
         const matchedFusionIds = new Set();
         const merged = apexResult.data.items.map(line => {
           const apexFulfillId = String(
@@ -4233,12 +4234,11 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             line.FULFILL_LINE_ID    || line.fulfill_line_id      || ''
           ).trim();
 
-          console.log(`[Merge] pickslip item=${line.item_number} fulfillId=${apexFulfillId}`);
-
-          if (apexFulfillId && fMapById.has(apexFulfillId)) {
+          // Primary match: exact fulfillId and not yet consumed
+          if (apexFulfillId && fMapById.has(apexFulfillId) && !matchedFusionIds.has(apexFulfillId)) {
             const fl = fMapById.get(apexFulfillId);
             matchedFusionIds.add(apexFulfillId);
-            console.log(`[Merge]   → OrderLine=${fl.orderLine} LineStatus=${fl.lineStatus}`);
+            console.log(`[Merge] pickslip item=${line.item_number} fulfillId=${apexFulfillId} → OrderLine=${fl.orderLine} LineStatus=${fl.lineStatus}`);
             return {
               ...line,
               order_line: fl.orderLine,
@@ -4249,7 +4249,27 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             };
           }
 
-          console.log(`[Merge]   → no match (fulfillId not in Fusion map)`);
+          // Fallback: fulfillId already consumed — find next unmatched Fusion line for same item
+          const itemKey = (line.item_number || '').toUpperCase();
+          const fallbackFusion = fusionResult.items.find(fl =>
+            (fl.item || '').toUpperCase() === itemKey &&
+            !matchedFusionIds.has(String(fl.sourceOrderFulfillmentLineId))
+          );
+          if (fallbackFusion) {
+            const fbId = String(fallbackFusion.sourceOrderFulfillmentLineId);
+            matchedFusionIds.add(fbId);
+            console.log(`[Merge] pickslip item=${line.item_number} fulfillId=${apexFulfillId} (dup→fallback) → OrderLine=${fallbackFusion.orderLine} LineStatus=${fallbackFusion.lineStatus}`);
+            return {
+              ...line,
+              order_line: fallbackFusion.orderLine,
+              line_status: fallbackFusion.lineStatus,
+              fulfill_line_id: fbId,
+              fusion_fulfill_line_id: fbId,
+              fusion_requested_qty: fallbackFusion.requestedQuantity,
+            };
+          }
+
+          console.log(`[Merge] pickslip item=${line.item_number} fulfillId=${apexFulfillId} → no match`);
           return line;
         });
 
@@ -4639,8 +4659,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
     console.log('[Groups]', groups.map(g =>
       g.type === 'order_set'
-        ? `Group ${g.prefix}: [${g.items.map(i => `${i.item_number}(${i.order_line})`).join(', ')}]`
-        : `Single: ${g.item?.item_number}(${g.item?.order_line || 'no-ol'})`
+        ? `Group ${g.prefix}: [${g.items.map(i => `${i.item_number}(${i.order_line}-${i.fulfill_line_id || i.fusion_fulfill_line_id || '?'})`).join(', ')}]`
+        : `Single: ${g.item?.item_number}(${g.item?.order_line || 'no-ol'}-${g.item?.fulfill_line_id || '?'})`
     ));
 
     return groups;
