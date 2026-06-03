@@ -4213,39 +4213,47 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
           }
         });
         setFusionLineMap(fMapById);
+        console.log('[Merge] Fusion lines:', fusionResult.items.map(fl => `id=${fl.sourceOrderFulfillmentLineId} orderLine=${fl.orderLine} item=${fl.item}`));
       }
 
       if (apexResult.success && apexResult.data?.items) {
-        // Step 1: Match each APEX line to Fusion by fulfill_line_id.
-        // Only set order_line when exact ID match found — never guess by item code.
-        const matchedFusionIds = new Set(); // track which Fusion lines were matched
+        // Step 1: Match each APEX line to Fusion by fulfill_line_id → assign orderLine.
+        const matchedFusionIds = new Set();
         const merged = apexResult.data.items.map(line => {
           const apexFulfillId = String(
             line.fulfill_line_id || line.FULFILL_LINE_ID ||
             line.FULFILLMENT_LINE_ID || line.fulfillment_line_id || ''
           ).trim();
 
+          console.log(`[Merge] APEX line item=${line.item_number} fulfillId=${apexFulfillId}`);
+
           if (apexFulfillId && fMapById.has(apexFulfillId)) {
             const fl = fMapById.get(apexFulfillId);
             matchedFusionIds.add(apexFulfillId);
+            console.log(`[Merge]   → matched Fusion orderLine=${fl.orderLine} lineStatus=${fl.lineStatus}`);
             return {
               ...line,
-              order_line: fl.orderLine,   // e.g. "3", "3.1", "3.2"
+              order_line: fl.orderLine,
               line_status: fl.lineStatus,
               fulfill_line_id: apexFulfillId,
               fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
               fusion_requested_qty: fl.requestedQuantity,
             };
           }
+
+          console.log(`[Merge]   → no Fusion match, no order_line assigned`);
           return line;
         });
 
-        // Step 2: All unmatched Fusion lines become fusion-only supplemental rows.
-        // They still carry their orderLine so they land in the correct group.
+        // Step 2: Fusion lines not matched to any APEX line → add as fusion-only.
+        // Skip lines with no sourceOrderFulfillmentLineId (ambiguous).
         const fusionOnlyLines = [];
         fusionResult.items.forEach(fl => {
           const flId = String(fl.sourceOrderFulfillmentLineId || '').trim();
+          if (!flId) return; // skip if no ID
           if (!matchedFusionIds.has(flId)) {
+            console.log(`[Merge] Fusion-only: id=${flId} orderLine=${fl.orderLine} item=${fl.item}`);
+
             fusionOnlyLines.push({
               id: `fusion_${fl.sourceOrderFulfillmentLineId || fl.orderLine}`,
               delivery_detail_id: '',
@@ -4623,6 +4631,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       }
     });
     noLineItems.forEach(item => groups.push({ type: 'single', item }));
+
+    console.log('[Groups]', groups.map(g =>
+      g.type === 'order_set'
+        ? `Group ${g.prefix}: [${g.items.map(i => `${i.item_number}(${i.order_line})`).join(', ')}]`
+        : `Single: ${g.item?.item_number}(${g.item?.order_line || 'no-ol'})`
+    ));
 
     return groups;
   }, [filteredLines]);
