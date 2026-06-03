@@ -4217,28 +4217,37 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       }
 
       if (apexResult.success && apexResult.data?.items) {
-        // Step 1: Match each APEX line to Fusion by fulfill_line_id → assign orderLine.
+        // Step 1: Enrich APEX lines with Fusion line_status via fulfillmentLineId match.
+        // order_line comes DIRECTLY from APEX (ORDER_LINE field) — not from Fusion.
+        // Fusion is only used for line_status enrichment + adding staged/backordered-only rows.
         const matchedFusionIds = new Set();
         const merged = apexResult.data.items.map((line, idx) => {
-          // Log first line's full fields to discover APEX field names
           if (idx === 0) {
             console.log('[Merge] APEX raw fields:', JSON.stringify(Object.keys(line)));
             console.log('[Merge] APEX raw sample:', JSON.stringify(line));
           }
-          const apexFulfillId = String(
-            line.fulfill_line_id || line.FULFILL_LINE_ID ||
-            line.FULFILLMENT_LINE_ID || line.fulfillment_line_id || ''
+
+          // Read order_line directly from APEX (try common Oracle ORDS field names)
+          const apexOrderLine = String(
+            line.ORDER_LINE || line.order_line || line.ORDER_LINE_NUMBER ||
+            line.order_line_number || line.LINE_NUMBER || line.line_number || ''
           ).trim();
 
-          console.log(`[Merge] APEX line item=${line.item_number} fulfillId=${apexFulfillId}`);
+          // Read fulfillmentLineId from APEX to match Fusion for line_status
+          const apexFulfillId = String(
+            line.FULFILLMENT_LINE_ID || line.fulfillment_line_id ||
+            line.FULFILL_LINE_ID || line.fulfill_line_id || ''
+          ).trim();
+
+          console.log(`[Merge] APEX item=${line.item_number} orderLine=${apexOrderLine} fulfillId=${apexFulfillId}`);
 
           if (apexFulfillId && fMapById.has(apexFulfillId)) {
             const fl = fMapById.get(apexFulfillId);
             matchedFusionIds.add(apexFulfillId);
-            console.log(`[Merge]   → matched Fusion orderLine=${fl.orderLine} lineStatus=${fl.lineStatus}`);
+            console.log(`[Merge]   → Fusion match lineStatus=${fl.lineStatus} fusionOrderLine=${fl.orderLine}`);
             return {
               ...line,
-              order_line: fl.orderLine,
+              order_line: apexOrderLine || fl.orderLine, // prefer APEX, fall back to Fusion
               line_status: fl.lineStatus,
               fulfill_line_id: apexFulfillId,
               fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
@@ -4246,8 +4255,11 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             };
           }
 
-          console.log(`[Merge]   → no Fusion match, no order_line assigned`);
-          return line;
+          // No Fusion match — still use APEX order_line for grouping
+          return {
+            ...line,
+            order_line: apexOrderLine || line.order_line || '',
+          };
         });
 
         // Step 2: Fusion lines not matched to any APEX line → add as fusion-only.
