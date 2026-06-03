@@ -4817,20 +4817,29 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   };
 
   // Toggle mark for cancel on a line
-  const handleToggleMarkCancel = (item) => {
+  const handleToggleMarkCancel = (item, groupItems) => {
     const itemId = getItemId(item);
-    const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
-    const partnerLine = partnerCode ? lines.find(l => (l.item_number || '').toUpperCase() === partnerCode) : null;
-    const partnerId = partnerLine ? getItemId(partnerLine) : null;
+
+    // Collect all IDs that should toggle together
+    const idsToToggle = new Set();
+    idsToToggle.add(itemId);
+
+    // If part of an order_set group, include all siblings
+    if (groupItems && groupItems.length > 1) {
+      groupItems.forEach(gi => idsToToggle.add(getItemId(gi)));
+    } else {
+      // BOGO partner fallback
+      const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
+      const partnerLine = partnerCode ? lines.find(l => (l.item_number || '').toUpperCase() === partnerCode) : null;
+      if (partnerLine) idsToToggle.add(getItemId(partnerLine));
+    }
 
     setMarkedForCancel(prev => {
       const next = new Set(prev);
       if (next.has(itemId)) {
-        next.delete(itemId);
-        if (partnerId) next.delete(partnerId);
+        idsToToggle.forEach(id => next.delete(id));
       } else {
-        next.add(itemId);
-        if (partnerId) next.add(partnerId); // mark BOGO partner together
+        idsToToggle.forEach(id => next.add(id));
       }
       return next;
     });
@@ -5718,7 +5727,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                           isShipping={shippingId === setItem.delivery_detail_id}
                           isUndoing={undoingId === setItem.delivery_detail_id}
                           isMarkedForCancel={markedForCancel.has(getItemId(setItem))}
-                          onToggleMarkCancel={handleToggleMarkCancel}
+                          onToggleMarkCancel={(it) => handleToggleMarkCancel(it, setItems)}
                         />
                       </React.Fragment>
                     ))}
