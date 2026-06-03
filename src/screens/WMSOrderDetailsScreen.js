@@ -3102,7 +3102,7 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   const [showDetails, setShowDetails] = useState(false);
   const isPicked = item.pick_confirm_status === 'YES';
   const isShipped = item.shipped_status === 'YES';
-  const isCancelled = item.cancelled_status === 'YES' || (item.cancel_status || '').toUpperCase() === 'YES' || (item.cancel_status || '').toUpperCase() === 'CANCELLED' || (item.line_status || '').toLowerCase() === 'cancelled';
+  const isCancelled = item.cancelled_status === 'YES' || (item.cancel_status || '').toUpperCase() === 'YES' || (item.cancel_status || '').toUpperCase() === 'CANCELLED' || /^cancel/i.test(item.line_status || '');
   const pickedQty = parseInt(item.picked_qty) || 0;
   const requestedQty = parseInt(item.qty) || 0;
   const discPer = item.disc_per != null ? String(item.disc_per) : '';
@@ -3260,9 +3260,9 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
             </View>
           )}
           {item.line_status && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: item.line_status === 'Staged' ? '#E8F5E9' : item.line_status === 'Backordered' ? '#FFF3E0' : '#F3E5F5', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 }}>
-              <Ionicons name={item.line_status === 'Staged' ? 'checkmark-circle-outline' : item.line_status === 'Backordered' ? 'time-outline' : 'ellipse-outline'} size={12} color={item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A'} />
-              <Text style={{ fontSize: 11, fontWeight: '600', color: item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A' }}>{item.line_status}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: /^cancel/i.test(item.line_status || '') ? '#FFEBEE' : item.line_status === 'Staged' ? '#E8F5E9' : item.line_status === 'Backordered' ? '#FFF3E0' : '#F3E5F5', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 }}>
+              <Ionicons name={/^cancel/i.test(item.line_status || '') ? 'close-circle-outline' : item.line_status === 'Staged' ? 'checkmark-circle-outline' : item.line_status === 'Backordered' ? 'time-outline' : 'ellipse-outline'} size={12} color={/^cancel/i.test(item.line_status || '') ? '#C62828' : item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A'} />
+              <Text style={{ fontSize: 11, fontWeight: '600', color: /^cancel/i.test(item.line_status || '') ? '#C62828' : item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A' }}>{item.line_status}</Text>
             </View>
           )}
           {item.fusion_only && (
