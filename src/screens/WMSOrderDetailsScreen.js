@@ -4219,7 +4219,12 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       if (apexResult.success && apexResult.data?.items) {
         // Step 1: Match each APEX line to Fusion by fulfill_line_id → assign orderLine.
         const matchedFusionIds = new Set();
-        const merged = apexResult.data.items.map(line => {
+        const merged = apexResult.data.items.map((line, idx) => {
+          // Log first line's full fields to discover APEX field names
+          if (idx === 0) {
+            console.log('[Merge] APEX raw fields:', JSON.stringify(Object.keys(line)));
+            console.log('[Merge] APEX raw sample:', JSON.stringify(line));
+          }
           const apexFulfillId = String(
             line.fulfill_line_id || line.FULFILL_LINE_ID ||
             line.FULFILLMENT_LINE_ID || line.fulfillment_line_id || ''
