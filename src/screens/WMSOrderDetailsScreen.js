@@ -4328,6 +4328,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     { key: 'callpickwave', label: 'Call Pick Wave', status: 'pending', message: '' },
     { key: 'getopenpicksbyorder', label: 'Get Open Picks', status: 'pending', message: '' },
     { key: 'getlotsforpicks', label: 'Get Lots for Picks', status: 'pending', message: '' },
+    { key: 'fusionshipmentlines', label: 'Fusion Shipment Lines', status: 'pending', message: '' },
   ]);
 
   const handleShipConfirmWithSync = () => {
@@ -4345,6 +4346,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       { key: 'callpickwave', label: 'Call Pick Wave', status: 'pending', message: '' },
       { key: 'getopenpicksbyorder', label: 'Get Open Picks', status: 'pending', message: '' },
       { key: 'getlotsforpicks', label: 'Get Lots for Picks', status: 'pending', message: '' },
+      { key: 'fusionshipmentlines', label: 'Fusion Shipment Lines', status: 'pending', message: '' },
     ]);
     setSyncModalVisible(true);
     setFetchingFusionLines(true);
@@ -4410,6 +4412,34 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     } catch (e) {
       console.error('[Sync][getlotsforpicks] Error:', e.message);
       updateStatus('getlotsforpicks', 'error', e.message || 'Failed');
+    }
+
+    // API 4: Fusion shipmentLines (order line grouping + staged/backordered lines)
+    try {
+      updateStatus('fusionshipmentlines', 'loading', '');
+      const fusionResult = await fetchFusionShipmentLines(orderNumber, instanceName);
+      if (fusionResult.success) {
+        const count4 = fusionResult.items.length;
+        const staged = fusionResult.items.filter(i => i.lineStatus === 'Staged').length;
+        const backordered = fusionResult.items.filter(i => i.lineStatus === 'Backordered').length;
+        const parts = [`${count4} line(s)`];
+        if (staged) parts.push(`${staged} staged`);
+        if (backordered) parts.push(`${backordered} backordered`);
+        updateStatus('fusionshipmentlines', 'success', parts.join(' · '));
+
+        // Update fusion map so merged data is available immediately after loadOrderLines
+        const fMap = new Map();
+        fusionResult.items.forEach(fl => {
+          const key = (fl.item || '').toUpperCase();
+          if (!fMap.has(key) || fl.orderLine < fMap.get(key).orderLine) fMap.set(key, fl);
+        });
+        setFusionLineMap(fMap);
+      } else {
+        updateStatus('fusionshipmentlines', 'error', fusionResult.error || 'Failed');
+      }
+    } catch (e) {
+      console.error('[Sync][fusionshipmentlines] Error:', e.message);
+      updateStatus('fusionshipmentlines', 'error', e.message || 'Failed');
     }
 
     setFetchingFusionLines(false);
