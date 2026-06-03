@@ -4204,71 +4204,48 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         fetchFusionShipmentLines(orderNumber, user?.instance),
       ]);
 
-      // Build fusion map: sourceOrderFulfillmentLineId → fusion line (primary)
-      // Also build fallback map: ITEM_CODE → fusion line (only used when fulfillLineId missing)
+      // Build fusion map keyed by sourceOrderFulfillmentLineId
       const fMapById = new Map();
-      const fMapByItem = new Map();
       if (fusionResult.success && fusionResult.items.length > 0) {
         fusionResult.items.forEach(fl => {
           if (fl.sourceOrderFulfillmentLineId) {
             fMapById.set(String(fl.sourceOrderFulfillmentLineId), fl);
-          }
-          // fallback by item — keep lowest orderLine entry
-          const key = (fl.item || '').toUpperCase();
-          if (!fMapByItem.has(key) || fl.orderLine < fMapByItem.get(key).orderLine) {
-            fMapByItem.set(key, fl);
           }
         });
         setFusionLineMap(fMapById);
       }
 
       if (apexResult.success && apexResult.data?.items) {
-        // Merge Fusion data into APEX lines.
-        // order_line is ONLY assigned when we can match by fulfillLineId (exact).
-        // Item-code fallback is NOT used for order_line to avoid wrong groupings
-        // when the same item exists on multiple order lines.
+        // Step 1: Match each APEX line to Fusion by fulfill_line_id.
+        // Only set order_line when exact ID match found — never guess by item code.
+        const matchedFusionIds = new Set(); // track which Fusion lines were matched
         const merged = apexResult.data.items.map(line => {
           const apexFulfillId = String(
             line.fulfill_line_id || line.FULFILL_LINE_ID ||
             line.FULFILLMENT_LINE_ID || line.fulfillment_line_id || ''
           ).trim();
 
-          // Exact ID match → full merge including order_line
           if (apexFulfillId && fMapById.has(apexFulfillId)) {
             const fl = fMapById.get(apexFulfillId);
+            matchedFusionIds.add(apexFulfillId);
             return {
               ...line,
-              order_line: fl.orderLine,
+              order_line: fl.orderLine,   // e.g. "3", "3.1", "3.2"
               line_status: fl.lineStatus,
               fulfill_line_id: apexFulfillId,
               fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
               fusion_requested_qty: fl.requestedQuantity,
             };
           }
-
-          // No ID match — enrich line_status only (do NOT set order_line)
-          const flByItem = fMapByItem.get((line.item_number || '').toUpperCase());
-          if (flByItem) {
-            return {
-              ...line,
-              line_status: flByItem.lineStatus,
-              fusion_fulfill_line_id: flByItem.sourceOrderFulfillmentLineId,
-              fusion_requested_qty: flByItem.requestedQuantity,
-            };
-          }
-
           return line;
         });
 
-        // Add Fusion-only lines: lines whose sourceOrderFulfillmentLineId doesn't
-        // match any APEX fulfill_line_id (i.e. not present in APEX at all)
-        const apexFulfillIds = new Set(
-          merged.map(l => String(l.fulfill_line_id || l.FULFILL_LINE_ID || '').trim()).filter(Boolean)
-        );
+        // Step 2: All unmatched Fusion lines become fusion-only supplemental rows.
+        // They still carry their orderLine so they land in the correct group.
         const fusionOnlyLines = [];
         fusionResult.items.forEach(fl => {
           const flId = String(fl.sourceOrderFulfillmentLineId || '').trim();
-          if (!flId || !apexFulfillIds.has(flId)) {
+          if (!matchedFusionIds.has(flId)) {
             fusionOnlyLines.push({
               id: `fusion_${fl.sourceOrderFulfillmentLineId || fl.orderLine}`,
               delivery_detail_id: '',
