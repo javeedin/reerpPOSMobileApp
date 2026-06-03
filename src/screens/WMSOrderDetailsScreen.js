@@ -2194,6 +2194,31 @@ const CancelOrderModal = ({ visible, onClose, onConfirm, item, order, isProcessi
                 )}
               </View>
               <Text style={cancelModalStyles.itemDescription}>{item.description || 'No Description'}</Text>
+              {/* OrderLine + LineStatus badges */}
+              {(item.order_line || item.line_status) && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+                  {item.order_line && (
+                    <View style={cancelModalStyles.cancelLineBadge}>
+                      <Ionicons name="layers-outline" size={11} color="#1565C0" />
+                      <Text style={cancelModalStyles.cancelLineBadgeText}>Order Line {item.order_line}</Text>
+                    </View>
+                  )}
+                  {item.line_status && (
+                    <View style={[cancelModalStyles.cancelStatusBadge, {
+                      backgroundColor: item.line_status === 'Staged' ? '#E8F5E9' : item.line_status === 'Backordered' ? '#FFF3E0' : '#EDE7F6',
+                    }]}>
+                      <Ionicons
+                        name={item.line_status === 'Staged' ? 'checkmark-circle-outline' : item.line_status === 'Backordered' ? 'time-outline' : 'ellipse-outline'}
+                        size={11}
+                        color={item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A'}
+                      />
+                      <Text style={[cancelModalStyles.cancelStatusBadgeText, {
+                        color: item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A',
+                      }]}>{item.line_status}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
               <View style={cancelModalStyles.itemQtyRow}>
                 <Text style={cancelModalStyles.itemQtyLabel}>Qty: {parseInt(item.qty) || 0}</Text>
                 {isStoreTransaction ? (
@@ -2478,6 +2503,32 @@ const cancelModalStyles = StyleSheet.create({
   itemIdLabel: {
     fontSize: 11,
     color: '#999',
+  },
+  cancelLineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  cancelLineBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1565C0',
+  },
+  cancelStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  cancelStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   // Cancel Reason
   reasonSection: {
@@ -2815,6 +2866,31 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
                   )}
                 </View>
                 <Text style={cancelModalStyles.itemDescription} numberOfLines={1}>{item.description || 'No Description'}</Text>
+                {/* OrderLine + LineStatus badges */}
+                {(item.order_line || item.line_status) && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+                    {item.order_line && (
+                      <View style={cancelModalStyles.cancelLineBadge}>
+                        <Ionicons name="layers-outline" size={11} color="#1565C0" />
+                        <Text style={cancelModalStyles.cancelLineBadgeText}>Order Line {item.order_line}</Text>
+                      </View>
+                    )}
+                    {item.line_status && (
+                      <View style={[cancelModalStyles.cancelStatusBadge, {
+                        backgroundColor: item.line_status === 'Staged' ? '#E8F5E9' : item.line_status === 'Backordered' ? '#FFF3E0' : '#EDE7F6',
+                      }]}>
+                        <Ionicons
+                          name={item.line_status === 'Staged' ? 'checkmark-circle-outline' : item.line_status === 'Backordered' ? 'time-outline' : 'ellipse-outline'}
+                          size={11}
+                          color={item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A'}
+                        />
+                        <Text style={[cancelModalStyles.cancelStatusBadgeText, {
+                          color: item.line_status === 'Staged' ? '#2E7D32' : item.line_status === 'Backordered' ? '#E65100' : '#6A1B9A',
+                        }]}>{item.line_status}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
                 <View style={cancelModalStyles.itemQtyRow}>
                   <Text style={cancelModalStyles.itemQtyLabel}>Qty: {parseInt(item.qty) || 0}</Text>
                   {isStoreTransaction ? (
