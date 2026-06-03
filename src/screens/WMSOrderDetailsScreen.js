@@ -4204,31 +4204,38 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         fetchFusionShipmentLines(orderNumber, user?.instance),
       ]);
 
-      // Build fusion map: ITEM_CODE → fusion line data
-      const fMap = new Map();
+      // Build fusion map: sourceOrderFulfillmentLineId → fusion line (primary)
+      // Also build fallback map: ITEM_CODE → fusion line (only used when fulfillLineId missing)
+      const fMapById = new Map();
+      const fMapByItem = new Map();
       if (fusionResult.success && fusionResult.items.length > 0) {
         fusionResult.items.forEach(fl => {
+          if (fl.sourceOrderFulfillmentLineId) {
+            fMapById.set(String(fl.sourceOrderFulfillmentLineId), fl);
+          }
+          // fallback by item — keep lowest orderLine entry
           const key = (fl.item || '').toUpperCase();
-          // Keep the entry with the lowest orderLine (most relevant)
-          if (!fMap.has(key) || fl.orderLine < fMap.get(key).orderLine) {
-            fMap.set(key, fl);
+          if (!fMapByItem.has(key) || fl.orderLine < fMapByItem.get(key).orderLine) {
+            fMapByItem.set(key, fl);
           }
         });
-        setFusionLineMap(fMap);
+        setFusionLineMap(fMapById);
       }
 
       if (apexResult.success && apexResult.data?.items) {
         // Merge Fusion data into APEX lines
+        // Match by fulfillLineId first (exact), fall back to item code
         const merged = apexResult.data.items.map(line => {
-          const key = (line.item_number || '').toUpperCase();
-          const fl = fMap.get(key);
+          const apexFulfillId = String(line.fulfill_line_id || line.FULFILL_LINE_ID || '').trim();
+          const fl = (apexFulfillId && fMapById.has(apexFulfillId))
+            ? fMapById.get(apexFulfillId)
+            : fMapByItem.get((line.item_number || '').toUpperCase());
           if (!fl) return line;
           return {
             ...line,
             order_line: fl.orderLine,
             line_status: fl.lineStatus,
-            // Only fill fulfill_line_id from Fusion if not already present
-            fulfill_line_id: line.fulfill_line_id || line.FULFILL_LINE_ID || fl.sourceOrderFulfillmentLineId || '',
+            fulfill_line_id: apexFulfillId || fl.sourceOrderFulfillmentLineId || '',
             fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
             fusion_requested_qty: fl.requestedQuantity,
           };
@@ -4594,61 +4601,32 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // Group filtered lines by OrderLine prefix (e.g. "1.1","1.2","1.3" → group "1")
   // Falls back to BOGO grouping when no OrderLine data is available
   const displayGroups = useMemo(() => {
-    const hasOrderLines = filteredLines.some(l => l.order_line);
-
-    if (hasOrderLines) {
-      // OrderLine grouping: prefix is the integer part before the first dot
-      const groupMap = new Map(); // prefix → [lines]
-      const noLineItems = [];
-
-      filteredLines.forEach(item => {
-        const ol = item.order_line || '';
-        if (!ol) { noLineItems.push(item); return; }
-        const prefix = ol.split('.')[0]; // "1" from "1.1"
-        if (!groupMap.has(prefix)) groupMap.set(prefix, []);
-        groupMap.get(prefix).push(item);
-      });
-
-      const groups = [];
-      // Sort group keys numerically
-      const sortedKeys = [...groupMap.keys()].sort((a, b) => parseInt(a) - parseInt(b));
-      sortedKeys.forEach(prefix => {
-        const members = groupMap.get(prefix);
-        if (members.length > 1) {
-          groups.push({ type: 'order_set', prefix, items: members });
-        } else {
-          groups.push({ type: 'single', item: members[0] });
-        }
-      });
-      noLineItems.forEach(item => groups.push({ type: 'single', item }));
-      return groups;
-    }
-
-    // Fallback: BOGO grouping
-    const groups = [];
-    const usedIds = new Set();
+    // Group by order_line prefix (integer before first dot): "3", "3.1", "3.2" → group "3"
+    const groupMap = new Map(); // prefix → [lines]
+    const noLineItems = [];
 
     filteredLines.forEach(item => {
-      const id = getItemId(item);
-      if (usedIds.has(id)) return;
-
-      const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
-      if (partnerCode) {
-        const partner = filteredLines.find(l => (l.item_number || '').toUpperCase() === partnerCode);
-        if (partner && !usedIds.has(getItemId(partner))) {
-          usedIds.add(id);
-          usedIds.add(getItemId(partner));
-          groups.push({ type: 'bogo_set', main: item, promo: partner });
-          return;
-        }
-      }
-
-      usedIds.add(id);
-      groups.push({ type: 'single', item });
+      const ol = item.order_line || '';
+      if (!ol) { noLineItems.push(item); return; }
+      const prefix = ol.split('.')[0];
+      if (!groupMap.has(prefix)) groupMap.set(prefix, []);
+      groupMap.get(prefix).push(item);
     });
 
+    const groups = [];
+    const sortedKeys = [...groupMap.keys()].sort((a, b) => parseInt(a) - parseInt(b));
+    sortedKeys.forEach(prefix => {
+      const members = groupMap.get(prefix);
+      if (members.length > 1) {
+        groups.push({ type: 'order_set', prefix, items: members });
+      } else {
+        groups.push({ type: 'single', item: members[0] });
+      }
+    });
+    noLineItems.forEach(item => groups.push({ type: 'single', item }));
+
     return groups;
-  }, [filteredLines, bogoSets]);
+  }, [filteredLines]);
 
   // Get unique item suggestions for autocomplete
   const getFilterSuggestions = () => {
