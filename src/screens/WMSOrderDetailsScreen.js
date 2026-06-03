@@ -4223,30 +4223,52 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       }
 
       if (apexResult.success && apexResult.data?.items) {
-        // Merge Fusion data into APEX lines
-        // Match by fulfillLineId first (exact), fall back to item code
+        // Merge Fusion data into APEX lines.
+        // order_line is ONLY assigned when we can match by fulfillLineId (exact).
+        // Item-code fallback is NOT used for order_line to avoid wrong groupings
+        // when the same item exists on multiple order lines.
         const merged = apexResult.data.items.map(line => {
-          const apexFulfillId = String(line.fulfill_line_id || line.FULFILL_LINE_ID || '').trim();
-          const fl = (apexFulfillId && fMapById.has(apexFulfillId))
-            ? fMapById.get(apexFulfillId)
-            : fMapByItem.get((line.item_number || '').toUpperCase());
-          if (!fl) return line;
-          return {
-            ...line,
-            order_line: fl.orderLine,
-            line_status: fl.lineStatus,
-            fulfill_line_id: apexFulfillId || fl.sourceOrderFulfillmentLineId || '',
-            fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
-            fusion_requested_qty: fl.requestedQuantity,
-          };
+          const apexFulfillId = String(
+            line.fulfill_line_id || line.FULFILL_LINE_ID ||
+            line.FULFILLMENT_LINE_ID || line.fulfillment_line_id || ''
+          ).trim();
+
+          // Exact ID match → full merge including order_line
+          if (apexFulfillId && fMapById.has(apexFulfillId)) {
+            const fl = fMapById.get(apexFulfillId);
+            return {
+              ...line,
+              order_line: fl.orderLine,
+              line_status: fl.lineStatus,
+              fulfill_line_id: apexFulfillId,
+              fusion_fulfill_line_id: fl.sourceOrderFulfillmentLineId,
+              fusion_requested_qty: fl.requestedQuantity,
+            };
+          }
+
+          // No ID match — enrich line_status only (do NOT set order_line)
+          const flByItem = fMapByItem.get((line.item_number || '').toUpperCase());
+          if (flByItem) {
+            return {
+              ...line,
+              line_status: flByItem.lineStatus,
+              fusion_fulfill_line_id: flByItem.sourceOrderFulfillmentLineId,
+              fusion_requested_qty: flByItem.requestedQuantity,
+            };
+          }
+
+          return line;
         });
 
-        // Add Fusion-only lines (not present in APEX at all) as supplemental lines
-        const apexItemCodes = new Set(merged.map(l => (l.item_number || '').toUpperCase()));
+        // Add Fusion-only lines: lines whose sourceOrderFulfillmentLineId doesn't
+        // match any APEX fulfill_line_id (i.e. not present in APEX at all)
+        const apexFulfillIds = new Set(
+          merged.map(l => String(l.fulfill_line_id || l.FULFILL_LINE_ID || '').trim()).filter(Boolean)
+        );
         const fusionOnlyLines = [];
         fusionResult.items.forEach(fl => {
-          const key = (fl.item || '').toUpperCase();
-          if (!apexItemCodes.has(key)) {
+          const flId = String(fl.sourceOrderFulfillmentLineId || '').trim();
+          if (!flId || !apexFulfillIds.has(flId)) {
             fusionOnlyLines.push({
               id: `fusion_${fl.sourceOrderFulfillmentLineId || fl.orderLine}`,
               delivery_detail_id: '',
