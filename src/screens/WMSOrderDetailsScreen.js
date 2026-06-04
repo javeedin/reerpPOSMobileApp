@@ -371,11 +371,19 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     setIsRunningSequence(true);
     setSequenceError(null);
     setAllCompleted(false);
-    setBogoResults(toProcess.map(i => ({ itemId: getItemId(i), label: i.item_number, desc: i.description, status: 'pending' })));
+    // Pre-mark staged/fusion-only items as 'staged' — they won't be processed via API
+    setBogoResults(toProcess.map(i => ({
+      itemId: getItemId(i),
+      label: i.item_number,
+      desc: i.description,
+      status: (i.fusion_only && /^staged/i.test(i.line_status || '')) ? 'staged' : 'pending',
+    })));
 
     let anyError = false;
 
     for (const anItem of toProcess) {
+      // Skip staged fusion-only items — they're auto-picked when the main line is confirmed
+      if (anItem.fusion_only && /^staged/i.test(anItem.line_status || '')) continue;
       const id = getItemId(anItem);
       setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'processing' } : r));
       const p = buildPayloadsForItem(anItem);
@@ -587,13 +595,18 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                           {bExpiry ? <Text style={[styles.bogoPickItemQty, { color: bColor }]}>Exp: {bExpiry}{bDays !== null ? ` (${bDays}d)` : ''}</Text> : null}
                         </View>
                       </View>
-                      {result && (
+                      {bItem.fusion_only && /^staged/i.test(bItem.line_status || '') ? (
+                        <View style={{ alignItems: 'center' }}>
+                          <Ionicons name="checkmark-done-circle-outline" size={20} color="#1565C0" />
+                          <Text style={{ fontSize: 9, color: '#1565C0', marginTop: 1 }}>Auto</Text>
+                        </View>
+                      ) : result ? (
                         <Ionicons
                           name={result.status === 'success' ? 'checkmark-circle' : result.status === 'error' ? 'close-circle' : result.status === 'processing' ? 'hourglass-outline' : 'ellipse-outline'}
                           size={20}
                           color={result.status === 'success' ? '#4CAF50' : result.status === 'error' ? '#F44336' : result.status === 'processing' ? '#FF9800' : '#CCC'}
                         />
-                      )}
+                      ) : null}
                     </TouchableOpacity>
                   );
                 })}
@@ -689,10 +702,12 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                     <View style={[
                       styles.sequenceStatusCircle,
                       r.status === 'success' && styles.sequenceStatusCircleCompleted,
+                      r.status === 'staged' && { backgroundColor: '#1565C0' },
                       r.status === 'processing' && styles.sequenceStatusCircleProcessing,
                       r.status === 'error' && { backgroundColor: '#F44336' },
                     ]}>
                       {r.status === 'success' ? <Ionicons name="checkmark" size={20} color="#FFF" /> :
+                       r.status === 'staged' ? <Ionicons name="layers" size={16} color="#FFF" /> :
                        r.status === 'processing' ? <ActivityIndicator size="small" color="#FFF" /> :
                        r.status === 'error' ? <Ionicons name="close" size={18} color="#FFF" /> :
                        <Text style={styles.sequenceStatusNumber}>•</Text>}
@@ -702,6 +717,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                         {r.label}
                       </Text>
                       {r.status === 'success' && <Text style={styles.sequenceStatusSuccess}>Picked ✓</Text>}
+                      {r.status === 'staged' && <Text style={{ fontSize: 11, color: '#1565C0' }}>Staged — auto-picked with main line</Text>}
                       {r.status === 'processing' && <Text style={styles.sequenceStatusProcessing}>Processing...</Text>}
                       {r.status === 'error' && <Text style={{ fontSize: 11, color: '#F44336' }}>{r.error}</Text>}
                     </View>
@@ -4665,15 +4681,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     setConfirmPickItem(item);
 
     if (groupItems && groupItems.length > 1) {
-      // Order set group — show all pickable items in the group
-      const pickable = groupItems.filter(gi =>
-        (parseInt(gi.picked_qty) || 0) === 0 &&
+      // Include all non-cancelled items: pickable ones + staged ones (shown but not processed)
+      const displayItems = groupItems.filter(gi =>
         gi.cancelled_status !== 'YES' &&
         (gi.cancel_status || '').toUpperCase() !== 'CANCELLED' &&
-        !/^cancel/i.test(gi.line_status || '') &&
-        !gi.fusion_only
+        !/^cancel/i.test(gi.line_status || '')
       );
-      setBogoSetConfirmItems(pickable.length > 1 ? pickable : null);
+      setBogoSetConfirmItems(displayItems.length > 1 ? displayItems : null);
     } else {
       // Single item or BOGO fallback
       const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
