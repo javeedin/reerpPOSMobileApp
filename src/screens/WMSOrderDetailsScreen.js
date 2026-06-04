@@ -4686,16 +4686,30 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   };
 
   // Open confirm pick modal with item details (BOGO-aware)
-  const handleConfirmPick = (item) => {
-    const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
-    const partner = partnerCode ? lines.find(l => (l.item_number || '').toUpperCase() === partnerCode) : null;
-    const partnerPending = partner &&
-      (parseInt(partner.picked_qty) || 0) === 0 &&
-      partner.cancelled_status !== 'YES' &&
-      (partner.cancel_status || '').toUpperCase() !== 'CANCELLED';
-
+  const handleConfirmPick = (item, groupItems) => {
     setConfirmPickItem(item);
-    setBogoSetConfirmItems(partnerPending ? [item, partner] : null);
+
+    if (groupItems && groupItems.length > 1) {
+      // Order set group — show all pickable items in the group
+      const pickable = groupItems.filter(gi =>
+        (parseInt(gi.picked_qty) || 0) === 0 &&
+        gi.cancelled_status !== 'YES' &&
+        (gi.cancel_status || '').toUpperCase() !== 'CANCELLED' &&
+        !/^cancel/i.test(gi.line_status || '') &&
+        !gi.fusion_only
+      );
+      setBogoSetConfirmItems(pickable.length > 1 ? pickable : null);
+    } else {
+      // Single item or BOGO fallback
+      const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
+      const partner = partnerCode ? lines.find(l => (l.item_number || '').toUpperCase() === partnerCode) : null;
+      const partnerPending = partner &&
+        (parseInt(partner.picked_qty) || 0) === 0 &&
+        partner.cancelled_status !== 'YES' &&
+        (partner.cancel_status || '').toUpperCase() !== 'CANCELLED';
+      setBogoSetConfirmItems(partnerPending ? [item, partner] : null);
+    }
+
     setConfirmPickModalVisible(true);
   };
 
@@ -5737,7 +5751,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                         <LineItemCard
                           item={setItem}
                           transactionType={order?.transaction_type}
-                          onConfirmPick={handleConfirmPick}
+                          onConfirmPick={(it) => handleConfirmPick(it, setItems)}
                           onCancelPick={handleCancelPick}
                           onShipConfirm={handleShipConfirm}
                           onUndoPick={handleUndoPick}
