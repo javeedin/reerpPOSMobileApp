@@ -4611,72 +4611,106 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     setReportModalVisible(true);
   };
 
-  // Get report data for preview and sharing
-  const getReportData = () => {
-    const orderNum = order?.delivery_name || order?.order_number || 'N/A';
-    const accountCode = order?.account_code || order?.ACCOUNT_CODE || 'N/A';
-    const accountName = order?.account_name || order?.customer_name || '';
-    const transType = order?.transaction_type || 'N/A';
-
-    const pickedItems = lines.filter(item => {
-      const pickedQty = parseInt(item.picked_qty) || 0;
-      return pickedQty > 0;
+  // Build grouped report data from all lines (pickslip + shipment lines), ordered by order_line
+  const getReportGroups = () => {
+    const groupMap = new Map();
+    const noLineItems = [];
+    lines.forEach(item => {
+      const ol = item.order_line || '';
+      if (!ol) { noLineItems.push(item); return; }
+      const prefix = ol.split('.')[0];
+      if (!groupMap.has(prefix)) groupMap.set(prefix, []);
+      groupMap.get(prefix).push(item);
     });
-
-    const pendingItems = lines.filter(item => {
-      const pickedQty = parseInt(item.picked_qty) || 0;
-      return pickedQty === 0;
+    const groups = [];
+    const sortedKeys = [...groupMap.keys()].sort((a, b) => parseInt(a) - parseInt(b));
+    sortedKeys.forEach(prefix => {
+      const members = groupMap.get(prefix).slice().sort((a, b) => {
+        const aOl = a.order_line || '';
+        const bOl = b.order_line || '';
+        const aParts = aOl.split('.').map(Number);
+        const bParts = bOl.split('.').map(Number);
+        for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+          const diff = (aParts[i] || 0) - (bParts[i] || 0);
+          if (diff !== 0) return diff;
+        }
+        return 0;
+      });
+      if (members.length > 1) groups.push({ type: 'order_set', prefix, items: members });
+      else groups.push({ type: 'single', item: members[0] });
     });
+    noLineItems.forEach(item => groups.push({ type: 'single', item }));
+    return groups;
+  };
 
-    return {
-      orderNum,
-      accountCode,
-      accountName,
-      transType,
-      pickedItems,
-      pendingItems,
-      totalLines: lines.length,
-      pickedCount: pickedItems.length,
-      pendingCount: pendingItems.length,
-    };
+  // Get report summary counts
+  const getReportSummary = () => {
+    const total = lines.length;
+    const picked = lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 || l.pick_confirm_status === 'YES').length;
+    const shipped = lines.filter(l => /^ship/i.test(l.shipped_status || '') || l.shipped_status === 'YES').length;
+    const cancelled = lines.filter(l => /^cancel/i.test(l.line_status || '') || /^cancel/i.test(l.cancel_status || '') || l.cancelled_status === 'YES').length;
+    const staged = lines.filter(l => /^staged/i.test(l.line_status || '')).length;
+    const pending = lines.filter(l => {
+      const pq = parseInt(l.picked_qty) || 0;
+      const isCan = /^cancel/i.test(l.line_status || '') || /^cancel/i.test(l.cancel_status || '') || l.cancelled_status === 'YES';
+      const isShip = /^ship/i.test(l.shipped_status || '') || l.shipped_status === 'YES';
+      return pq === 0 && !isCan && !isShip && !/^staged/i.test(l.line_status || '');
+    }).length;
+    return { total, picked, shipped, cancelled, staged, pending };
   };
 
   // Share report as text
   const handleShareReport = async () => {
     try {
-      const data = getReportData();
+      const orderNum = order?.delivery_name || order?.order_number || 'N/A';
+      const accountCode = order?.account_code || order?.ACCOUNT_CODE || 'N/A';
+      const accountName = order?.account_name || order?.customer_name || '';
+      const transType = order?.transaction_type || 'N/A';
+      const summary = getReportSummary();
+      const groups = getReportGroups();
+
+      const getStatusLabel = (item) => {
+        if (/^cancel/i.test(item.line_status || '') || /^cancel/i.test(item.cancel_status || '') || item.cancelled_status === 'YES') return 'Cancelled';
+        if (/^ship/i.test(item.shipped_status || '') || item.shipped_status === 'YES') return 'Shipped';
+        if (/^staged/i.test(item.line_status || '')) return 'Staged';
+        if ((parseInt(item.picked_qty) || 0) > 0 || item.pick_confirm_status === 'YES') return 'Picked';
+        return 'Pending';
+      };
 
       let reportText = '═══════════════════════════════════\n';
-      reportText += '        PICK SUMMARY REPORT\n';
+      reportText += '        ORDER LINES REPORT\n';
       reportText += '═══════════════════════════════════\n\n';
-      reportText += `Order #: ${data.orderNum}\n`;
-      reportText += `Account: ${data.accountCode}`;
-      if (data.accountName) reportText += ` - ${data.accountName}`;
-      reportText += '\n';
-      reportText += `Type: ${data.transType}\n`;
+      reportText += `Order #: ${orderNum}\n`;
+      reportText += `Account: ${accountCode}${accountName ? ` - ${accountName}` : ''}\n`;
+      reportText += `Type: ${transType}\n`;
       reportText += `Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n`;
+      reportText += `\nTotal: ${summary.total} | Picked: ${summary.picked} | Shipped: ${summary.shipped} | Cancelled: ${summary.cancelled} | Pending: ${summary.pending}\n`;
       reportText += '\n───────────────────────────────────\n';
-      reportText += 'PICKED ITEMS\n';
+      reportText += 'ORDER LINES\n';
       reportText += '───────────────────────────────────\n\n';
 
-      if (data.pickedItems.length === 0) {
-        reportText += '(No items picked yet)\n';
-      } else {
-        data.pickedItems.forEach((item, index) => {
-          const desc = item.description || item.item_number || 'Unknown';
-          const pickedQty = parseInt(item.picked_qty) || 0;
-          reportText += `${index + 1}. ${desc}\n`;
-          reportText += `   Qty: ${pickedQty}\n\n`;
-        });
-      }
+      let lineNum = 1;
+      groups.forEach(group => {
+        if (group.type === 'order_set') {
+          reportText += `[Group ${group.prefix}]\n`;
+          group.items.forEach(item => {
+            reportText += `  ${lineNum++}. [${item.order_line || '-'}] ${item.item_number || 'N/A'}\n`;
+            reportText += `     ${item.description || 'No Description'}\n`;
+            reportText += `     Qty: ${item.qty || 0}  Status: ${getStatusLabel(item)}\n\n`;
+          });
+        } else {
+          const item = group.item;
+          reportText += `${lineNum++}. [${item.order_line || '-'}] ${item.item_number || 'N/A'}\n`;
+          reportText += `   ${item.description || 'No Description'}\n`;
+          reportText += `   Qty: ${item.qty || 0}  Status: ${getStatusLabel(item)}\n\n`;
+        }
+      });
 
-      reportText += '───────────────────────────────────\n';
-      reportText += `Total: ${data.totalLines} | Picked: ${data.pickedCount} | Pending: ${data.pendingCount}\n`;
       reportText += '═══════════════════════════════════\n';
 
       await Share.share({
         message: reportText,
-        title: `Pick Report - ${data.orderNum}`,
+        title: `Order Report - ${orderNum}`,
       });
     } catch (error) {
       if (error.message !== 'User did not share') {
@@ -5506,100 +5540,135 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       />
 
       {/* Report Preview Modal */}
-      <Modal visible={reportModalVisible} animationType="slide" transparent>
-        <View style={styles.reportModalOverlay}>
-          <View style={styles.reportModalContainer}>
-            {/* Header */}
-            <View style={styles.reportModalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <Ionicons name="document-text" size={24} color="#1565C0" />
-                <Text style={styles.modalTitle}>Pick Summary Report</Text>
-              </View>
-              <TouchableOpacity onPress={() => setReportModalVisible(false)} style={styles.modalCloseBtn}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
+      <Modal visible={reportModalVisible} animationType="slide" transparent={false}>
+        <View style={{ flex: 1, backgroundColor: '#F5F7FA' }}>
+          {/* Header */}
+          <View style={styles.reportModalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <Ionicons name="document-text" size={22} color="#1565C0" />
+              <Text style={styles.modalTitle}>Order Lines Report</Text>
             </View>
+            <TouchableOpacity onPress={() => setReportModalVisible(false)} style={styles.modalCloseBtn}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
 
-            {/* Report Content */}
-            <ScrollView style={styles.reportContent} showsVerticalScrollIndicator={false}>
-              {/* Order Header Info */}
-              <View style={styles.reportHeaderSection}>
-                <View style={styles.reportHeaderRow}>
-                  <Text style={styles.reportHeaderLabel}>Order #</Text>
-                  <Text style={styles.reportHeaderValue}>{getReportData().orderNum}</Text>
-                </View>
-                <View style={styles.reportHeaderRow}>
-                  <Text style={styles.reportHeaderLabel}>Account</Text>
-                  <Text style={styles.reportHeaderValue}>
-                    {getReportData().accountCode}
-                    {getReportData().accountName ? ` - ${getReportData().accountName}` : ''}
-                  </Text>
-                </View>
-                <View style={styles.reportHeaderRow}>
-                  <Text style={styles.reportHeaderLabel}>Type</Text>
-                  <Text style={styles.reportHeaderValue}>{getReportData().transType}</Text>
-                </View>
+          {/* Order Info */}
+          <View style={styles.reportHeaderSection}>
+            <View style={styles.reportHeaderRow}>
+              <Text style={styles.reportHeaderLabel}>Order #</Text>
+              <Text style={styles.reportHeaderValue}>{order?.delivery_name || order?.order_number || 'N/A'}</Text>
+            </View>
+            <View style={styles.reportHeaderRow}>
+              <Text style={styles.reportHeaderLabel}>Account</Text>
+              <Text style={styles.reportHeaderValue} numberOfLines={1}>
+                {order?.account_code || order?.ACCOUNT_CODE || 'N/A'}
+                {(order?.account_name || order?.customer_name) ? ` — ${order?.account_name || order?.customer_name}` : ''}
+              </Text>
+            </View>
+            <View style={[styles.reportHeaderRow, { borderTopWidth: 0 }]}>
+              <Text style={styles.reportHeaderLabel}>Type</Text>
+              <Text style={styles.reportHeaderValue}>{order?.transaction_type || 'N/A'}</Text>
+            </View>
+          </View>
+
+          {/* Summary KPI strip */}
+          {(() => {
+            const s = getReportSummary();
+            const kpis = [
+              { label: 'Total', value: s.total, color: '#1565C0' },
+              { label: 'Pending', value: s.pending, color: '#FF9800' },
+              { label: 'Picked', value: s.picked, color: '#4CAF50' },
+              { label: 'Staged', value: s.staged, color: '#9C27B0' },
+              { label: 'Shipped', value: s.shipped, color: '#00BCD4' },
+              { label: 'Cancelled', value: s.cancelled, color: '#F44336' },
+            ];
+            return (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8, gap: 6 }}>
+                {kpis.map(k => (
+                  <View key={k.label} style={{ backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: k.color + '40', paddingHorizontal: 10, paddingVertical: 6, alignItems: 'center', minWidth: 60 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: k.color }}>{k.value}</Text>
+                    <Text style={{ fontSize: 10, color: '#666', marginTop: 1 }}>{k.label}</Text>
+                  </View>
+                ))}
               </View>
+            );
+          })()}
 
-              {/* Summary Stats */}
-              <View style={styles.reportStatsRow}>
-                <View style={styles.reportStatBox}>
-                  <Text style={styles.reportStatValue}>{getReportData().totalLines}</Text>
-                  <Text style={styles.reportStatLabel}>Total</Text>
-                </View>
-                <View style={[styles.reportStatBox, { borderColor: '#4CAF50' }]}>
-                  <Text style={[styles.reportStatValue, { color: '#4CAF50' }]}>{getReportData().pickedCount}</Text>
-                  <Text style={styles.reportStatLabel}>Picked</Text>
-                </View>
-                <View style={[styles.reportStatBox, { borderColor: '#FF9800' }]}>
-                  <Text style={[styles.reportStatValue, { color: '#FF9800' }]}>{getReportData().pendingCount}</Text>
-                  <Text style={styles.reportStatLabel}>Pending</Text>
-                </View>
-              </View>
+          {/* Lines grouped by order_line */}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24 }}>
+            {(() => {
+              const groups = getReportGroups();
+              let lineNum = 0;
 
-              {/* Picked Items List */}
-              <View style={styles.reportSection}>
-                <Text style={styles.reportSectionTitle}>
-                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" /> Picked Items
-                </Text>
-                {getReportData().pickedItems.length === 0 ? (
-                  <Text style={styles.reportEmptyText}>No items picked yet</Text>
-                ) : (
-                  getReportData().pickedItems.map((item, index) => (
-                    <View key={`picked-${index}`} style={styles.reportItemRow}>
-                      <Text style={styles.reportItemNum}>{index + 1}.</Text>
-                      <View style={styles.reportItemDetails}>
-                        <Text style={styles.reportItemDesc} numberOfLines={2}>
-                          {item.description || item.item_number || 'Unknown'}
-                        </Text>
-                        <Text style={styles.reportItemCode}>{item.item_number}</Text>
-                      </View>
-                      <View style={styles.reportItemQty}>
-                        <Text style={styles.reportItemQtyValue}>{parseInt(item.picked_qty) || 0}</Text>
-                        <Text style={styles.reportItemQtyLabel}>Qty</Text>
-                      </View>
+              const getStatusInfo = (item) => {
+                if (/^cancel/i.test(item.line_status || '') || /^cancel/i.test(item.cancel_status || '') || item.cancelled_status === 'YES')
+                  return { label: 'Cancelled', bg: '#FFEBEE', color: '#C62828' };
+                if (/^ship/i.test(item.shipped_status || '') || item.shipped_status === 'YES')
+                  return { label: 'Shipped', bg: '#E0F7FA', color: '#006064' };
+                if (/^staged/i.test(item.line_status || ''))
+                  return { label: 'Staged', bg: '#F3E5F5', color: '#6A1B9A' };
+                if ((parseInt(item.picked_qty) || 0) > 0 || item.pick_confirm_status === 'YES')
+                  return { label: 'Picked', bg: '#E8F5E9', color: '#2E7D32' };
+                return { label: 'Pending', bg: '#FFF3E0', color: '#E65100' };
+              };
+
+              const renderLine = (item, indent) => {
+                lineNum++;
+                const st = getStatusInfo(item);
+                const qty = item.qty || item.quantity || 0;
+                return (
+                  <View key={`rline-${getItemId(item)}-${lineNum}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 8, marginBottom: 4, padding: 10, marginLeft: indent ? 12 : 0, borderLeftWidth: indent ? 3 : 0, borderLeftColor: '#1565C0' + '60' }}>
+                    {/* Order line badge */}
+                    <View style={{ minWidth: 36, alignItems: 'center', marginRight: 8 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#1565C0' }}>{item.order_line || '—'}</Text>
                     </View>
-                  ))
-                )}
-              </View>
-            </ScrollView>
+                    {/* Item info */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#333' }}>{item.item_number || 'N/A'}</Text>
+                      <Text style={{ fontSize: 11, color: '#666', marginTop: 1 }} numberOfLines={2}>{item.description || 'No Description'}</Text>
+                    </View>
+                    {/* Qty */}
+                    <View style={{ alignItems: 'center', marginHorizontal: 10 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: '#333' }}>{qty}</Text>
+                      <Text style={{ fontSize: 9, color: '#999' }}>Qty</Text>
+                    </View>
+                    {/* Status badge */}
+                    <View style={{ backgroundColor: st.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: st.color }}>{st.label}</Text>
+                    </View>
+                  </View>
+                );
+              };
 
-            {/* Action Buttons */}
-            <View style={styles.reportActions}>
-              <TouchableOpacity
-                style={styles.reportCloseBtn}
-                onPress={() => setReportModalVisible(false)}
-              >
-                <Text style={styles.reportCloseBtnText}>Close</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.reportShareBtn}
-                onPress={handleShareReport}
-              >
-                <Ionicons name="share-outline" size={20} color="#FFF" />
-                <Text style={styles.reportShareBtnText}>Share</Text>
-              </TouchableOpacity>
-            </View>
+              return groups.map((group, gi) => {
+                if (group.type === 'order_set') {
+                  return (
+                    <View key={`rg-${gi}`} style={{ marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 }}>
+                        <View style={{ backgroundColor: '#1565C0', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFF' }}>Group {group.prefix}</Text>
+                        </View>
+                        <Text style={{ fontSize: 11, color: '#999' }}>{group.items.length} lines</Text>
+                      </View>
+                      {group.items.map(item => renderLine(item, true))}
+                    </View>
+                  );
+                }
+                return renderLine(group.item, false);
+              });
+            })()}
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={styles.reportActions}>
+            <TouchableOpacity style={styles.reportCloseBtn} onPress={() => setReportModalVisible(false)}>
+              <Text style={styles.reportCloseBtnText}>Close</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.reportShareBtn} onPress={handleShareReport}>
+              <Ionicons name="share-outline" size={20} color="#FFF" />
+              <Text style={styles.reportShareBtnText}>Share</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
