@@ -1702,33 +1702,69 @@ const BulkShipConfirmModal = ({ visible, onClose, pickedItems, onProcess, proces
 };
 
 // Lots Modal Component
-const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
+const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSelectLot, requestedQty }) => {
+  const [selectedLot, setSelectedLot] = useState(null);
+  const hasMultipleLots = lots && lots.length > 1;
+  const reqQty = parseInt(requestedQty) || 0;
+
+  const handleSelect = (lot) => {
+    if (!hasMultipleLots) return;
+    const lotQty = parseInt(lot.quantity) || 0;
+    if (lotQty < reqQty) {
+      Alert.alert('Insufficient Quantity', `Lot ${lot.lotNumber} has ${lotQty} units but ${reqQty} are required. Please select a lot with sufficient quantity.`);
+      return;
+    }
+    setSelectedLot(lot);
+  };
+
+  const handleConfirmSelection = () => {
+    if (selectedLot && onSelectLot) {
+      onSelectLot(selectedLot);
+    }
+    setSelectedLot(null);
+    onClose();
+  };
+
+  const handleClose = () => {
+    setSelectedLot(null);
+    onClose();
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '80%', paddingBottom: 0 }}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <Ionicons name="layers-outline" size={24} color="#1565C0" />
               <Text style={styles.modalTitle}>Available Lots</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
+            <TouchableOpacity onPress={handleClose} style={styles.modalCloseBtn}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
 
-          {/* Item Info */}
-          <View style={styles.modalItemInfo}>
+          {/* Item Info + Requested Qty */}
+          <View style={[styles.modalItemInfo, { paddingBottom: 8 }]}>
             <Text style={styles.modalItemNumber}>{item?.item_number || 'N/A'}</Text>
-            <Text style={styles.modalItemDesc} numberOfLines={2}>{item?.description || 'No Description'}</Text>
+            <Text style={styles.modalItemDesc} numberOfLines={1}>{item?.description || 'No Description'}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <View style={{ backgroundColor: '#E3F2FD', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="cube-outline" size={13} color="#1565C0" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#1565C0' }}>Required: {reqQty}</Text>
+              </View>
+              {hasMultipleLots && (
+                <Text style={{ fontSize: 12, color: '#888' }}>Tap a lot to select</Text>
+              )}
+            </View>
           </View>
 
           {/* Onhand Summary */}
           {onhandItem && (
-            <View style={styles.onhandSummary}>
+            <View style={[styles.onhandSummary, { marginHorizontal: 12, marginBottom: 6 }]}>
               <View style={styles.onhandRow}>
                 <View style={styles.onhandItem}>
-                  <Text style={styles.onhandLabel}>On Hand Qty</Text>
+                  <Text style={styles.onhandLabel}>On Hand</Text>
                   <Text style={styles.onhandValue}>{onhandItem.primaryQuantity || 0}</Text>
                 </View>
                 <View style={styles.onhandItem}>
@@ -1744,7 +1780,7 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
           )}
 
           {/* Lots List */}
-          <ScrollView style={styles.lotsScrollView}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}>
             {isLoading ? (
               <View style={styles.lotsLoading}>
                 <ActivityIndicator size="large" color="#1565C0" />
@@ -1752,39 +1788,61 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
               </View>
             ) : lots && lots.length > 0 ? (
               <>
-                <Text style={styles.lotsSectionTitle}>Lot Details ({lots.length})</Text>
-                {lots.map((lot, index) => (
-                  <View key={`lot-${lot.lotNumber}-${index}`} style={styles.lotCard}>
-                    <View style={styles.lotHeader}>
-                      <Text style={styles.lotNumber}>{lot.lotNumber}</Text>
-                      <View style={styles.lotQtyBadge}>
-                        <Text style={styles.lotQtyText}>{lot.quantity || 0}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.lotDetails}>
-                      <View style={styles.lotDetailItem}>
-                        <Ionicons name="calendar-outline" size={14} color="#666" />
-                        <Text style={styles.lotDetailText}>
-                          Expiry: {lot.expirationDate ? new Date(lot.expirationDate).toLocaleDateString() : 'N/A'}
-                        </Text>
-                      </View>
-                      {lot.gradeCode && (
-                        <View style={styles.lotDetailItem}>
-                          <Ionicons name="star-outline" size={14} color="#666" />
-                          <Text style={styles.lotDetailText}>Grade: {lot.gradeCode}</Text>
+                <Text style={[styles.lotsSectionTitle, { marginBottom: 6 }]}>Lot Details ({lots.length})</Text>
+                {lots.map((lot, index) => {
+                  const lotQty = parseInt(lot.quantity) || 0;
+                  const isSelected = selectedLot?.lotNumber === lot.lotNumber;
+                  const sufficient = lotQty >= reqQty;
+                  return (
+                    <TouchableOpacity
+                      key={`lot-${lot.lotNumber}-${index}`}
+                      style={[
+                        styles.lotCard,
+                        hasMultipleLots && { borderWidth: 2, borderColor: isSelected ? '#1565C0' : sufficient ? '#E0E0E0' : '#FFCDD2' },
+                        isSelected && { backgroundColor: '#E3F2FD' },
+                      ]}
+                      onPress={() => handleSelect(lot)}
+                      disabled={!hasMultipleLots}
+                    >
+                      <View style={styles.lotHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          {hasMultipleLots && (
+                            <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: isSelected ? '#1565C0' : '#CCC', backgroundColor: isSelected ? '#1565C0' : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
+                              {isSelected && <Ionicons name="checkmark" size={11} color="#FFF" />}
+                            </View>
+                          )}
+                          <Text style={styles.lotNumber}>{lot.lotNumber}</Text>
                         </View>
-                      )}
-                      {lot.originationDate && (
+                        <View style={[styles.lotQtyBadge, !sufficient && { backgroundColor: '#FFEBEE' }]}>
+                          <Text style={[styles.lotQtyText, !sufficient && { color: '#C62828' }]}>{lotQty}</Text>
+                          {!sufficient && <Ionicons name="warning-outline" size={12} color="#C62828" style={{ marginLeft: 3 }} />}
+                        </View>
+                      </View>
+                      <View style={styles.lotDetails}>
                         <View style={styles.lotDetailItem}>
-                          <Ionicons name="time-outline" size={14} color="#666" />
+                          <Ionicons name="calendar-outline" size={14} color="#666" />
                           <Text style={styles.lotDetailText}>
-                            Origin: {new Date(lot.originationDate).toLocaleDateString()}
+                            Expiry: {lot.expirationDate ? new Date(lot.expirationDate).toLocaleDateString() : 'N/A'}
                           </Text>
                         </View>
-                      )}
-                    </View>
-                  </View>
-                ))}
+                        {lot.gradeCode && (
+                          <View style={styles.lotDetailItem}>
+                            <Ionicons name="star-outline" size={14} color="#666" />
+                            <Text style={styles.lotDetailText}>Grade: {lot.gradeCode}</Text>
+                          </View>
+                        )}
+                        {lot.originationDate && (
+                          <View style={styles.lotDetailItem}>
+                            <Ionicons name="time-outline" size={14} color="#666" />
+                            <Text style={styles.lotDetailText}>
+                              Origin: {new Date(lot.originationDate).toLocaleDateString()}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </>
             ) : onhandItem ? (
               <View style={styles.noLotsContainer}>
@@ -1801,9 +1859,23 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading }) => {
             )}
           </ScrollView>
 
-          <TouchableOpacity style={styles.modalDoneButton} onPress={onClose}>
-            <Text style={styles.modalDoneButtonText}>Done</Text>
-          </TouchableOpacity>
+          {/* Bottom buttons — anchored, no gap from screen edge */}
+          <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FFF' }}>
+            <TouchableOpacity style={{ flex: 1, paddingVertical: 16, alignItems: 'center' }} onPress={handleClose}>
+              <Text style={{ fontSize: 15, color: '#666', fontWeight: '600' }}>Close</Text>
+            </TouchableOpacity>
+            {hasMultipleLots && (
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 16, alignItems: 'center', backgroundColor: selectedLot ? '#1565C0' : '#E0E0E0' }}
+                onPress={handleConfirmSelection}
+                disabled={!selectedLot}
+              >
+                <Text style={{ fontSize: 15, color: selectedLot ? '#FFF' : '#999', fontWeight: '700' }}>
+                  {selectedLot ? `Use ${selectedLot.lotNumber}` : 'Select a Lot'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     </Modal>
@@ -5326,6 +5398,15 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         lots={lots}
         onhandItem={onhandItem}
         isLoading={lotsLoading}
+        requestedQty={selectedItem?.qty}
+        onSelectLot={(lot) => {
+          setLines(prev => prev.map(l =>
+            getItemId(l) === getItemId(selectedItem)
+              ? { ...l, lot_number: lot.lotNumber, lot_expiry_date: lot.expirationDate }
+              : l
+          ));
+          setLotsModalVisible(false);
+        }}
       />
 
       {/* Confirm Pick Modal */}
