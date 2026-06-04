@@ -4643,18 +4643,23 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     return groups;
   };
 
-  // Get report summary counts
+  // Get report summary counts (reuses impliedPickedIds)
   const getReportSummary = () => {
     const total = lines.length;
-    const picked = lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 || l.pick_confirm_status === 'YES').length;
-    const shipped = lines.filter(l => /^ship/i.test(l.shipped_status || '') || l.shipped_status === 'YES').length;
-    const cancelled = lines.filter(l => /^cancel/i.test(l.line_status || '') || /^cancel/i.test(l.cancel_status || '') || l.cancelled_status === 'YES').length;
-    const staged = lines.filter(l => /^staged/i.test(l.line_status || '')).length;
+    const cancelled = lines.filter(l => isCancelledLine(l)).length;
+    const shipped = lines.filter(l => (l.shipped_status === 'YES') && !isCancelledLine(l)).length;
+    const picked = lines.filter(l => {
+      if (isCancelledLine(l) || l.shipped_status === 'YES') return false;
+      if (impliedPickedIds.has(getItemId(l))) return true;
+      return (parseInt(l.picked_qty) || 0) > 0 || l.pick_confirm_status === 'YES';
+    }).length;
+    const staged = lines.filter(l => /^staged/i.test(l.line_status || '') && !isCancelledLine(l) && !impliedPickedIds.has(getItemId(l))).length;
     const pending = lines.filter(l => {
-      const pq = parseInt(l.picked_qty) || 0;
-      const isCan = /^cancel/i.test(l.line_status || '') || /^cancel/i.test(l.cancel_status || '') || l.cancelled_status === 'YES';
-      const isShip = /^ship/i.test(l.shipped_status || '') || l.shipped_status === 'YES';
-      return pq === 0 && !isCan && !isShip && !/^staged/i.test(l.line_status || '');
+      if (isCancelledLine(l) || l.shipped_status === 'YES') return false;
+      if (impliedPickedIds.has(getItemId(l))) return false;
+      if ((parseInt(l.picked_qty) || 0) > 0 || l.pick_confirm_status === 'YES') return false;
+      if (/^staged/i.test(l.line_status || '')) return false;
+      return true;
     }).length;
     return { total, picked, shipped, cancelled, staged, pending };
   };
@@ -5408,16 +5413,52 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     }
   };
 
-  // Calculate summary
+  // Build set of implied-picked IDs: staged lines whose group's main line is already picked
+  const impliedPickedIds = useMemo(() => {
+    const ids = new Set();
+    const groupMap = new Map();
+    lines.forEach(l => {
+      const ol = l.order_line || '';
+      if (!ol) return;
+      const prefix = ol.split('.')[0];
+      if (!groupMap.has(prefix)) groupMap.set(prefix, []);
+      groupMap.get(prefix).push(l);
+    });
+    groupMap.forEach((members, prefix) => {
+      if (members.length <= 1) return;
+      const mainPicked = members.some(m =>
+        m.order_line === prefix &&
+        (m.pick_confirm_status === 'YES' || (parseInt(m.picked_qty) || 0) > 0)
+      );
+      if (!mainPicked) return;
+      members.forEach(m => {
+        if (m.order_line !== prefix && /^staged/i.test(m.line_status || '')) {
+          ids.add(getItemId(m));
+        }
+      });
+    });
+    return ids;
+  }, [lines]);
+
+  // Calculate summary — implied-picked staged lines count as picked, not pending
+  const isCancelledLine = (l) => l.cancelled_status === 'YES' || (l.cancel_status || '').toUpperCase() === 'CANCELLED' || (l.cancel_status || '').toUpperCase() === 'YES' || /^cancel/i.test(l.line_status || '');
   const summary = {
     totalLines: lines.length,
     totalQty: lines.reduce((sum, l) => sum + (parseInt(l.qty) || 0), 0),
     pickedQty: lines.reduce((sum, l) => sum + (parseInt(l.picked_qty) || 0), 0),
-    // Pending: picked_qty = 0 and not cancelled; Picked: picked_qty > 0 and not shipped and not cancelled
-    pendingLines: lines.filter(l => (parseInt(l.picked_qty) || 0) === 0 && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES' && !/^cancel/i.test(l.line_status || '')).length,
-    pickedLines: lines.filter(l => (parseInt(l.picked_qty) || 0) > 0 && l.shipped_status !== 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES' && !/^cancel/i.test(l.line_status || '')).length,
-    shippedLines: lines.filter(l => l.shipped_status === 'YES' && l.cancelled_status !== 'YES' && (l.cancel_status || '').toUpperCase() !== 'CANCELLED' && (l.cancel_status || '').toUpperCase() !== 'YES' && !/^cancel/i.test(l.line_status || '')).length,
-    cancelledLines: lines.filter(l => l.cancelled_status === 'YES' || (l.cancel_status || '').toUpperCase() === 'CANCELLED' || (l.cancel_status || '').toUpperCase() === 'YES' || /^cancel/i.test(l.line_status || '')).length,
+    pendingLines: lines.filter(l => {
+      if (isCancelledLine(l)) return false;
+      if (impliedPickedIds.has(getItemId(l))) return false;
+      return (parseInt(l.picked_qty) || 0) === 0;
+    }).length,
+    pickedLines: lines.filter(l => {
+      if (isCancelledLine(l)) return false;
+      if (l.shipped_status === 'YES') return false;
+      if (impliedPickedIds.has(getItemId(l))) return true;
+      return (parseInt(l.picked_qty) || 0) > 0;
+    }).length,
+    shippedLines: lines.filter(l => l.shipped_status === 'YES' && !isCancelledLine(l)).length,
+    cancelledLines: lines.filter(l => isCancelledLine(l)).length,
   };
 
   return (
