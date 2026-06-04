@@ -3073,9 +3073,9 @@ const BulkCancelModal = ({ visible, onClose, markedItems, order, instance, onExe
 };
 
 // Line Item Card Component
-const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing, isMarkedForCancel, onToggleMarkCancel }) => {
+const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onShipConfirm, onUndoPick, onSearchLots, isConfirming, isCancelling, isShipping, isUndoing, isMarkedForCancel, onToggleMarkCancel, isImpliedPicked }) => {
   const [showDetails, setShowDetails] = useState(false);
-  const isPicked = item.pick_confirm_status === 'YES';
+  const isPicked = item.pick_confirm_status === 'YES' || isImpliedPicked;
   const isShipped = item.shipped_status === 'YES';
   const isCancelled = item.cancelled_status === 'YES' || (item.cancel_status || '').toUpperCase() === 'YES' || (item.cancel_status || '').toUpperCase() === 'CANCELLED' || /^cancel/i.test(item.line_status || '');
   const pickedQty = parseInt(item.picked_qty) || 0;
@@ -3113,9 +3113,9 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   }, [isHighDiscount, isStoreTransfer]);
 
   // Show Confirm and Cancel buttons only when picked_qty = 0 and not cancelled
-  const showPickButtons = pickedQty === 0 && !isCancelled;
+  const showPickButtons = pickedQty === 0 && !isCancelled && !isImpliedPicked;
   // Show Ship Confirm button when picked but not shipped (Store orders only)
-  const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled;
+  const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled && !isImpliedPicked;
   // Cancel button only shows in pending state (within showPickButtons)
 
   // Use the "id" field directly as-is
@@ -5712,34 +5712,48 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                         <Text style={{ fontWeight: '400', fontSize: 11 }}>  ({setItems.length} items)</Text>
                       </Text>
                     </View>
-                    {setItems.map((setItem, si) => (
-                      <React.Fragment key={`set-item-${getItemId(setItem) || si}`}>
-                        {si > 0 && (
-                          <View style={styles.bogoSetConnector}>
-                            <View style={styles.bogoSetConnectorLine} />
-                            <View style={[styles.bogoSetConnectorBadge, { backgroundColor: '#78909C' }]}>
-                              <Text style={styles.bogoSetConnectorText}>{setItem.order_line}</Text>
-                            </View>
-                            <View style={styles.bogoSetConnectorLine} />
-                          </View>
-                        )}
-                        <LineItemCard
-                          item={setItem}
-                          transactionType={order?.transaction_type}
-                          onConfirmPick={(it) => handleConfirmPick(it, setItems)}
-                          onCancelPick={handleCancelPick}
-                          onShipConfirm={handleShipConfirm}
-                          onUndoPick={handleUndoPick}
-                          onSearchLots={handleSearchLots}
-                          isConfirming={confirmingId === setItem.delivery_detail_id}
-                          isCancelling={cancellingId === setItem.delivery_detail_id}
-                          isShipping={shippingId === setItem.delivery_detail_id}
-                          isUndoing={undoingId === setItem.delivery_detail_id}
-                          isMarkedForCancel={markedForCancel.has(getItemId(setItem))}
-                          onToggleMarkCancel={(it) => handleToggleMarkCancel(it, setItems)}
-                        />
-                      </React.Fragment>
-                    ))}
+                    {(() => {
+                      // If the main line (orderLine === prefix) is picked,
+                      // treat any Staged siblings as implicitly picked too
+                      const mainPicked = setItems.some(si =>
+                        si.order_line === prefix &&
+                        (si.pick_confirm_status === 'YES' || (parseInt(si.picked_qty) || 0) > 0)
+                      );
+                      return setItems.map((setItem, si) => {
+                        const isImpliedPicked = mainPicked &&
+                          setItem.order_line !== prefix &&
+                          /^staged/i.test(setItem.line_status || '');
+                        return (
+                          <React.Fragment key={`set-item-${getItemId(setItem) || si}`}>
+                            {si > 0 && (
+                              <View style={styles.bogoSetConnector}>
+                                <View style={styles.bogoSetConnectorLine} />
+                                <View style={[styles.bogoSetConnectorBadge, { backgroundColor: '#78909C' }]}>
+                                  <Text style={styles.bogoSetConnectorText}>{setItem.order_line}</Text>
+                                </View>
+                                <View style={styles.bogoSetConnectorLine} />
+                              </View>
+                            )}
+                            <LineItemCard
+                              item={setItem}
+                              transactionType={order?.transaction_type}
+                              onConfirmPick={(it) => handleConfirmPick(it, setItems)}
+                              onCancelPick={handleCancelPick}
+                              onShipConfirm={handleShipConfirm}
+                              onUndoPick={handleUndoPick}
+                              onSearchLots={handleSearchLots}
+                              isConfirming={confirmingId === setItem.delivery_detail_id}
+                              isCancelling={cancellingId === setItem.delivery_detail_id}
+                              isShipping={shippingId === setItem.delivery_detail_id}
+                              isUndoing={undoingId === setItem.delivery_detail_id}
+                              isMarkedForCancel={markedForCancel.has(getItemId(setItem))}
+                              onToggleMarkCancel={(it) => handleToggleMarkCancel(it, setItems)}
+                              isImpliedPicked={isImpliedPicked}
+                            />
+                          </React.Fragment>
+                        );
+                      });
+                    })()}
                   </View>
                 );
               }
