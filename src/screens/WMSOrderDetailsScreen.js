@@ -550,17 +550,17 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
               </Text>
             </View>
 
-            {/* BOGO Set: checkbox selection for each item */}
+            {/* Set items: checkbox + inline qty/lot per item */}
             {bogoSetItems && bogoSetItems.length > 0 && (
               <View style={styles.bogoPickSection}>
-                <View style={styles.bogoPickHeader}>
-                  <Ionicons name="gift-outline" size={14} color="#E65100" />
-                  <Text style={styles.bogoPickHeaderText}>BOGO SET — select items to confirm</Text>
-                </View>
                 {bogoSetItems.map((bItem) => {
                   const bid = getItemId(bItem);
                   const isChecked = checkedBogoIds.has(bid);
                   const result = bogoResults.find(r => r.itemId === bid);
+                  const bLot = bItem.lot_number || '';
+                  const bExpiry = bItem.lot_expiry_date ? new Date(bItem.lot_expiry_date).toLocaleDateString() : '';
+                  const bDays = getDaysToExpiry(bItem.lot_expiry_date);
+                  const bColor = getExpiryColor(bDays);
                   return (
                     <TouchableOpacity
                       key={bid}
@@ -581,7 +581,11 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                       <View style={{ flex: 1 }}>
                         <Text style={styles.bogoPickItemCode}>{bItem.item_number}</Text>
                         <Text style={styles.bogoPickItemDesc} numberOfLines={1}>{bItem.description}</Text>
-                        <Text style={styles.bogoPickItemQty}>Qty: {bItem.qty} {bItem.lot_number ? `| Lot: ${bItem.lot_number}` : ''}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
+                          <Text style={styles.bogoPickItemQty}>Qty: {bItem.qty}</Text>
+                          {bLot ? <Text style={styles.bogoPickItemQty}>Lot: {bLot}</Text> : null}
+                          {bExpiry ? <Text style={[styles.bogoPickItemQty, { color: bColor }]}>Exp: {bExpiry}{bDays !== null ? ` (${bDays}d)` : ''}</Text> : null}
+                        </View>
                       </View>
                       {result && (
                         <Ionicons
@@ -603,80 +607,50 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
               </View>
             )}
 
-            {/* Item Info */}
-            <View style={styles.modalItemInfo}>
-              <Text style={styles.modalItemNumber}>{item.item_number || 'N/A'}</Text>
-              <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
-              {(order?.account_name || order?.ACCOUNT_NAME || order?.customer_name) ? (
-                <View style={styles.modalAccountRow}>
-                  <Ionicons name="business-outline" size={13} color="#1565C0" />
-                  <Text style={styles.modalAccountText}>
-                    {order.account_code || order.ACCOUNT_CODE || ''}{(order.account_code || order.ACCOUNT_CODE) ? ' — ' : ''}
-                    {order.account_name || order.ACCOUNT_NAME || order.customer_name}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            {/* Toggle: Lot Based / Non Lot Based - Only for Sales Orders (ORD) */}
-            {isStoreTransaction ? (
-              <View style={[styles.cpToggleContainer, { opacity: 0.6 }]}>
-                <View style={[styles.cpToggleBtn, { backgroundColor: '#E0E0E0' }]}>
-                  <Ionicons name="layers" size={16} color="#999" />
-                  <Text style={[styles.cpToggleBtnText, { color: '#999' }]}>Lot Based</Text>
-                </View>
-                <View style={[styles.cpToggleBtn, styles.cpToggleBtnActive]}>
-                  <Ionicons name="cube" size={16} color="#FFF" />
-                  <Text style={[styles.cpToggleBtnText, styles.cpToggleBtnTextActive]}>Non Lot Based</Text>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.cpToggleContainer}>
-                <TouchableOpacity
-                  style={[styles.cpToggleBtn, isLotBased && styles.cpToggleBtnActive]}
-                  onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(true)}
-                  disabled={isRunningSequence || allCompleted}
-                >
-                  <Ionicons name="layers" size={16} color={isLotBased ? '#FFF' : '#666'} />
-                  <Text style={[styles.cpToggleBtnText, isLotBased && styles.cpToggleBtnTextActive]}>Lot Based</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.cpToggleBtn, !isLotBased && styles.cpToggleBtnActive]}
-                  onPress={() => !isRunningSequence && !allCompleted && setIsLotBased(false)}
-                  disabled={isRunningSequence || allCompleted}
-                >
-                  <Ionicons name="cube" size={16} color={!isLotBased ? '#FFF' : '#666'} />
-                  <Text style={[styles.cpToggleBtnText, !isLotBased && styles.cpToggleBtnTextActive]}>Non Lot Based</Text>
-                </TouchableOpacity>
+            {/* Single item info (only when not a group) */}
+            {(!bogoSetItems || bogoSetItems.length === 0) && (
+              <View style={styles.modalItemInfo}>
+                <Text style={styles.modalItemNumber}>{item.item_number || 'N/A'}</Text>
+                <Text style={styles.modalItemDesc} numberOfLines={2}>{item.description || 'No Description'}</Text>
+                {(order?.account_name || order?.ACCOUNT_NAME || order?.customer_name) ? (
+                  <View style={styles.modalAccountRow}>
+                    <Ionicons name="business-outline" size={13} color="#1565C0" />
+                    <Text style={styles.modalAccountText}>
+                      {order.account_code || order.ACCOUNT_CODE || ''}{(order.account_code || order.ACCOUNT_CODE) ? ' — ' : ''}
+                      {order.account_name || order.ACCOUNT_NAME || order.customer_name}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             )}
 
-            {/* Qty, Lot, Expiry Info */}
-            <View style={styles.cpInfoSection}>
-              <View style={styles.cpInfoRow}>
-                <View style={styles.cpInfoItem}>
-                  <Text style={styles.cpInfoLabel}>Quantity</Text>
-                  <Text style={styles.cpInfoValue}>{pickedQty}</Text>
+            {/* Qty/Lot/Expiry — only for single item (groups show inline above) */}
+            {(!bogoSetItems || bogoSetItems.length === 0) && (
+              <View style={styles.cpInfoSection}>
+                <View style={styles.cpInfoRow}>
+                  <View style={styles.cpInfoItem}>
+                    <Text style={styles.cpInfoLabel}>Quantity</Text>
+                    <Text style={styles.cpInfoValue}>{pickedQty}</Text>
+                  </View>
+                  <View style={styles.cpInfoItem}>
+                    <Text style={styles.cpInfoLabel}>Lot Number</Text>
+                    <Text style={[styles.cpInfoValue, !lotNumber && { color: '#999' }]}>{lotNumber || 'N/A'}</Text>
+                  </View>
                 </View>
-                <View style={styles.cpInfoItem}>
-                  <Text style={styles.cpInfoLabel}>Lot Number</Text>
-                  <Text style={[styles.cpInfoValue, !lotNumber && { color: '#999' }]}>{lotNumber || 'N/A'}</Text>
-                </View>
-              </View>
-              <View style={styles.cpInfoRow}>
-                <View style={styles.cpInfoItem}>
-                  <Text style={styles.cpInfoLabel}>Lot Expiry</Text>
-                  <Text style={styles.cpInfoValue}>
-                    {lotExpiryDate ? new Date(lotExpiryDate).toLocaleDateString() : 'N/A'}
-                  </Text>
-                </View>
-                <View style={styles.cpInfoItem}>
-                  <Text style={styles.cpInfoLabel}>Days to Expiry</Text>
-                  {daysToExpiry !== null ? (
-                    <View style={[styles.cpExpiryBadge, { backgroundColor: expiryColor + '20' }]}>
-                      <Ionicons
-                        name={daysToExpiry < 30 ? 'warning' : 'time-outline'}
-                        size={14}
+                <View style={styles.cpInfoRow}>
+                  <View style={styles.cpInfoItem}>
+                    <Text style={styles.cpInfoLabel}>Lot Expiry</Text>
+                    <Text style={styles.cpInfoValue}>
+                      {lotExpiryDate ? new Date(lotExpiryDate).toLocaleDateString() : 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={styles.cpInfoItem}>
+                    <Text style={styles.cpInfoLabel}>Days to Expiry</Text>
+                    {daysToExpiry !== null ? (
+                      <View style={[styles.cpExpiryBadge, { backgroundColor: expiryColor + '20' }]}>
+                        <Ionicons
+                          name={daysToExpiry < 30 ? 'warning' : 'time-outline'}
+                          size={14}
                         color={expiryColor}
                       />
                       <Text style={[styles.cpExpiryText, { color: expiryColor }]}>
@@ -704,6 +678,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                 </View>
               </View>
             </View>
+            )}
 
             {/* Processing Status View */}
             {(isRunningSequence || step1Completed || step2Completed || sequenceError || isRetrying || bogoResults.length > 0) ? (
