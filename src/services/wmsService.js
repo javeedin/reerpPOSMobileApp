@@ -1738,4 +1738,121 @@ export default {
   getInventoryStagedTransactions,
   deleteInventoryStagedTransaction,
   fetchFusionShipmentLines,
+  getBipExceptionId,
+  closeShippingException,
+};
+
+/**
+ * Call Oracle BIP SOAP service to get shipping exception ID for a shipment number.
+ * Returns base64-encoded XML report; we decode and extract <EXCEPTION_ID>.
+ */
+export const getBipExceptionId = async (shipmentNumber, instance) => {
+  try {
+    const currentInstance = (instance || (await getInstance())).toUpperCase();
+    const bipHost = currentInstance === 'PROD'
+      ? 'https://efmh.fa.em3.oraclecloud.com'
+      : 'https://efmh-test.fa.em3.oraclecloud.com';
+    const url = `${bipHost}/xmlpserver/services/v2/ReportService`;
+
+    const creds = await getFusionCredentials();
+    const soapBody = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+  xmlns:v2="http://xmlns.oracle.com/oxp/service/v2">
+  <soapenv:Body>
+    <v2:runReport>
+      <v2:reportRequest>
+        <v2:reportAbsolutePath>/Custom/DEXPRESS/MOBILEAPP/WMS_GET_EXCEPTION_ID_BIP.xdo</v2:reportAbsolutePath>
+        <v2:parameterNameValues>
+          <v2:listOfParamNameValues>
+            <v2:item>
+              <v2:name>SHIPMENT_NUMBER</v2:name>
+              <v2:values><v2:item>${shipmentNumber}</v2:item></v2:values>
+            </v2:item>
+          </v2:listOfParamNameValues>
+        </v2:parameterNameValues>
+      </v2:reportRequest>
+      <v2:userID>${creds.username}</v2:userID>
+      <v2:password>${creds.password}</v2:password>
+    </v2:runReport>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+    console.log('[WMSService] BIP Exception ID SOAP call:', url);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+        'SOAPAction': 'runReport',
+      },
+      body: soapBody,
+    });
+
+    const responseText = await response.text();
+    console.log('[WMSService] BIP SOAP response status:', response.status);
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}`, raw: responseText };
+    }
+
+    // Extract base64 report data from SOAP response: <reportBytes>...</reportBytes>
+    const base64Match = responseText.match(/<reportBytes[^>]*>([\s\S]*?)<\/reportBytes>/i);
+    if (!base64Match) {
+      return { success: false, error: 'No reportBytes in BIP response', raw: responseText };
+    }
+
+    // Decode base64 → XML string
+    const base64Data = base64Match[1].trim();
+    const decoded = atob(base64Data);
+    console.log('[WMSService] BIP decoded XML:', decoded.substring(0, 500));
+
+    // Extract EXCEPTION_ID from decoded XML
+    const exceptionIdMatch = decoded.match(/<EXCEPTION_ID[^>]*>([\s\S]*?)<\/EXCEPTION_ID>/i);
+    if (!exceptionIdMatch || !exceptionIdMatch[1].trim()) {
+      return { success: false, error: 'EXCEPTION_ID not found in BIP report', decoded };
+    }
+
+    const exceptionId = exceptionIdMatch[1].trim();
+    console.log('[WMSService] Exception ID found:', exceptionId);
+    return { success: true, exceptionId, decoded };
+  } catch (error) {
+    console.error('[WMSService] BIP Exception ID error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Close a shipping exception by PATCH /shippingExceptions/{exceptionId}
+ */
+export const closeShippingException = async (exceptionId, instance) => {
+  try {
+    const currentInstance = (instance || (await getInstance())).toUpperCase();
+    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+    const url = `${fusionBaseUrl}/shippingExceptions/${exceptionId}`;
+
+    console.log('[WMSService] Close Shipping Exception:', url);
+
+    const authHeader = await getFusionAuthHeader();
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ Status: 'Closed' }),
+    });
+
+    const responseText = await response.text();
+    console.log('[WMSService] Close Exception response status:', response.status);
+
+    let data;
+    try { data = JSON.parse(responseText); } catch { data = { message: responseText.substring(0, 300) }; }
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}`, data };
+    }
+    return { success: true, data };
+  } catch (error) {
+    console.error('[WMSService] Close Shipping Exception error:', error);
+    return { success: false, error: error.message };
+  }
 };

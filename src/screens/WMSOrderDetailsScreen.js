@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction, fetchFusionShipmentLines } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction, fetchFusionShipmentLines, getBipExceptionId, closeShippingException } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import { getAllBogo } from '../services/syncService';
 import printerService from '../services/printerService';
@@ -1044,6 +1044,15 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
   const [step2Response, setStep2Response] = useState(null);
   const [step3Response, setStep3Response] = useState(null);
 
+  // Retry (exception close) state
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryStep, setRetryStep] = useState(0); // 1=BIP, 2=CloseException, 3=RetryShipConfirm
+  const [retryError, setRetryError] = useState(null);
+  const [retryExceptionId, setRetryExceptionId] = useState('');
+  const [retryBipResponse, setRetryBipResponse] = useState(null);
+  const [retryCloseResponse, setRetryCloseResponse] = useState(null);
+  const [retryShipResponse, setRetryShipResponse] = useState(null);
+
   const sourceOrderNumber = order?.source_order_number || order?.order_number || '';
   const instanceUpper = (instance || 'TEST').toUpperCase();
 
@@ -1127,6 +1136,78 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
     }
   };
 
+  // Retry: BIP → get exception_id → close exception → retry ship confirm
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    setRetryError(null);
+    setRetryStep(1);
+    setRetryExceptionId('');
+    setRetryBipResponse(null);
+    setRetryCloseResponse(null);
+    setRetryShipResponse(null);
+
+    try {
+      // Retry Step 1: BIP SOAP — get exception ID
+      const bipResult = await getBipExceptionId(shipmentNumber, instanceUpper);
+      setRetryBipResponse(bipResult);
+
+      if (!bipResult.success) {
+        setRetryError(`BIP report failed: ${bipResult.error}`);
+        setIsRetrying(false);
+        setRetryStep(0);
+        return;
+      }
+
+      const exId = bipResult.exceptionId;
+      setRetryExceptionId(exId);
+
+      // Retry Step 2: Close the shipping exception
+      setRetryStep(2);
+      const closeResult = await closeShippingException(exId, instanceUpper);
+      setRetryCloseResponse(closeResult.data);
+
+      if (!closeResult.success) {
+        setRetryError(`Close exception failed: ${closeResult.error}`);
+        setIsRetrying(false);
+        setRetryStep(0);
+        return;
+      }
+
+      // Retry Step 3: Re-run Fusion ship confirm
+      setRetryStep(3);
+      const shipResult = await fusionShipConfirmTransaction(shipmentNumber, 'GIC');
+      setRetryShipResponse(shipResult.data);
+
+      if (shipResult.success) {
+        setStep2Completed(true);
+        setRetryStep(0);
+        setSequenceError(null);
+
+        // Now run Step 3 (update ship status)
+        setCurrentStep(3);
+        setIsRunningSequence(true);
+        const step3Result = await updateShipConfirmationStatus(sourceOrderNumber);
+        setStep3Response(step3Result.data || { error: step3Result.error });
+        setIsRunningSequence(false);
+
+        if (step3Result.success) {
+          setStep3Completed(true);
+          setAllCompleted(true);
+          if (onProcess) onProcess({ success: true });
+        } else {
+          setSequenceError(step3Result.error || 'Update ship confirmation status failed');
+        }
+      } else {
+        setRetryError(`Ship confirm still failing: ${shipResult.error}`);
+      }
+    } catch (error) {
+      setRetryError(error.message || 'Unknown retry error');
+    } finally {
+      setIsRetrying(false);
+      if (retryStep !== 0) setRetryStep(0);
+    }
+  };
+
   const handleClose = () => {
     setCurrentStep(0);
     setStep1Completed(false);
@@ -1140,6 +1221,13 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
     setStep2Response(null);
     setStep3Response(null);
     setShowDetails(false);
+    setIsRetrying(false);
+    setRetryStep(0);
+    setRetryError(null);
+    setRetryExceptionId('');
+    setRetryBipResponse(null);
+    setRetryCloseResponse(null);
+    setRetryShipResponse(null);
     onClose();
   };
 
@@ -1275,10 +1363,66 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
                 )}
 
                 {/* Error */}
-                {sequenceError && (
+                {sequenceError && !isRetrying && (
                   <View style={styles.sequenceErrorContainer}>
                     <Ionicons name="alert-circle" size={20} color="#F44336" />
                     <Text style={styles.sequenceErrorText}>{sequenceError}</Text>
+                  </View>
+                )}
+
+                {/* Retry progress rows — shown when retrying after Step 2 failure */}
+                {(isRetrying || retryBipResponse || retryCloseResponse || retryShipResponse) && !allCompleted && (
+                  <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#EEE' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#FF9800', marginBottom: 6 }}>
+                      Retry — Close Exception &amp; Reconfirm
+                    </Text>
+
+                    {/* Retry Step 1: BIP */}
+                    {renderStatusRow(
+                      'R1',
+                      'Get Exception ID (BIP)',
+                      `SOAP /xmlpserver/services/v2/ReportService`,
+                      !!retryBipResponse && retryBipResponse.success,
+                      isRetrying && retryStep === 1,
+                      retryBipResponse
+                    )}
+                    {retryExceptionId ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 44, marginBottom: 4 }}>
+                        <Ionicons name="key-outline" size={13} color="#1565C0" />
+                        <Text style={{ fontSize: 12, color: '#1565C0', fontWeight: '700', marginLeft: 4 }}>
+                          Exception ID: {retryExceptionId}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <View style={[styles.sequenceStatusLine, retryBipResponse?.success && styles.sequenceStatusLineCompleted]} />
+
+                    {/* Retry Step 2: Close exception */}
+                    {renderStatusRow(
+                      'R2',
+                      `Close Exception ${retryExceptionId || ''}`,
+                      `PATCH /shippingExceptions/${retryExceptionId || '{id}'}`,
+                      !!retryCloseResponse && !retryError?.includes('Close'),
+                      isRetrying && retryStep === 2,
+                      retryCloseResponse
+                    )}
+                    <View style={[styles.sequenceStatusLine, retryCloseResponse && !retryError?.includes('Close') && styles.sequenceStatusLineCompleted]} />
+
+                    {/* Retry Step 3: Re-run ship confirm */}
+                    {renderStatusRow(
+                      'R3',
+                      'Retry Fusion Ship Confirm',
+                      `POST /shippingTransactions`,
+                      !!retryShipResponse && !retryError?.includes('Ship confirm'),
+                      isRetrying && retryStep === 3,
+                      retryShipResponse
+                    )}
+
+                    {retryError && (
+                      <View style={[styles.sequenceErrorContainer, { marginTop: 6 }]}>
+                        <Ionicons name="alert-circle" size={18} color="#F44336" />
+                        <Text style={[styles.sequenceErrorText, { fontSize: 12 }]}>{retryError}</Text>
+                      </View>
+                    )}
                   </View>
                 )}
 
@@ -1417,12 +1561,25 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
           </ScrollView>
 
           {/* Action Buttons */}
-          {(allCompleted || sequenceError) && !isRunningSequence ? (
+          {(allCompleted || sequenceError) && !isRunningSequence && !isRetrying ? (
             <View style={styles.confirmModalActions}>
-              {sequenceError && (
+              {sequenceError && step1Completed && !step2Completed && (
+                // Step 2 failed → offer exception-close retry
+                <TouchableOpacity
+                  style={[styles.confirmModalCancelBtn, { backgroundColor: '#FF9800' }]}
+                  onPress={handleRetry}
+                  disabled={isRetrying}
+                >
+                  <Ionicons name="refresh" size={18} color="#FFF" />
+                  <Text style={[styles.confirmModalCancelText, { color: '#FFF' }]}>Retry</Text>
+                </TouchableOpacity>
+              )}
+              {sequenceError && !step1Completed && (
+                // Step 1 failed → simple full retry
                 <TouchableOpacity
                   style={[styles.confirmModalCancelBtn, { backgroundColor: '#FF9800' }]}
                   onPress={handleProcess}
+                  disabled={isRunningSequence}
                 >
                   <Ionicons name="refresh" size={18} color="#FFF" />
                   <Text style={[styles.confirmModalCancelText, { color: '#FFF' }]}>Retry</Text>
@@ -1435,6 +1592,15 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
                 <Ionicons name={allCompleted ? 'checkmark-done' : 'close'} size={20} color="#FFF" />
                 <Text style={styles.confirmModalConfirmText}>
                   {allCompleted ? 'Done' : 'Close'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : isRetrying ? (
+            <View style={styles.confirmModalActions}>
+              <TouchableOpacity style={[styles.confirmModalConfirmBtn, { backgroundColor: '#999' }]} disabled>
+                <ActivityIndicator size="small" color="#FFF" style={{ marginRight: 8 }} />
+                <Text style={styles.confirmModalConfirmText}>
+                  {retryStep === 1 ? 'Getting Exception ID...' : retryStep === 2 ? 'Closing Exception...' : 'Retrying Ship Confirm...'}
                 </Text>
               </TouchableOpacity>
             </View>
