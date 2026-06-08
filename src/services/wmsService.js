@@ -1805,15 +1805,21 @@ export const getBipExceptionId = async (shipmentNumber, instance) => {
     const decoded = atob(base64Data);
     console.log('[WMSService] BIP decoded XML:', decoded.substring(0, 500));
 
-    // Extract EXCEPTION_ID from decoded XML
-    const exceptionIdMatch = decoded.match(/<EXCEPTION_ID[^>]*>([\s\S]*?)<\/EXCEPTION_ID>/i);
-    if (!exceptionIdMatch || !exceptionIdMatch[1].trim()) {
+    // Extract ALL EXCEPTION_IDs from decoded XML (may be multiple rows)
+    const exceptionIdRegex = /<EXCEPTION_ID[^>]*>([\s\S]*?)<\/EXCEPTION_ID>/gi;
+    const exceptionIds = [];
+    let match;
+    while ((match = exceptionIdRegex.exec(decoded)) !== null) {
+      const id = match[1].trim();
+      if (id) exceptionIds.push(id);
+    }
+
+    if (exceptionIds.length === 0) {
       return { success: false, error: 'EXCEPTION_ID not found in BIP report', decoded };
     }
 
-    const exceptionId = exceptionIdMatch[1].trim();
-    console.log('[WMSService] Exception ID found:', exceptionId);
-    return { success: true, exceptionId, decoded };
+    console.log('[WMSService] Exception IDs found:', exceptionIds);
+    return { success: true, exceptionIds, decoded };
   } catch (error) {
     console.error('[WMSService] BIP Exception ID error:', error);
     return { success: false, error: error.message };

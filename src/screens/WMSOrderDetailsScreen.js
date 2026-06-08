@@ -1136,7 +1136,7 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
     }
   };
 
-  // Retry: BIP → get exception_id → close exception → retry ship confirm
+  // Retry: BIP → get all exception_ids → close each → retry ship confirm
   const handleRetry = async () => {
     setIsRetrying(true);
     setRetryError(null);
@@ -1147,7 +1147,7 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
     setRetryShipResponse(null);
 
     try {
-      // Retry Step 1: BIP SOAP — get exception ID
+      // Retry Step 1: BIP SOAP — get all exception IDs
       const bipResult = await getBipExceptionId(shipmentNumber, instanceUpper);
       setRetryBipResponse(bipResult);
 
@@ -1158,20 +1158,24 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
         return;
       }
 
-      const exId = bipResult.exceptionId;
-      setRetryExceptionId(exId);
+      const exIds = bipResult.exceptionIds; // array
+      setRetryExceptionId(exIds.join(', '));
 
-      // Retry Step 2: Close the shipping exception
+      // Retry Step 2: Close ALL shipping exceptions
       setRetryStep(2);
-      const closeResult = await closeShippingException(exId, instanceUpper);
-      setRetryCloseResponse(closeResult.data);
-
-      if (!closeResult.success) {
-        setRetryError(`Close exception failed: ${closeResult.error}`);
-        setIsRetrying(false);
-        setRetryStep(0);
-        return;
+      const closeResponses = [];
+      for (const exId of exIds) {
+        const closeResult = await closeShippingException(exId, instanceUpper);
+        closeResponses.push({ exceptionId: exId, ...closeResult });
+        if (!closeResult.success) {
+          setRetryCloseResponse(closeResponses);
+          setRetryError(`Close exception ${exId} failed: ${closeResult.error}`);
+          setIsRetrying(false);
+          setRetryStep(0);
+          return;
+        }
       }
+      setRetryCloseResponse(closeResponses);
 
       // Retry Step 3: Re-run Fusion ship confirm
       setRetryStep(3);
@@ -1387,20 +1391,20 @@ const SalesShipConfirmModal = ({ visible, onClose, order, instance, onProcess })
                       retryBipResponse
                     )}
                     {retryExceptionId ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 44, marginBottom: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 44, marginBottom: 4, flexWrap: 'wrap' }}>
                         <Ionicons name="key-outline" size={13} color="#1565C0" />
                         <Text style={{ fontSize: 12, color: '#1565C0', fontWeight: '700', marginLeft: 4 }}>
-                          Exception ID: {retryExceptionId}
+                          Exception ID{retryExceptionId.includes(',') ? 's' : ''}: {retryExceptionId}
                         </Text>
                       </View>
                     ) : null}
                     <View style={[styles.sequenceStatusLine, retryBipResponse?.success && styles.sequenceStatusLineCompleted]} />
 
-                    {/* Retry Step 2: Close exception */}
+                    {/* Retry Step 2: Close exception(s) */}
                     {renderStatusRow(
                       'R2',
-                      `Close Exception ${retryExceptionId || ''}`,
-                      `PATCH /shippingExceptions/${retryExceptionId || '{id}'}`,
+                      `Close Exception${retryExceptionId?.includes(',') ? 's' : ''} (${retryExceptionId || '...'})`,
+                      `PATCH /shippingExceptions/{id}`,
                       !!retryCloseResponse && !retryError?.includes('Close'),
                       isRetrying && retryStep === 2,
                       retryCloseResponse
