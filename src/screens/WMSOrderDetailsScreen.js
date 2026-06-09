@@ -3574,8 +3574,8 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         </View>
       )}
 
-      {/* Ship Action Buttons - show when picked but not shipped, only for Store transactions */}
-      {showShipButtons && isStoreTransfer && (
+      {/* Ship Action Buttons - show when picked/staged and not shipped */}
+      {showShipButtons && (isStoreTransfer || isStaged) && (
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={[styles.shipConfirmButton, { flex: 1 }]}
