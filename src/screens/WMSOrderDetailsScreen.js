@@ -3393,10 +3393,10 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
 
   const isStaged = /^staged/i.test(item.line_status || '');
 
-  // Show Confirm and Cancel buttons only when picked_qty = 0 and not cancelled
+  // Show Confirm and Cancel buttons only when picked_qty = 0 and not cancelled/staged
   const showPickButtons = pickedQty === 0 && !isCancelled && !isImpliedPicked && !isStaged;
-  // Show Ship Confirm button when picked or staged (both count as ready to ship), not yet shipped
-  const showShipButtons = (pickedQty > 0 || isStaged || isPicked) && !isShipped && !isCancelled && !isImpliedPicked;
+  // Show Ship Confirm button when picked but not shipped (Store orders only; staged uses header button)
+  const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled && !isImpliedPicked;
   // Cancel button only shows in pending state (within showPickButtons)
 
   // Use the "id" field directly as-is
@@ -3574,8 +3574,8 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         </View>
       )}
 
-      {/* Ship Action Buttons - show when picked/staged and not shipped */}
-      {showShipButtons && (isStoreTransfer || isStaged) && (
+      {/* Ship Action Buttons - show when picked and not shipped, Store only; staged handled at header level */}
+      {showShipButtons && isStoreTransfer && !isStaged && (
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={[styles.shipConfirmButton, { flex: 1 }]}
@@ -5664,6 +5664,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     pendingLines: lines.filter(l => {
       if (isCancelledLine(l)) return false;
       if (impliedPickedIds.has(getItemId(l))) return false;
+      if (/^staged/i.test(l.line_status || '')) return false; // staged = already picked in Fusion
       return (parseInt(l.picked_qty) || 0) === 0;
     }).length,
     pickedLines: lines.filter(l => {
@@ -5968,7 +5969,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
               <Text style={styles.shipAllButtonText}>Ship All</Text>
             </TouchableOpacity>
           )}
-          {/* Sales Ship Confirm Button - Only for Sales Orders when all lines are pick confirmed and not yet shipped */}
+          {/* Sales Ship Confirm Button - Sales Orders when all lines are picked/staged and not yet shipped */}
           {lines.length > 0 && summary.pendingLines === 0 && summary.shippedLines < lines.length && !(order?.transaction_type || '').toLowerCase().includes('store') && (
             <TouchableOpacity style={[styles.shipAllButton, { backgroundColor: '#7B1FA2' }]} onPress={handleShipConfirmWithSync}>
               <Ionicons name="airplane" size={16} color="#FFF" />
