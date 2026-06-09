@@ -4907,7 +4907,30 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   // Group filtered lines by OrderLine prefix (e.g. "1.1","1.2","1.3" → group "1")
   // Falls back to BOGO grouping when no OrderLine data is available
   const displayGroups = useMemo(() => {
-    // Group by order_line prefix (integer before first dot): "3", "3.1", "3.2" → group "3"
+    const groups = [];
+
+    // SP% orders: no order_line numbering — group by BOGO sets
+    if (/^SP/i.test(orderNumber || '')) {
+      const used = new Set();
+      filteredLines.forEach(item => {
+        const id = getItemId(item);
+        if (used.has(id)) return;
+        used.add(id);
+        const partnerCode = bogoSets.get((item.item_number || '').toUpperCase());
+        const partner = partnerCode
+          ? filteredLines.find(l => (l.item_number || '').toUpperCase() === partnerCode && !used.has(getItemId(l)))
+          : null;
+        if (partner) {
+          used.add(getItemId(partner));
+          groups.push({ type: 'order_set', prefix: item.item_number, items: [item, partner] });
+        } else {
+          groups.push({ type: 'single', item });
+        }
+      });
+      return groups;
+    }
+
+    // Default: group by order_line prefix (integer before first dot): "3", "3.1", "3.2" → group "3"
     const groupMap = new Map(); // prefix → [lines]
     const noLineItems = [];
 
@@ -4919,7 +4942,6 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       groupMap.get(prefix).push(item);
     });
 
-    const groups = [];
     const sortedKeys = [...groupMap.keys()].sort((a, b) => parseInt(a) - parseInt(b));
     sortedKeys.forEach(prefix => {
       const members = groupMap.get(prefix);
@@ -4938,7 +4960,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     ));
 
     return groups;
-  }, [filteredLines]);
+  }, [filteredLines, orderNumber, bogoSets]);
 
   // Get unique item suggestions for autocomplete
   const getFilterSuggestions = () => {
