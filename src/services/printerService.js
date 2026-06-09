@@ -157,7 +157,7 @@ class PrinterService {
       lines.push(this.truncateText(`Lorry: ${lorry}`, LINE_WIDTH));
     }
     if (bay) {
-      lines.push(this.truncateText(`Loading Bay: ${bay}`, LINE_WIDTH));
+      lines.push(this.truncateText(bay, LINE_WIDTH));
     }
 
     // Order details
@@ -244,7 +244,7 @@ class PrinterService {
       commands.push(LF);
     }
     if (bay) {
-      this.addText(commands, this.truncateText(`Loading Bay: ${bay}`, LINE_WIDTH));
+      this.addText(commands, this.truncateText(bay, LINE_WIDTH));
       commands.push(LF);
     }
 
