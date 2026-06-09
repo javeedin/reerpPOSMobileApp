@@ -371,19 +371,19 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     setIsRunningSequence(true);
     setSequenceError(null);
     setAllCompleted(false);
-    // Pre-mark staged/fusion-only items as 'staged' — they won't be processed via API
+    // Pre-mark staged items as 'staged' — they won't call the API but will be confirmed in UI
     setBogoResults(toProcess.map(i => ({
       itemId: getItemId(i),
       label: i.item_number,
       desc: i.description,
-      status: (i.fusion_only && /^staged/i.test(i.line_status || '')) ? 'staged' : 'pending',
+      status: /^staged/i.test(i.line_status || '') ? 'staged' : 'pending',
     })));
 
     let anyError = false;
 
     for (const anItem of toProcess) {
-      // Skip staged fusion-only items — they're auto-picked when the main line is confirmed
-      if (anItem.fusion_only && /^staged/i.test(anItem.line_status || '')) continue;
+      // Skip staged items — they're auto-picked in Fusion, just mark confirmed in UI
+      if (/^staged/i.test(anItem.line_status || '')) continue;
       const id = getItemId(anItem);
       setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'processing' } : r));
       const p = buildPayloadsForItem(anItem);
@@ -435,6 +435,21 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     setIsRunningSequence(false);
     if (!anyError) setAllCompleted(true);
     else setSequenceError('One or more items failed. Check results above.');
+
+    // Mark all staged items in this group as confirmed in the UI
+    const stagedItems = toProcess.filter(i => /^staged/i.test(i.line_status || ''));
+    if (stagedItems.length > 0) {
+      const stagedIds = new Set(stagedItems.map(i => getItemId(i)));
+      setLines(prev => prev.map(line =>
+        stagedIds.has(getItemId(line))
+          ? { ...line, pick_confirm_status: 'YES', picked_qty: line.qty, pick_confirm_date: new Date().toISOString(), pick_confirm_by: pickerName }
+          : line
+      ));
+      // Also mark as success in results
+      setBogoResults(prev => prev.map(r =>
+        stagedItems.some(i => getItemId(i) === r.itemId) ? { ...r, status: 'success' } : r
+      ));
+    }
   };
 
   const handleConfirm = () => {
