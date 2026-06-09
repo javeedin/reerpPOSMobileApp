@@ -2290,6 +2290,12 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
               {/* Preview text */}
               <Text style={styles.printPreviewText}>{previewText}</Text>
             </View>
+            {/* Loading Bay */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#E3F2FD', borderRadius: 6, gap: 8 }}>
+              <Ionicons name="location-outline" size={16} color="#1565C0" />
+              <Text style={{ fontSize: 13, color: '#555', fontWeight: '500' }}>Loading Bay:</Text>
+              <Text style={{ fontSize: 13, color: '#1565C0', fontWeight: '700', flex: 1 }}>{loadingBay}</Text>
+            </View>
           </View>
 
           {/* Print to Label Button - Opens Scanner */}
