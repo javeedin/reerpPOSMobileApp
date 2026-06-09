@@ -2083,7 +2083,7 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
     ? new Date(order.assignment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : 'N/A';
   const accountName = order?.account_name || order?.customer_name || 'N/A';
-  const loadingBay = order?.loading_bay || 'N/A';
+  const loadingBay = order?.loading_bay || order?.LOADING_BAY || order?.loadingBay || '';
   const lorryNumber = order?.lorry_number || 'N/A';
 
   const orderData = {
