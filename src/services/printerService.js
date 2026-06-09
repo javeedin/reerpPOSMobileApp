@@ -150,11 +150,11 @@ class PrinterService {
     lines.push('');
     lines.push(separator);
 
-    // Lorry and Bay on separate lines
+    // Lorry and Bay on separate lines — values only, no labels
     const lorry = orderData.lorry || '';
     const bay = orderData.loadingBy || '';
     if (lorry) {
-      lines.push(this.truncateText(`Lorry: ${lorry}`, LINE_WIDTH));
+      lines.push(this.truncateText(lorry, LINE_WIDTH));
     }
     if (bay) {
       lines.push(this.truncateText(bay, LINE_WIDTH));
@@ -236,11 +236,11 @@ class PrinterService {
     this.addText(commands, separator);
     commands.push(LF);
 
-    // Lorry and Bay on separate lines
+    // Lorry and Bay on separate lines — values only, no labels
     const lorry = orderData.lorry || '';
     const bay = orderData.loadingBy || '';
     if (lorry) {
-      this.addText(commands, this.truncateText(`Lorry: ${lorry}`, LINE_WIDTH));
+      this.addText(commands, this.truncateText(lorry, LINE_WIDTH));
       commands.push(LF);
     }
     if (bay) {
