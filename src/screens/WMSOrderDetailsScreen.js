@@ -3391,10 +3391,12 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
     }
   }, [isHighDiscount, isStoreTransfer]);
 
+  const isStaged = /^staged/i.test(item.line_status || '');
+
   // Show Confirm and Cancel buttons only when picked_qty = 0 and not cancelled
-  const showPickButtons = pickedQty === 0 && !isCancelled && !isImpliedPicked;
-  // Show Ship Confirm button when picked but not shipped (Store orders only)
-  const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled && !isImpliedPicked;
+  const showPickButtons = pickedQty === 0 && !isCancelled && !isImpliedPicked && !isStaged;
+  // Show Ship Confirm button when picked or staged (both count as ready to ship), not yet shipped
+  const showShipButtons = (pickedQty > 0 || isStaged || isPicked) && !isShipped && !isCancelled && !isImpliedPicked;
   // Cancel button only shows in pending state (within showPickButtons)
 
   // Use the "id" field directly as-is
