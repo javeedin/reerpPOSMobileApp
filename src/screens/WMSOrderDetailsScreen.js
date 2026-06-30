@@ -2010,9 +2010,9 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
                             Expiry: {lot.expirationDate ? new Date(lot.expirationDate).toLocaleDateString() : 'N/A'}
                             {lot.expirationDate ? (() => {
                               const days = Math.ceil((new Date(lot.expirationDate) - new Date()) / (1000 * 60 * 60 * 24));
-                              if (days < 0) return <Text style={{ color: '#C62828' }}> (Expired)</Text>;
-                              if (days <= 30) return <Text style={{ color: '#E65100' }}> ({days}d left)</Text>;
-                              return <Text style={{ color: '#388E3C' }}> ({days}d left)</Text>;
+                              if (days < 0) return <Text style={{ color: '#C62828', fontWeight: 'bold' }}> (Expired)</Text>;
+                              if (days <= 30) return <Text style={{ color: '#C62828', fontWeight: 'bold' }}> ({days}d left)</Text>;
+                              return <Text style={{ color: '#C62828', fontWeight: 'bold' }}> ({days}d left)</Text>;
                             })() : null}
                           </Text>
                         </View>
