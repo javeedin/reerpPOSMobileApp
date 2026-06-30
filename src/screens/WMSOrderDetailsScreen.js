@@ -1918,7 +1918,7 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
-        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '80%', paddingBottom: 0, flex: 1 }}>
+        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '90%', paddingBottom: 0, flex: 1 }}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <Ionicons name="layers-outline" size={24} color="#1565C0" />
@@ -1989,47 +1989,29 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
                       onPress={() => handleSelect(lot)}
                       disabled={!hasMultipleLots}
                     >
-                      <View style={styles.lotHeader}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          {hasMultipleLots && (
-                            <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: isSelected ? '#1565C0' : '#CCC', backgroundColor: isSelected ? '#1565C0' : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
-                              {isSelected && <Ionicons name="checkmark" size={11} color="#FFF" />}
-                            </View>
-                          )}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {hasMultipleLots && (
+                          <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: isSelected ? '#1565C0' : '#CCC', backgroundColor: isSelected ? '#1565C0' : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
+                            {isSelected && <Ionicons name="checkmark" size={11} color="#FFF" />}
+                          </View>
+                        )}
+                        {/* Lot number + expiry on left, qty badge on right */}
+                        <View style={{ flex: 1 }}>
                           <Text style={styles.lotNumber}>{lot.lotNumber}</Text>
+                          <Text style={{ fontSize: 12, color: '#666', marginTop: 1 }}>
+                            <Ionicons name="calendar-outline" size={12} color="#666" />
+                            {' '}Exp: {lot.expirationDate ? new Date(lot.expirationDate).toLocaleDateString() : 'N/A'}
+                            {lot.expirationDate ? (() => {
+                              const days = Math.ceil((new Date(lot.expirationDate) - new Date()) / (1000 * 60 * 60 * 24));
+                              if (days < 0) return <Text style={{ color: '#C62828', fontWeight: 'bold' }}> (Expired)</Text>;
+                              return <Text style={{ color: '#C62828', fontWeight: 'bold' }}> ({days}d)</Text>;
+                            })() : null}
+                          </Text>
                         </View>
                         <View style={[styles.lotQtyBadge, !sufficient && { backgroundColor: '#FFEBEE' }]}>
                           <Text style={[styles.lotQtyText, !sufficient && { color: '#C62828' }]}>{lotQty}</Text>
                           {!sufficient && <Ionicons name="warning-outline" size={12} color="#C62828" style={{ marginLeft: 3 }} />}
                         </View>
-                      </View>
-                      <View style={styles.lotDetails}>
-                        <View style={styles.lotDetailItem}>
-                          <Ionicons name="calendar-outline" size={14} color="#666" />
-                          <Text style={styles.lotDetailText}>
-                            Expiry: {lot.expirationDate ? new Date(lot.expirationDate).toLocaleDateString() : 'N/A'}
-                            {lot.expirationDate ? (() => {
-                              const days = Math.ceil((new Date(lot.expirationDate) - new Date()) / (1000 * 60 * 60 * 24));
-                              if (days < 0) return <Text style={{ color: '#C62828', fontWeight: 'bold' }}> (Expired)</Text>;
-                              if (days <= 30) return <Text style={{ color: '#C62828', fontWeight: 'bold' }}> ({days}d left)</Text>;
-                              return <Text style={{ color: '#C62828', fontWeight: 'bold' }}> ({days}d left)</Text>;
-                            })() : null}
-                          </Text>
-                        </View>
-                        {lot.gradeCode && (
-                          <View style={styles.lotDetailItem}>
-                            <Ionicons name="star-outline" size={14} color="#666" />
-                            <Text style={styles.lotDetailText}>Grade: {lot.gradeCode}</Text>
-                          </View>
-                        )}
-                        {lot.originationDate && (
-                          <View style={styles.lotDetailItem}>
-                            <Ionicons name="time-outline" size={14} color="#666" />
-                            <Text style={styles.lotDetailText}>
-                              Origin: {new Date(lot.originationDate).toLocaleDateString()}
-                            </Text>
-                          </View>
-                        )}
                       </View>
                     </TouchableOpacity>
                   );
