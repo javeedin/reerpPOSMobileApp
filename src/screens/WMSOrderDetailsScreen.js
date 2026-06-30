@@ -1965,6 +1965,11 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
           )}
 
           {/* Lots List */}
+          {!isLoading && (
+            <Text style={{ paddingHorizontal: 12, paddingBottom: 4, fontSize: 11, color: '#999' }}>
+              Lots loaded: {lots ? lots.length : 0} | lotsHref: {onhandItem?.lotsHref ? 'YES' : 'NO'}
+            </Text>
+          )}
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}>
             {isLoading ? (
               <View style={styles.lotsLoading}>
