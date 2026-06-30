@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAuth } from '../context/AuthContext';
-import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, fetchItemLotsByItem, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction, fetchFusionShipmentLines, getBipExceptionId, closeShippingException } from '../services/wmsService';
+import { fetchShipmentLines, confirmPick, confirmPickPending, fusionPickTransaction, updatePickConfirmStatus, shipConfirm, processS2VShipment, fetchItemOnhand, fetchItemLots, getShipmentNumber, fusionShipConfirmTransaction, updateShipConfirmationStatus, cancelOrderLine, getCancelOrderLineUrl, updateCancelStatus, updatePickedQty, cancelS2VLot, getInventoryStagedTransactions, deleteInventoryStagedTransaction, fetchFusionShipmentLines, getBipExceptionId, closeShippingException } from '../services/wmsService';
 import { getInstance, getFusionBaseUrl } from '../services/api';
 import { getAllBogo } from '../services/syncService';
 import printerService from '../services/printerService';
@@ -5609,38 +5609,32 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
         const allOnhand = onhandResult.items;
         setOnhandItem(allOnhand[0]);
 
-        // Try direct lotNumbers endpoint first (most reliable)
-        const directResult = await fetchItemLotsByItem(organizationCode, itemNumber);
-        if (directResult.success && directResult.lots && directResult.lots.length > 0) {
-          setLots(directResult.lots);
-        } else {
-          // Fallback: fetch lots via child href from each onhand record and combine
-          const allLots = [];
-          await Promise.all(
-            allOnhand.map(async (onhand) => {
-              if (!onhand.lotsHref) return;
-              const lotsResult = await fetchItemLots(onhand.lotsHref);
-              if (lotsResult.success && lotsResult.lots) {
-                allLots.push(...lotsResult.lots);
-              }
-            })
-          );
-
-          // Deduplicate by lot number, summing qty across locations
-          const lotMap = new Map();
-          allLots.forEach(lot => {
-            if (lotMap.has(lot.lotNumber)) {
-              const existing = lotMap.get(lot.lotNumber);
-              lotMap.set(lot.lotNumber, {
-                ...existing,
-                quantity: (parseInt(existing.quantity) || 0) + (parseInt(lot.quantity) || 0),
-              });
-            } else {
-              lotMap.set(lot.lotNumber, { ...lot });
+        // Fetch lots via child href for every onhand record and combine
+        const allLots = [];
+        await Promise.all(
+          allOnhand.map(async (onhand) => {
+            if (!onhand.lotsHref) return;
+            const lotsResult = await fetchItemLots(onhand.lotsHref);
+            if (lotsResult.success && lotsResult.lots) {
+              allLots.push(...lotsResult.lots);
             }
-          });
-          setLots(Array.from(lotMap.values()));
-        }
+          })
+        );
+
+        // Deduplicate by lot number, summing qty across locations
+        const lotMap = new Map();
+        allLots.forEach(lot => {
+          if (lotMap.has(lot.lotNumber)) {
+            const existing = lotMap.get(lot.lotNumber);
+            lotMap.set(lot.lotNumber, {
+              ...existing,
+              quantity: (parseInt(existing.quantity) || 0) + (parseInt(lot.quantity) || 0),
+            });
+          } else {
+            lotMap.set(lot.lotNumber, { ...lot });
+          }
+        });
+        setLots(Array.from(lotMap.values()));
       } else {
         console.log('[WMSOrderDetails] No onhand found for item:', itemNumber);
       }

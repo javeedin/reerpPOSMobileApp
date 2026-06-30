@@ -880,20 +880,27 @@ export const fetchItemOnhand = async (organizationCode, subinventoryCode, itemNu
     }
 
     const data = await response.json();
-    console.log('[WMSService] Fetched onhand:', data?.items?.length || 0);
+    console.log('[WMSService] Fetched onhand items:', data?.items?.length || 0, JSON.stringify(data?.items?.map(i => ({ qty: i.PrimaryQuantity, links: i.links?.length }))));
 
-    // Extract onhand items with lots href
     const onhandItems = [];
     if (data?.items && data.items.length > 0) {
       data.items.forEach(item => {
-        // Find lots href from links
+        // Extract self href first, then construct lots href from it as the reliable approach
+        let selfHref = null;
         let lotsHref = null;
         if (item.links) {
+          const selfLink = item.links.find(link => link.rel === 'self' || link.rel === 'canonical');
+          if (selfLink) selfHref = selfLink.href;
+
           const lotsLink = item.links.find(link => link.name === 'lots' && link.rel === 'child');
-          if (lotsLink) {
-            lotsHref = lotsLink.href;
-          }
+          if (lotsLink) lotsHref = lotsLink.href;
         }
+        // Fallback: construct lots href from self href
+        if (!lotsHref && selfHref) {
+          lotsHref = `${selfHref}/child/lots`;
+        }
+
+        console.log('[WMSService] Onhand item lotsHref:', lotsHref);
 
         onhandItems.push({
           itemNumber: item.ItemNumber,
@@ -902,7 +909,7 @@ export const fetchItemOnhand = async (organizationCode, subinventoryCode, itemNu
           subinventoryCode: item.SubinventoryCode,
           locatorId: item.LocatorId,
           primaryQuantity: item.PrimaryQuantity,
-          primaryUomCode: item.PrimaryUomCode,
+          primaryUomCode: item.PrimaryUOMCode || item.PrimaryUomCode,
           secondaryQuantity: item.SecondaryQuantity,
           secondaryUomCode: item.SecondaryUomCode,
           lotsHref: lotsHref,
@@ -969,51 +976,6 @@ export const fetchItemLots = async (lotsHref) => {
 };
 
 // Fetch lot numbers directly by item using Fusion lotNumbers endpoint
-export const fetchItemLotsByItem = async (organizationCode, itemNumber) => {
-  try {
-    const currentInstance = await getInstance();
-    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
-    const url = `${fusionBaseUrl}/lotNumbers?q=OrganizationCode=${encodeURIComponent(organizationCode)};ItemNumber=${encodeURIComponent(itemNumber)}&limit=500&onlyData=true`;
-
-    console.log('[WMSService] Fetching lots by item:', url);
-
-    const authHeader = await getFusionAuthHeader();
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('[WMSService] Fetched lots by item:', data?.items?.length || 0);
-
-    const lots = [];
-    if (data?.items && data.items.length > 0) {
-      data.items.forEach(lot => {
-        lots.push({
-          lotNumber: lot.LotNumber,
-          quantity: lot.OnhandQuantity || lot.PrimaryQuantity || 0,
-          expirationDate: lot.ExpirationDate,
-          gradeCode: lot.GradeCode,
-          parentLotNumber: lot.ParentLotNumber,
-          originationDate: lot.OriginationDate,
-        });
-      });
-    }
-
-    return { success: true, lots };
-  } catch (error) {
-    console.error('[WMSService] Error fetching lots by item:', error);
-    return { success: false, error: error.message };
-  }
-};
 
 /**
  * Lot-Based Pick Confirm via Fusion pickTransactions API
@@ -1765,7 +1727,6 @@ export default {
   shipConfirm,
   fetchItemOnhand,
   fetchItemLots,
-  fetchItemLotsByItem,
   fetchPickerPerformance,
   getCachedWMSData,
   clearWMSCache,
