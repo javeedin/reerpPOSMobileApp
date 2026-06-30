@@ -1918,7 +1918,7 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
-        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '80%', paddingBottom: 0 }}>
+        <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '80%', paddingBottom: 0, flex: 1 }}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderLeft}>
               <Ionicons name="layers-outline" size={24} color="#1565C0" />
@@ -1965,11 +1965,6 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
           )}
 
           {/* Lots List */}
-          {!isLoading && (
-            <Text style={{ paddingHorizontal: 12, paddingBottom: 4, fontSize: 11, color: '#999' }}>
-              Lots loaded: {lots ? lots.length : 0} | lotsHref: {onhandItem?.lotsHref ? 'YES' : 'NO'}
-            </Text>
-          )}
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}>
             {isLoading ? (
               <View style={styles.lotsLoading}>
