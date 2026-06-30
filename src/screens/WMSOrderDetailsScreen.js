@@ -5606,17 +5606,36 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       const onhandResult = await fetchItemOnhand(organizationCode, subinventoryCode, itemNumber);
 
       if (onhandResult.success && onhandResult.items && onhandResult.items.length > 0) {
-        // Use the first onhand item (or aggregate if needed)
-        const firstOnhand = onhandResult.items[0];
-        setOnhandItem(firstOnhand);
+        const allOnhand = onhandResult.items;
+        // Use first item for the summary header
+        setOnhandItem(allOnhand[0]);
 
-        // If item has lotsHref, fetch lot details
-        if (firstOnhand.lotsHref) {
-          const lotsResult = await fetchItemLots(firstOnhand.lotsHref);
-          if (lotsResult.success && lotsResult.lots) {
-            setLots(lotsResult.lots);
+        // Fetch lots from every onhand record and combine
+        const allLots = [];
+        await Promise.all(
+          allOnhand.map(async (onhand) => {
+            if (!onhand.lotsHref) return;
+            const lotsResult = await fetchItemLots(onhand.lotsHref);
+            if (lotsResult.success && lotsResult.lots) {
+              allLots.push(...lotsResult.lots);
+            }
+          })
+        );
+
+        // Deduplicate by lot number (sum quantities if same lot appears in multiple locations)
+        const lotMap = new Map();
+        allLots.forEach(lot => {
+          if (lotMap.has(lot.lotNumber)) {
+            const existing = lotMap.get(lot.lotNumber);
+            lotMap.set(lot.lotNumber, {
+              ...existing,
+              quantity: (parseInt(existing.quantity) || 0) + (parseInt(lot.quantity) || 0),
+            });
+          } else {
+            lotMap.set(lot.lotNumber, { ...lot });
           }
-        }
+        });
+        setLots(Array.from(lotMap.values()));
       } else {
         console.log('[WMSOrderDetails] No onhand found for item:', itemNumber);
       }
