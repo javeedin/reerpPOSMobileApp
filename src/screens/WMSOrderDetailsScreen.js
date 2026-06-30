@@ -3380,9 +3380,10 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   }, [isHighDiscount, isStoreTransfer]);
 
   const isStaged = /^staged/i.test(item.line_status || '');
+  const isInterfaced = /^interfaced$/i.test(item.line_status || '');
 
-  // Show Confirm and Cancel buttons only when picked_qty = 0 and not cancelled/staged
-  const showPickButtons = pickedQty === 0 && !isCancelled && !isImpliedPicked && !isStaged;
+  // Show Confirm and Cancel buttons only when picked_qty = 0 and not cancelled/staged/interfaced
+  const showPickButtons = pickedQty === 0 && !isCancelled && !isImpliedPicked && !isStaged && !isInterfaced;
   // Show Ship Confirm button when picked but not shipped (Store orders only; staged uses header button)
   const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled && !isImpliedPicked;
   // Cancel button only shows in pending state (within showPickButtons)
@@ -5976,7 +5977,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             </TouchableOpacity>
           )}
           {/* Sales Ship Confirm Button - Sales Orders when all lines are picked/staged and not yet shipped */}
-          {lines.length > 0 && summary.pendingLines === 0 && summary.shippedLines < lines.length && !(order?.transaction_type || '').toLowerCase().includes('store') && (
+          {lines.length > 0 && summary.pendingLines === 0 && summary.shippedLines < lines.length && !(order?.transaction_type || '').toLowerCase().includes('store') && !lines.every(l => /^interfaced$/i.test(l.line_status || '')) && (
             <TouchableOpacity style={[styles.shipAllButton, { backgroundColor: '#7B1FA2' }]} onPress={handleShipConfirmWithSync}>
               <Ionicons name="airplane" size={16} color="#FFF" />
               <Text style={styles.shipAllButtonText}>Ship Confirm</Text>
