@@ -928,7 +928,7 @@ export const fetchItemLots = async (lotsHref) => {
       return { success: false, error: 'No lots URL provided' };
     }
 
-    console.log('[WMSService] Fetching lots:', lotsHref);
+    console.log('[WMSService] Fetching lots via href:', lotsHref);
 
     const authHeader = await getFusionAuthHeader();
 
@@ -945,14 +945,14 @@ export const fetchItemLots = async (lotsHref) => {
     }
 
     const data = await response.json();
-    console.log('[WMSService] Fetched lots:', data?.items?.length || 0);
+    console.log('[WMSService] Fetched lots via href:', data?.items?.length || 0);
 
     const lots = [];
     if (data?.items && data.items.length > 0) {
       data.items.forEach(lot => {
         lots.push({
           lotNumber: lot.LotNumber,
-          quantity: lot.OnhandQuantity || lot.PrimaryQuantity,
+          quantity: lot.OnhandQuantity || lot.PrimaryQuantity || 0,
           expirationDate: lot.ExpirationDate,
           gradeCode: lot.GradeCode,
           parentLotNumber: lot.ParentLotNumber,
@@ -963,7 +963,54 @@ export const fetchItemLots = async (lotsHref) => {
 
     return { success: true, lots };
   } catch (error) {
-    console.error('[WMSService] Error fetching lots:', error);
+    console.error('[WMSService] Error fetching lots via href:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Fetch lot numbers directly by item using Fusion lotNumbers endpoint
+export const fetchItemLotsByItem = async (organizationCode, itemNumber) => {
+  try {
+    const currentInstance = await getInstance();
+    const fusionBaseUrl = getFusionBaseUrl(currentInstance);
+    const url = `${fusionBaseUrl}/lotNumbers?q=OrganizationCode=${encodeURIComponent(organizationCode)};ItemNumber=${encodeURIComponent(itemNumber)}&limit=500&onlyData=true`;
+
+    console.log('[WMSService] Fetching lots by item:', url);
+
+    const authHeader = await getFusionAuthHeader();
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[WMSService] Fetched lots by item:', data?.items?.length || 0);
+
+    const lots = [];
+    if (data?.items && data.items.length > 0) {
+      data.items.forEach(lot => {
+        lots.push({
+          lotNumber: lot.LotNumber,
+          quantity: lot.OnhandQuantity || lot.PrimaryQuantity || 0,
+          expirationDate: lot.ExpirationDate,
+          gradeCode: lot.GradeCode,
+          parentLotNumber: lot.ParentLotNumber,
+          originationDate: lot.OriginationDate,
+        });
+      });
+    }
+
+    return { success: true, lots };
+  } catch (error) {
+    console.error('[WMSService] Error fetching lots by item:', error);
     return { success: false, error: error.message };
   }
 };
@@ -1718,6 +1765,7 @@ export default {
   shipConfirm,
   fetchItemOnhand,
   fetchItemLots,
+  fetchItemLotsByItem,
   fetchPickerPerformance,
   getCachedWMSData,
   clearWMSCache,
