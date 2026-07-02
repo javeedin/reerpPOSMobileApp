@@ -3443,6 +3443,25 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
       {/* Description - single line */}
       <Text style={styles.lineItemDescriptionCompact} numberOfLines={1}>{item.description || 'No Description'}</Text>
 
+      {/* Discount Badge */}
+      {(() => {
+        const disc = parseFloat(item.DISC_PER || item.disc_per || 0);
+        if (!disc || disc <= 0) return null;
+        const isHigh = disc >= 50;
+        const isMed  = disc >= 25;
+        const bg    = isHigh ? '#C62828' : isMed ? '#FFF176' : '#F5F5F5';
+        const color = isHigh ? '#FFF'    : isMed ? '#5D4037' : '#555';
+        return (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+            <View style={{ backgroundColor: bg, borderRadius: 6, paddingHorizontal: 9, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="pricetag-outline" size={12} color={color} />
+              <Text style={{ fontSize: 12, fontWeight: '800', color }}>{disc}% Disc</Text>
+            </View>
+            {isHigh && <Text style={{ fontSize: 11, color: '#C62828', fontWeight: '600' }}>⚠ High Discount</Text>}
+          </View>
+        );
+      })()}
+
       {/* Details Grid */}
       <View style={styles.detailsGrid}>
         <View style={styles.detailItem}>
