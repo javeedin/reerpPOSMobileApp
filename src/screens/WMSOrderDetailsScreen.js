@@ -4653,6 +4653,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       { key: 'getlotsforpicks', label: 'Get Lots for Picks', status: 'pending', message: '' },
       { key: 'fusionshipmentlines', label: 'Fusion Shipment Lines', status: 'pending', message: '' },
     ]);
+    let backorderedCount = 0;
     setSyncModalVisible(true);
     setFetchingFusionLines(true);
 
@@ -4726,7 +4727,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       if (fusionResult.success) {
         const count4 = fusionResult.items.length;
         const staged = fusionResult.items.filter(i => i.lineStatus === 'Staged').length;
-        const backordered = fusionResult.items.filter(i => i.lineStatus === 'Backordered').length;
+        const backordered = fusionResult.items.filter(i => /backorder/i.test(i.lineStatus || '')).length;
+        backorderedCount = backordered;
         const parts = [`${count4} line(s)`];
         if (staged) parts.push(`${staged} staged`);
         if (backordered) parts.push(`${backordered} backordered`);
@@ -4745,6 +4747,34 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
     } catch (e) {
       console.error('[Sync][fusionshipmentlines] Error:', e.message);
       updateStatus('fusionshipmentlines', 'error', e.message || 'Failed');
+    }
+
+    // API 5: Process backordered lines (only if backorders detected in step 4)
+    if (backorderedCount > 0) {
+      await new Promise(resolve => {
+        Alert.alert(
+          'Backordered Lines Detected',
+          `${backorderedCount} line(s) are backordered due to multiple lots. The app will now process these lines.`,
+          [{ text: 'OK', onPress: resolve }],
+          { cancelable: false }
+        );
+      });
+
+      setSyncApiStatuses(prev => [
+        ...prev,
+        { key: 'callpickwavebackorder', label: 'Process Backorders', status: 'pending', message: '' },
+      ]);
+
+      try {
+        updateStatus('callpickwavebackorder', 'loading', '');
+        const url5 = `${BASE}/trip/callpickwavebackorder`;
+        const data5 = await safeJsonPost('callpickwavebackorder', url5, { warehouse: orgCode, order_number: orderNumber, p_instance_name: instanceName });
+        const msg5 = data5?.message || data5?.status || JSON.stringify(data5).slice(0, 80);
+        updateStatus('callpickwavebackorder', 'success', msg5);
+      } catch (e) {
+        console.error('[Sync][callpickwavebackorder] Error:', e.message);
+        updateStatus('callpickwavebackorder', 'error', e.message || 'Failed');
+      }
     }
 
     setFetchingFusionLines(false);
