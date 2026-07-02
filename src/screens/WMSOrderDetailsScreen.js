@@ -17,7 +17,7 @@ import {
   Share,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
@@ -1889,6 +1889,7 @@ const BulkShipConfirmModal = ({ visible, onClose, pickedItems, onProcess, proces
 // Lots Modal Component
 const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSelectLot, requestedQty }) => {
   const [selectedLot, setSelectedLot] = useState(null);
+  const insets = useSafeAreaInsets();
   const hasMultipleLots = lots && lots.length > 1;
   const reqQty = parseInt(requestedQty) || 0;
 
@@ -2032,8 +2033,8 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
             )}
           </ScrollView>
 
-          {/* Bottom buttons — anchored, no gap from screen edge */}
-          <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FFF' }}>
+          {/* Bottom buttons — above mobile navigation bar */}
+          <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#EEE', backgroundColor: '#FFF', paddingBottom: insets.bottom || 16 }}>
             <TouchableOpacity style={{ flex: 1, paddingVertical: 16, alignItems: 'center' }} onPress={handleClose}>
               <Text style={{ fontSize: 15, color: '#666', fontWeight: '600' }}>Close</Text>
             </TouchableOpacity>
