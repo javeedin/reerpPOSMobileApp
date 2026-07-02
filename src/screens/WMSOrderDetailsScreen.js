@@ -3445,12 +3445,11 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
 
       {/* Discount Badge */}
       {(() => {
-        const disc = parseFloat(item.DISC_PER || item.disc_per || 0);
-        if (!disc || disc <= 0) return null;
+        const disc = parseFloat(item.disc_per ?? item.DISC_PER ?? 0) || 0;
         const isHigh = disc >= 50;
         const isMed  = disc >= 25;
-        const bg    = isHigh ? '#C62828' : isMed ? '#FFF176' : '#F5F5F5';
-        const color = isHigh ? '#FFF'    : isMed ? '#5D4037' : '#555';
+        const bg    = isHigh ? '#C62828' : isMed ? '#FFF176' : '#F0F0F0';
+        const color = isHigh ? '#FFF'    : isMed ? '#5D4037' : '#888';
         return (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
             <View style={{ backgroundColor: bg, borderRadius: 6, paddingHorizontal: 9, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
