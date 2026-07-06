@@ -995,19 +995,26 @@ export const fusionPickTransaction = async (payload) => {
     const fusionBaseUrl = getFusionBaseUrl(currentInstance);
     const url = `${fusionBaseUrl}/pickTransactions`;
 
+    // Multi-lot merge: when payload.lots ([{lot, qty}]) is provided, merge all lots into
+    // one pickLine and set PickedQuantity to their sum. Otherwise use the single-lot shape.
+    let lotItemLots;
+    let pickedQuantity;
+    if (Array.isArray(payload.lots) && payload.lots.length > 0) {
+      lotItemLots = payload.lots.map(l => ({ Lot: String(l.lot), Quantity: String(l.qty) }));
+      pickedQuantity = payload.lots.reduce((sum, l) => sum + (parseInt(l.qty) || 0), 0);
+    } else {
+      lotItemLots = [{ Lot: String(payload.lot), Quantity: String(payload.lotQty || payload.pickedQty) }];
+      pickedQuantity = payload.pickedQty;
+    }
+
     const body = {
       pickLines: [
         {
           PickSlip: String(payload.deliveryDetailId),
           PickSlipLine: String(payload.linesId),
-          PickedQuantity: String(payload.pickedQty),
+          PickedQuantity: String(pickedQuantity),
           SubinventoryCode: payload.subinventoryCode || 'DUTY PAID',
-          lotItemLots: [
-            {
-              Lot: String(payload.lot),
-              Quantity: String(payload.lotQty || payload.pickedQty),
-            },
-          ],
+          lotItemLots,
         },
       ],
     };

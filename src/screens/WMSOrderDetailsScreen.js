@@ -67,6 +67,13 @@ const getItemId = (item) => {
   return String(item.id || item.source_delivery_detail_id || item.delivery_detail_id || '');
 };
 
+// DELIVERY_DETAIL_ID key: multiple lines that share this belong to one pick line and
+// are pick-confirmed together (their lots merged into a single Fusion pickLine).
+const getDeliveryDetailKey = (item) => {
+  if (!item) return '';
+  return String(item.delivery_detail_id || item.DELIVERY_DETAIL_ID || '');
+};
+
 // Helper: calculate days to expiry from a date
 const getDaysToExpiry = (expiryDate) => {
   if (!expiryDate) return null;
@@ -381,54 +388,96 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
 
     let anyError = false;
 
-    for (const anItem of toProcess) {
-      // Skip staged items — they're auto-picked in Fusion, just mark confirmed in UI
-      if (/^staged/i.test(anItem.line_status || '')) continue;
-      const id = getItemId(anItem);
-      setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'processing' } : r));
-      const p = buildPayloadsForItem(anItem);
+    // Pickable (non-staged) items.
+    const pickable = toProcess.filter(i => !/^staged/i.test(i.line_status || ''));
 
-      try {
-        if (isStoreTransaction) {
-          const updateResult = await updatePickedQty(p.linesId, instanceUpper, parseInt(p.pickedQty) || 0);
-          if (!updateResult?.success) {
-            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: updateResult?.error || 'Update qty failed' } : r));
-            anyError = true;
-            continue;
-          }
-          const shipResult = await onShipConfirm(anItem, p.linesId, true);
-          if (shipResult?.success) {
-            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'success' } : r));
-          } else {
-            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: shipResult?.error || 'Ship confirm failed' } : r));
-            anyError = true;
-          }
-        } else if (effectiveIsLotBased) {
-          const fusionResult = await onLotBasedConfirm(p.fusionPayload, anItem);
-          if (!fusionResult?.success) {
-            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: fusionResult?.error || 'Fusion pick failed' } : r));
-            anyError = true;
-            continue;
-          }
-          const updateResult = await fusionResult.updatePickStatus({ transactionId: p.rawId, pickedQty: parseInt(p.pickedQty) || 0 });
-          if (updateResult?.success) {
-            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'success' } : r));
-          } else {
-            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: updateResult?.error || 'Update status failed' } : r));
-            anyError = true;
-          }
-        } else {
-          const result = await onConfirm(p.nonLotPayload, true, anItem);
-          if (result?.success) {
-            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'success' } : r));
-          } else {
-            setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: result?.error || 'Confirm failed' } : r));
-            anyError = true;
-          }
+    if (effectiveIsLotBased && !isStoreTransaction) {
+      // Lot-based Sales: group the lines by DELIVERY_DETAIL_ID and merge each group's lots
+      // into ONE Fusion pickLine (lotItemLots = each line's lot; PickedQuantity = sum),
+      // then run Apex updatePickConfirmStatus once for that delivery detail.
+      const byDD = new Map(); // deliveryDetailKey -> rows[]
+      pickable.forEach(it => {
+        const key = getDeliveryDetailKey(it) || getItemId(it);
+        if (!byDD.has(key)) byDD.set(key, []);
+        byDD.get(key).push(it);
+      });
+
+      const markRows = (rows, patch) => {
+        const ids = new Set(rows.map(r => getItemId(r)));
+        setBogoResults(prev => prev.map(r => ids.has(r.itemId) ? { ...r, ...patch } : r));
+      };
+
+      for (const rows of byDD.values()) {
+        const first = rows[0];
+        const deliveryDetailId = first.delivery_detail_id || first.DELIVERY_DETAIL_ID || getItemId(first);
+        const linesId = first.lines_id || first.Lines_id || first.LINES_ID || '';
+        const rawId = first.id || first.source_delivery_detail_id || first.delivery_detail_id || '';
+        const lots = rows.map(r => ({ lot: r.lot_number || '', qty: parseInt(r.qty) || 0 }));
+        const totalQty = lots.reduce((s, l) => s + l.qty, 0);
+
+        // Every line in the merge must have a lot selected.
+        if (rows.some(r => !(r.lot_number || '').trim())) {
+          markRows(rows, { status: 'error', error: 'Select a lot for every line before confirming' });
+          anyError = true;
+          continue;
         }
-      } catch (err) {
-        setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: err.message } : r));
-        anyError = true;
+
+        markRows(rows, { status: 'processing' });
+        try {
+          const fusionPayload = { deliveryDetailId, linesId, subinventoryCode: 'DUTY PAID', lots };
+          const fusionResult = await onLotBasedConfirm(fusionPayload, first, rows);
+          if (!fusionResult?.success) {
+            markRows(rows, { status: 'error', error: fusionResult?.error || 'Fusion pick failed' });
+            anyError = true;
+            continue;
+          }
+          const updateResult = await fusionResult.updatePickStatus({ transactionId: rawId, pickedQty: totalQty });
+          if (updateResult?.success) {
+            markRows(rows, { status: 'success' });
+          } else {
+            markRows(rows, { status: 'error', error: updateResult?.error || 'Update status failed' });
+            anyError = true;
+          }
+        } catch (err) {
+          markRows(rows, { status: 'error', error: err.message });
+          anyError = true;
+        }
+      }
+    } else {
+      // Store (S2V) and non-lot Sales: process each item individually.
+      for (const anItem of pickable) {
+        const id = getItemId(anItem);
+        setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'processing' } : r));
+        const p = buildPayloadsForItem(anItem);
+
+        try {
+          if (isStoreTransaction) {
+            const updateResult = await updatePickedQty(p.linesId, instanceUpper, parseInt(p.pickedQty) || 0);
+            if (!updateResult?.success) {
+              setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: updateResult?.error || 'Update qty failed' } : r));
+              anyError = true;
+              continue;
+            }
+            const shipResult = await onShipConfirm(anItem, p.linesId, true);
+            if (shipResult?.success) {
+              setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'success' } : r));
+            } else {
+              setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: shipResult?.error || 'Ship confirm failed' } : r));
+              anyError = true;
+            }
+          } else {
+            const result = await onConfirm(p.nonLotPayload, true, anItem);
+            if (result?.success) {
+              setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'success' } : r));
+            } else {
+              setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: result?.error || 'Confirm failed' } : r));
+              anyError = true;
+            }
+          }
+        } catch (err) {
+          setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: err.message } : r));
+          anyError = true;
+        }
       }
     }
 
@@ -576,7 +625,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
             {/* Set items: checkbox + inline qty/lot per item */}
             {bogoSetItems && bogoSetItems.length > 0 && (
               <View style={styles.bogoPickSection}>
-                {bogoSetItems.map((bItem) => {
+                {bogoSetItems.map((bItem, bIdx) => {
                   const bid = getItemId(bItem);
                   const isChecked = checkedBogoIds.has(bid);
                   const result = bogoResults.find(r => r.itemId === bid);
@@ -586,7 +635,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                   const bColor = getExpiryColor(bDays);
                   return (
                     <TouchableOpacity
-                      key={bid}
+                      key={`${bid}-${bIdx}`}
                       style={[styles.bogoPickRow, isChecked && styles.bogoPickRowChecked]}
                       onPress={() => {
                         if (isRunningSequence) return;
@@ -5044,13 +5093,27 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const handleConfirmPick = (item, groupItems) => {
     setConfirmPickItem(item);
 
-    if (groupItems && groupItems.length > 1) {
+    const notCancelled = (gi) =>
+      gi.cancelled_status !== 'YES' &&
+      (gi.cancel_status || '').toUpperCase() !== 'CANCELLED' &&
+      !/^cancel/i.test(gi.line_status || '');
+    // Pending = not yet picked and not auto-picked (staged).
+    const isPending = (gi) =>
+      (parseInt(gi.picked_qty) || 0) === 0 &&
+      !/^staged/i.test(gi.line_status || '') &&
+      notCancelled(gi);
+
+    // Pull in every pending line that shares this line's DELIVERY_DETAIL_ID — these are the
+    // lot-split lines of one pick line and must be confirmed together (lots merged).
+    const ddKey = getDeliveryDetailKey(item);
+    const ddSiblings = ddKey ? lines.filter(l => getDeliveryDetailKey(l) === ddKey && isPending(l)) : [];
+
+    if (ddSiblings.length > 1) {
+      // Show all lines of this delivery detail in the popup for a single merged confirm.
+      setBogoSetConfirmItems(ddSiblings);
+    } else if (groupItems && groupItems.length > 1) {
       // Include all non-cancelled items: pickable ones + staged ones (shown but not processed)
-      const displayItems = groupItems.filter(gi =>
-        gi.cancelled_status !== 'YES' &&
-        (gi.cancel_status || '').toUpperCase() !== 'CANCELLED' &&
-        !/^cancel/i.test(gi.line_status || '')
-      );
+      const displayItems = groupItems.filter(notCancelled);
       setBogoSetConfirmItems(displayItems.length > 1 ? displayItems : null);
     } else {
       // Single item or BOGO fallback
@@ -5134,9 +5197,13 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
   // Execute Lot-Based confirm pick: Step 1 = Fusion, returns handler for Step 2
   // targetItem: override confirmPickItem for BOGO multi-item processing
-  const executeLotBasedConfirm = async (fusionPayload, targetItem = null) => {
+  const executeLotBasedConfirm = async (fusionPayload, targetItem = null, groupItems = null) => {
     setIsConfirmingPick(true);
     const activeItem = targetItem || confirmPickItem;
+    // All lines that were merged into this pickLine (share the DELIVERY_DETAIL_ID) — every
+    // one of them is marked picked in the list when the single Apex update succeeds.
+    const mergedRows = (groupItems && groupItems.length > 0) ? groupItems : [activeItem];
+    const mergedDDKey = getDeliveryDetailKey(activeItem);
     try {
       console.log('[WMSOrderDetails] Lot-Based Confirm - Fusion Payload:', JSON.stringify(fusionPayload, null, 2));
 
@@ -5157,19 +5224,24 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             const updateResult = await updatePickConfirmStatus(updatePayload);
 
             if (updateResult.success) {
-              const confirmedItemId = getItemId(activeItem);
+              // Mark each merged line picked. Match by DELIVERY_DETAIL_ID when available
+              // (covers all lot-split lines), else fall back to the individual item id.
+              const mergedIds = new Set(mergedRows.map(r => getItemId(r)).filter(Boolean));
+              const nowIso = new Date().toISOString();
               setLines(prev =>
-                prev.map(line =>
-                  getItemId(line) === confirmedItemId && confirmedItemId !== ''
+                prev.map(line => {
+                  const matchesDD = mergedDDKey && getDeliveryDetailKey(line) === mergedDDKey;
+                  const matchesId = mergedIds.has(getItemId(line));
+                  return (matchesDD || matchesId)
                     ? {
                         ...line,
-                        picked_qty: activeItem.qty,
+                        picked_qty: line.qty,
                         pick_confirm_status: 'YES',
-                        pick_confirm_date: new Date().toISOString(),
+                        pick_confirm_date: nowIso,
                         pick_confirm_by: pickerName,
                       }
-                    : line
-                )
+                    : line;
+                })
               );
               sendPickNotification({
                 orderNumber: orderNumber,
