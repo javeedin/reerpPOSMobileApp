@@ -643,17 +643,22 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
               <View style={styles.bogoPickSection}>
                 {(() => {
                   // Header: show the transaction id(s) in this set so the user can confirm
-                  // every line belongs to the same transaction before merging.
+                  // every line belongs to the same transaction before merging, plus the
+                  // total merged quantity (sum of all lines' qty).
                   const txIds = [...new Set(bogoSetItems.map(bi => getTransactionKey(bi)).filter(Boolean))];
                   if (txIds.length === 0) return null;
                   const sameTx = txIds.length === 1;
+                  const totalQty = bogoSetItems.reduce((s, bi) => s + (parseInt(bi.qty) || 0), 0);
                   return (
-                    <View style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
+                    <View style={{ paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: sameTx ? '#1565C0' : '#E65100' }}>
                         {sameTx
                           ? `Transaction ID: ${txIds[0]}  •  ${bogoSetItems.length} lines`
                           : `${txIds.length} transactions: ${txIds.join(', ')}`}
                       </Text>
+                      <View style={{ backgroundColor: '#E8F5E9', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#2E7D32' }}>Total Qty: {totalQty}</Text>
+                      </View>
                     </View>
                   );
                 })()}
