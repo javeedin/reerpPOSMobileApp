@@ -73,11 +73,11 @@ const getDeliveryDetailKey = (item) => {
   return String(item.delivery_detail_id || item.DELIVERY_DETAIL_ID || '');
 };
 
-// Transaction id key (P_TRANSACTION_ID): multiple lines that share this belong to one
-// pick line and are pick-confirmed together (their lots merged into one Fusion pickLine).
+// Transaction id key = the `id` field (P_TRANSACTION_ID). Multiple lines that share this
+// belong to one pick line and are pick-confirmed together (lots merged into one pickLine).
 const getTransactionKey = (item) => {
-  if (!item) return '';
-  return String(item.id || item.source_delivery_detail_id || item.delivery_detail_id || '');
+  if (!item || item.id == null || item.id === '') return '';
+  return String(item.id);
 };
 
 // Helper: calculate days to expiry from a date
@@ -402,8 +402,9 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
       // into ONE Fusion pickLine (lotItemLots = each line's lot; PickedQuantity = sum),
       // then run Apex updatePickConfirmStatus once for that transaction.
       const byDD = new Map(); // transactionKey -> rows[]
-      pickable.forEach(it => {
-        const key = getTransactionKey(it);
+      pickable.forEach((it, idx) => {
+        // Lines with no transaction id must not merge together — give each its own group.
+        const key = getTransactionKey(it) || `__row_${idx}`;
         if (!byDD.has(key)) byDD.set(key, []);
         byDD.get(key).push(it);
       });
