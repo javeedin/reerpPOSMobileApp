@@ -67,11 +67,17 @@ const getItemId = (item) => {
   return String(item.id || item.source_delivery_detail_id || item.delivery_detail_id || '');
 };
 
-// DELIVERY_DETAIL_ID key: multiple lines that share this belong to one pick line and
-// are pick-confirmed together (their lots merged into a single Fusion pickLine).
+// DELIVERY_DETAIL_ID key (shown per line for reference).
 const getDeliveryDetailKey = (item) => {
   if (!item) return '';
   return String(item.delivery_detail_id || item.DELIVERY_DETAIL_ID || '');
+};
+
+// Transaction id key (P_TRANSACTION_ID): multiple lines that share this belong to one
+// pick line and are pick-confirmed together (their lots merged into one Fusion pickLine).
+const getTransactionKey = (item) => {
+  if (!item) return '';
+  return String(item.id || item.source_delivery_detail_id || item.delivery_detail_id || '');
 };
 
 // Helper: calculate days to expiry from a date
@@ -392,12 +398,12 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     const pickable = toProcess.filter(i => !/^staged/i.test(i.line_status || ''));
 
     if (effectiveIsLotBased && !isStoreTransaction) {
-      // Lot-based Sales: group the lines by DELIVERY_DETAIL_ID and merge each group's lots
+      // Lot-based Sales: group the lines by TRANSACTION ID and merge each group's lots
       // into ONE Fusion pickLine (lotItemLots = each line's lot; PickedQuantity = sum),
-      // then run Apex updatePickConfirmStatus once for that delivery detail.
-      const byDD = new Map(); // deliveryDetailKey -> rows[]
+      // then run Apex updatePickConfirmStatus once for that transaction.
+      const byDD = new Map(); // transactionKey -> rows[]
       pickable.forEach(it => {
-        const key = getDeliveryDetailKey(it) || getItemId(it);
+        const key = getTransactionKey(it);
         if (!byDD.has(key)) byDD.set(key, []);
         byDD.get(key).push(it);
       });
@@ -626,17 +632,17 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
             {bogoSetItems && bogoSetItems.length > 0 && (
               <View style={styles.bogoPickSection}>
                 {(() => {
-                  // Header: show the delivery detail id(s) in this set so the user can
-                  // confirm every line belongs to the same delivery detail before merging.
-                  const ddIds = [...new Set(bogoSetItems.map(bi => getDeliveryDetailKey(bi)).filter(Boolean))];
-                  if (ddIds.length === 0) return null;
-                  const sameDD = ddIds.length === 1;
+                  // Header: show the transaction id(s) in this set so the user can confirm
+                  // every line belongs to the same transaction before merging.
+                  const txIds = [...new Set(bogoSetItems.map(bi => getTransactionKey(bi)).filter(Boolean))];
+                  if (txIds.length === 0) return null;
+                  const sameTx = txIds.length === 1;
                   return (
                     <View style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: sameDD ? '#1565C0' : '#E65100' }}>
-                        {sameDD
-                          ? `Delivery Detail ID: ${ddIds[0]}  •  ${bogoSetItems.length} lines`
-                          : `${ddIds.length} delivery details: ${ddIds.join(', ')}`}
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: sameTx ? '#1565C0' : '#E65100' }}>
+                        {sameTx
+                          ? `Transaction ID: ${txIds[0]}  •  ${bogoSetItems.length} lines`
+                          : `${txIds.length} transactions: ${txIds.join(', ')}`}
                       </Text>
                     </View>
                   );
@@ -669,8 +675,8 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                       <View style={{ flex: 1 }}>
                         <Text style={styles.bogoPickItemCode}>{bItem.item_number}</Text>
                         <Text style={styles.bogoPickItemDesc} numberOfLines={1}>{bItem.description}</Text>
-                        {getDeliveryDetailKey(bItem) ? (
-                          <Text style={[styles.bogoPickItemQty, { color: '#1565C0', marginTop: 2 }]}>DD ID: {getDeliveryDetailKey(bItem)}</Text>
+                        {getTransactionKey(bItem) ? (
+                          <Text style={[styles.bogoPickItemQty, { color: '#1565C0', marginTop: 2 }]}>Txn ID: {getTransactionKey(bItem)}{getDeliveryDetailKey(bItem) ? `  •  DD ID: ${getDeliveryDetailKey(bItem)}` : ''}</Text>
                         ) : null}
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
                           <Text style={styles.bogoPickItemQty}>Qty: {bItem.qty}</Text>
@@ -5122,14 +5128,14 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       !/^staged/i.test(gi.line_status || '') &&
       notCancelled(gi);
 
-    // Pull in every pending line that shares this line's DELIVERY_DETAIL_ID — these are the
+    // Pull in every pending line that shares this line's TRANSACTION ID — these are the
     // lot-split lines of one pick line and must be confirmed together (lots merged).
-    const ddKey = getDeliveryDetailKey(item);
-    const ddSiblings = ddKey ? lines.filter(l => getDeliveryDetailKey(l) === ddKey && isPending(l)) : [];
+    const txKey = getTransactionKey(item);
+    const txSiblings = txKey ? lines.filter(l => getTransactionKey(l) === txKey && isPending(l)) : [];
 
-    if (ddSiblings.length > 1) {
-      // Show all lines of this delivery detail in the popup for a single merged confirm.
-      setBogoSetConfirmItems(ddSiblings);
+    if (txSiblings.length > 1) {
+      // Show all lines of this transaction in the popup for a single merged confirm.
+      setBogoSetConfirmItems(txSiblings);
     } else if (groupItems && groupItems.length > 1) {
       // Include all non-cancelled items: pickable ones + staged ones (shown but not processed)
       const displayItems = groupItems.filter(notCancelled);
@@ -5219,10 +5225,10 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
   const executeLotBasedConfirm = async (fusionPayload, targetItem = null, groupItems = null) => {
     setIsConfirmingPick(true);
     const activeItem = targetItem || confirmPickItem;
-    // All lines that were merged into this pickLine (share the DELIVERY_DETAIL_ID) — every
-    // one of them is marked picked in the list when the single Apex update succeeds.
+    // All lines that were merged into this pickLine (share the TRANSACTION ID) — every one
+    // of them is marked picked in the list when the single Apex update succeeds.
     const mergedRows = (groupItems && groupItems.length > 0) ? groupItems : [activeItem];
-    const mergedDDKey = getDeliveryDetailKey(activeItem);
+    const mergedTxKey = getTransactionKey(activeItem);
     try {
       console.log('[WMSOrderDetails] Lot-Based Confirm - Fusion Payload:', JSON.stringify(fusionPayload, null, 2));
 
@@ -5243,15 +5249,15 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             const updateResult = await updatePickConfirmStatus(updatePayload);
 
             if (updateResult.success) {
-              // Mark each merged line picked. Match by DELIVERY_DETAIL_ID when available
-              // (covers all lot-split lines), else fall back to the individual item id.
-              const mergedIds = new Set(mergedRows.map(r => getItemId(r)).filter(Boolean));
+              // Mark each merged line picked. Match by TRANSACTION ID (covers every
+              // lot-split line that shares it), else fall back to the individual item id.
+              const mergedIds = new Set(mergedRows.map(r => getTransactionKey(r)).filter(Boolean));
               const nowIso = new Date().toISOString();
               setLines(prev =>
                 prev.map(line => {
-                  const matchesDD = mergedDDKey && getDeliveryDetailKey(line) === mergedDDKey;
-                  const matchesId = mergedIds.has(getItemId(line));
-                  return (matchesDD || matchesId)
+                  const matchesTx = mergedTxKey && getTransactionKey(line) === mergedTxKey;
+                  const matchesId = mergedIds.has(getTransactionKey(line));
+                  return (matchesTx || matchesId)
                     ? {
                         ...line,
                         picked_qty: line.qty,
