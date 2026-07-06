@@ -5264,15 +5264,18 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             const updateResult = await updatePickConfirmStatus(updatePayload);
 
             if (updateResult.success) {
-              // Mark each merged line picked. Match by TRANSACTION ID (covers every
-              // lot-split line that shares it), else fall back to the individual item id.
+              // Mark each merged line picked. Match by the exact merged line objects
+              // (reference) AND by TRANSACTION ID — the reference match guarantees the
+              // individual lines update even when the id field is blank.
+              const mergedRefs = new Set(mergedRows);
               const mergedIds = new Set(mergedRows.map(r => getTransactionKey(r)).filter(Boolean));
               const nowIso = new Date().toISOString();
               setLines(prev =>
                 prev.map(line => {
+                  const matchesRef = mergedRefs.has(line);
                   const matchesTx = mergedTxKey && getTransactionKey(line) === mergedTxKey;
                   const matchesId = mergedIds.has(getTransactionKey(line));
-                  return (matchesTx || matchesId)
+                  return (matchesRef || matchesTx || matchesId)
                     ? {
                         ...line,
                         picked_qty: line.qty,
@@ -6313,7 +6316,7 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
                           setItem.order_line !== prefix &&
                           /^staged/i.test(setItem.line_status || '');
                         return (
-                          <React.Fragment key={`set-item-${getItemId(setItem) || si}`}>
+                          <React.Fragment key={`set-item-${getItemId(setItem)}-${si}`}>
                             {si > 0 && (
                               <View style={styles.bogoSetConnector}>
                                 <View style={styles.bogoSetConnectorLine} />
