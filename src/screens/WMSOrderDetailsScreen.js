@@ -625,6 +625,22 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
             {/* Set items: checkbox + inline qty/lot per item */}
             {bogoSetItems && bogoSetItems.length > 0 && (
               <View style={styles.bogoPickSection}>
+                {(() => {
+                  // Header: show the delivery detail id(s) in this set so the user can
+                  // confirm every line belongs to the same delivery detail before merging.
+                  const ddIds = [...new Set(bogoSetItems.map(bi => getDeliveryDetailKey(bi)).filter(Boolean))];
+                  if (ddIds.length === 0) return null;
+                  const sameDD = ddIds.length === 1;
+                  return (
+                    <View style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: sameDD ? '#1565C0' : '#E65100' }}>
+                        {sameDD
+                          ? `Delivery Detail ID: ${ddIds[0]}  •  ${bogoSetItems.length} lines`
+                          : `${ddIds.length} delivery details: ${ddIds.join(', ')}`}
+                      </Text>
+                    </View>
+                  );
+                })()}
                 {bogoSetItems.map((bItem, bIdx) => {
                   const bid = getItemId(bItem);
                   const isChecked = checkedBogoIds.has(bid);
@@ -653,6 +669,9 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                       <View style={{ flex: 1 }}>
                         <Text style={styles.bogoPickItemCode}>{bItem.item_number}</Text>
                         <Text style={styles.bogoPickItemDesc} numberOfLines={1}>{bItem.description}</Text>
+                        {getDeliveryDetailKey(bItem) ? (
+                          <Text style={[styles.bogoPickItemQty, { color: '#1565C0', marginTop: 2 }]}>DD ID: {getDeliveryDetailKey(bItem)}</Text>
+                        ) : null}
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 3 }}>
                           <Text style={styles.bogoPickItemQty}>Qty: {bItem.qty}</Text>
                           {bLot ? <Text style={styles.bogoPickItemQty}>Lot: {bLot}</Text> : null}
