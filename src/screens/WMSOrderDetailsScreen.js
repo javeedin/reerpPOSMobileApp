@@ -151,17 +151,26 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const apexPickUrl = 'https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT/PENDING_PICKING_DETAILS';
   const apexShipUrl = `https://g09254cbbf8e7af-graysprod.adb.eu-frankfurt-1.oraclecloudapps.com/ords/WKSP_GRAYSAPP/WAREHOUSEMANAGEMENT/trip/processs2vauto/${linesId}`;
 
+  // When the popup holds multiple lines of one transaction id, preview the MERGED payload:
+  // one pickLine with every line's lot and the summed quantity (matches what is sent).
+  const mergeGroupItems = (bogoSetItems && bogoSetItems.length > 1 &&
+    new Set(bogoSetItems.map(b => getTransactionKey(b))).size === 1)
+    ? bogoSetItems : null;
+  const previewLots = mergeGroupItems
+    ? mergeGroupItems.map(b => ({ Lot: String(b.lot_number || ''), Quantity: String(parseInt(b.qty) || 0) }))
+    : [{ Lot: String(lotNumber), Quantity: String(pickedQty) }];
+  const previewTotalQty = mergeGroupItems
+    ? mergeGroupItems.reduce((s, b) => s + (parseInt(b.qty) || 0), 0)
+    : (parseInt(pickedQty) || 0);
+
   // Lot Based payload (Fusion) - Sales Orders only
   const lotPayload = {
     pickLines: [{
       PickSlip: String(deliveryDetailId),
       PickSlipLine: String(linesId),
-      PickedQuantity: String(pickedQty),
+      PickedQuantity: String(previewTotalQty),
       SubinventoryCode: 'DUTY PAID',
-      lotItemLots: [{
-        Lot: String(lotNumber),
-        Quantity: String(pickedQty),
-      }],
+      lotItemLots: previewLots,
     }],
   };
 
@@ -169,7 +178,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const updatePayload = {
     P_TRANSACTION_ID: rawId,
     p_instance_name: instanceUpper,
-    p_pickedQty: parseInt(pickedQty) || 0,
+    p_pickedQty: previewTotalQty,
   };
 
   // Non-Lot payload (used by both Store and Sales non-lot)
