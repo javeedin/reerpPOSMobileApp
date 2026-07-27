@@ -28,6 +28,20 @@ import { getInstance, getFusionBaseUrl } from '../services/api';
 import { getAllBogo } from '../services/syncService';
 import printerService from '../services/printerService';
 import { sendPickNotification, sendShipNotification } from '../services/notificationService';
+import appConfig from '../../app.json';
+
+// App version for debug logs — sourced from app.json so it never goes stale.
+const APP_VERSION = appConfig?.expo?.version || '';
+
+// expo-clipboard is optional at build time — guard the require so the app never
+// crashes if the native module hasn't been installed/rebuilt into this build yet.
+// When missing, the Copy action falls back to the native Share sheet.
+let ExpoClipboard = null;
+try {
+  ExpoClipboard = require('expo-clipboard');
+} catch (e) {
+  ExpoClipboard = null;
+}
 
 const { width } = Dimensions.get('window');
 
@@ -2236,6 +2250,53 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
     setLogs([]);
   };
 
+  // Build the full print log as plain text (with a small header for context)
+  // so it can be copied or shared for debugging.
+  const buildLogText = () => {
+    const header = [
+      'FCPos WMS — Print Log',
+      `Order: ${orderNumber || 'N/A'}`,
+      `App: ${APP_VERSION}`,
+      `Result: ${isPrinting ? 'In progress' : printSuccess ? 'SUCCESS' : 'FAILED'}`,
+      `Generated: ${new Date().toLocaleString()}`,
+      '------------------------------',
+    ];
+    const body = (logs || []).map((l) => {
+      const marker = l.type === 'error' ? '[ERROR]' : l.type === 'success' ? '[OK]  ' : '[INFO]';
+      return `${l.timestamp}  ${marker} ${l.message}`;
+    });
+    return header.concat(body).join('\n');
+  };
+
+  // Open the native share sheet with the log text (WhatsApp, Gmail, etc.).
+  const handleShareLog = async () => {
+    try {
+      await Share.share({
+        message: buildLogText(),
+        title: `FCPos Print Log — Order ${orderNumber || ''}`.trim(),
+      });
+    } catch (e) {
+      Alert.alert('Share failed', e?.message || 'Could not open the share sheet.');
+    }
+  };
+
+  // Copy the log text to the clipboard; fall back to the share sheet if the
+  // clipboard module isn't present in this build.
+  const handleCopyLog = async () => {
+    const text = buildLogText();
+    try {
+      if (ExpoClipboard && ExpoClipboard.setStringAsync) {
+        await ExpoClipboard.setStringAsync(text);
+        Alert.alert('Copied', 'Print log copied. You can now paste it into WhatsApp.');
+      } else {
+        // Clipboard native module not installed/rebuilt yet — use Share instead.
+        await handleShareLog();
+      }
+    } catch (e) {
+      Alert.alert('Copy failed', e?.message || 'Could not copy the log.');
+    }
+  };
+
   // Scanner view
   if (showScanner) {
     return (
@@ -2329,6 +2390,26 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
                 </View>
               )}
             </ScrollView>
+
+            {/* Copy / Share the full log (for debugging via WhatsApp, etc.) */}
+            {!isPrinting && logs.length > 0 && (
+              <View style={styles.logShareRow}>
+                <TouchableOpacity
+                  style={styles.logCopyButton}
+                  onPress={handleCopyLog}
+                >
+                  <Ionicons name="copy-outline" size={18} color="#1565C0" />
+                  <Text style={styles.logCopyText}>Copy Log</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.logShareButton}
+                  onPress={handleShareLog}
+                >
+                  <Ionicons name="share-social-outline" size={18} color="#FFF" />
+                  <Text style={styles.logShareText}>Share</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Actions */}
             <View style={styles.logActions}>
@@ -8637,6 +8718,44 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   logCloseText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  logShareRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    gap: 10,
+  },
+  logCopyButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E3F2FD',
+    borderWidth: 1,
+    borderColor: '#1565C0',
+    borderRadius: 8,
+    padding: 12,
+    gap: 6,
+  },
+  logCopyText: {
+    color: '#1565C0',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  logShareButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#25D366',
+    borderRadius: 8,
+    padding: 12,
+    gap: 6,
+  },
+  logShareText: {
     color: '#FFF',
     fontSize: 14,
     fontWeight: '600',
