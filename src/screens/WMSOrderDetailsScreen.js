@@ -2241,7 +2241,13 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
       }
     } else {
       addLog(`Invalid barcode format: "${data}"`, 'error');
-      addLog('Expected format: IP address (e.g., 192.168.1.100)', 'error');
+      addLog('Expected a printer IP like 192.168.1.100 or 192.168.1.100:9100', 'error');
+      if (typeof data === 'string' && data.startsWith('exp://')) {
+        addLog('That is the app dev-server QR (exp://...), not a printer barcode. Scan the printer\'s IP label instead.', 'error');
+      }
+      // Without this the modal stays stuck on "Printing..." and the
+      // Copy/Share/Try Again buttons (gated on !isPrinting) never appear.
+      setIsPrinting(false);
     }
   };
 
