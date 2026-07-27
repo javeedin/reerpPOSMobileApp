@@ -21,6 +21,11 @@ const LF = 0x0A;
 class PrinterService {
   constructor() {
     this.socket = null;
+    // Records the last low-level socket error / abnormal close seen during a
+    // print flow, so a job the printer silently rejected (e.g. a RST that
+    // arrives AFTER the write callback already fired) can be reported as a
+    // FAILURE instead of a false "completed successfully".
+    this._flowError = null;
   }
 
   async getSavedPrinter() {
@@ -60,61 +65,149 @@ class PrinterService {
     }
   }
 
-  // Connect to printer via TCP/IP
-  connectToPrinter(ipAddress, port = DEFAULT_PRINTER_PORT) {
+  // Connect to printer via TCP/IP.
+  // `log(message, type)` is an optional callback used to surface every step in
+  // the on-screen print log so we can trace failures on printers that accept
+  // the TCP connection but never actually print.
+  connectToPrinter(ipAddress, port = DEFAULT_PRINTER_PORT, log = () => {}) {
     return new Promise((resolve, reject) => {
       if (!TcpSocket) {
         reject(new Error('Printing not available in Expo Go. Use a development build for printer support.'));
         return;
       }
+
+      // Reset per-flow error state at the start of every connection attempt.
+      this._flowError = null;
+      let settled = false;
+      const connectStart = Date.now();
+
       try {
+        log(`Opening TCP socket to ${ipAddress}:${port} (connect timeout 8000ms)...`, 'info');
         this.socket = TcpSocket.createConnection(
           {
             host: ipAddress,
             port: port,
-            timeout: 5000,
+            timeout: 8000,
           },
           () => {
+            settled = true;
+            const ms = Date.now() - connectStart;
+            let where = '';
+            try {
+              const la = this.socket.localAddress;
+              const lp = this.socket.localPort;
+              if (la) where = ` (local ${la}:${lp || '?'})`;
+            } catch (e) { /* address info not always available */ }
             console.log('Connected to printer:', ipAddress);
+            log(`TCP connection established in ${ms}ms${where}`, 'success');
             resolve(true);
           }
         );
 
+        // Persistent listeners — these keep logging AFTER the connection is
+        // established, which is exactly where a silently-failing printer
+        // reveals itself (RST / unexpected close once it receives the data).
         this.socket.on('error', (error) => {
+          const msg = (error && error.message) ? error.message : String(error);
           console.error('Socket error:', error);
-          reject(new Error(`Connection failed: ${error.message}`));
+          this._flowError = msg;
+          if (!settled) {
+            settled = true;
+            log(`Connection failed: ${msg}`, 'error');
+            reject(new Error(`Connection failed: ${msg}`));
+          } else {
+            // Error after we were already connected — the printer dropped us.
+            log(`Socket error after connect: ${msg}`, 'error');
+          }
         });
 
         this.socket.on('timeout', () => {
           console.error('Socket timeout');
-          this.socket.destroy();
-          reject(new Error('Connection timed out'));
+          log('Socket timeout — printer did not respond within 8000ms', 'error');
+          try { this.socket.destroy(); } catch (e) {}
+          if (!settled) {
+            settled = true;
+            reject(new Error('Connection timed out'));
+          }
         });
 
-        this.socket.on('close', () => {
-          console.log('Socket closed');
+        this.socket.on('close', (hadError) => {
+          console.log('Socket closed', hadError ? '(with error)' : '');
+          if (hadError) this._flowError = this._flowError || 'socket closed with error';
+          log(`Socket closed${hadError ? ' WITH ERROR (printer reset the connection)' : ''}`, hadError ? 'error' : 'info');
+        });
+
+        // Some printers reply on the raw 9100 channel (status / NAK). Surface it.
+        this.socket.on('data', (chunk) => {
+          try {
+            const len = chunk && chunk.length ? chunk.length : 0;
+            log(`Printer replied with ${len} byte(s): ${this._previewBytes(chunk)}`, 'info');
+          } catch (e) { /* ignore preview errors */ }
         });
       } catch (error) {
+        log(`Failed to open socket: ${error.message}`, 'error');
         reject(new Error(`Failed to connect: ${error.message}`));
       }
     });
   }
 
-  // Disconnect from printer
-  disconnect() {
+  // Disconnect from printer.
+  // Defaults to a GRACEFUL close: end() flushes any bytes still queued and then
+  // sends FIN, and we wait for the socket 'close' event before resolving. The
+  // old behaviour (socket.destroy()) tore the connection down immediately and
+  // could discard data the printer had not yet received — the most likely
+  // reason a label prints on some printers but not on others.
+  disconnect(log = () => {}, graceful = true) {
     return new Promise((resolve) => {
-      if (this.socket) {
-        this.socket.destroy();
-        this.socket = null;
+      const sock = this.socket;
+      if (!sock) {
+        resolve(true);
+        return;
       }
-      resolve(true);
+
+      let done = false;
+      const finish = (how) => {
+        if (done) return;
+        done = true;
+        log(`Disconnected (${how})`, 'info');
+        try {
+          if (typeof sock.removeAllListeners === 'function') sock.removeAllListeners();
+        } catch (e) { /* ignore */ }
+        if (this.socket === sock) this.socket = null;
+        resolve(true);
+      };
+
+      if (graceful && typeof sock.end === 'function') {
+        log('Flushing pending data and closing socket gracefully...', 'info');
+        sock.once('close', () => finish('graceful close'));
+        try {
+          sock.end();
+        } catch (e) {
+          log(`end() failed (${e.message}) — forcing close`, 'error');
+          try { sock.destroy(); } catch (e2) {}
+          finish('forced');
+          return;
+        }
+        // Never hang if the printer never sends its FIN back.
+        setTimeout(() => {
+          if (!done) {
+            log('Graceful close timed out after 3000ms — forcing close', 'error');
+            try { sock.destroy(); } catch (e) {}
+            finish('forced after timeout');
+          }
+        }, 3000);
+      } else {
+        try { sock.destroy(); } catch (e) {}
+        finish('immediate');
+      }
     });
   }
 
   // Send data to printer
-  sendData(data) {
+  sendData(data, log = () => {}) {
     return new Promise((resolve, reject) => {
       if (!this.socket) {
+        log('Cannot send — not connected to printer', 'error');
         reject(new Error('Not connected to printer'));
         return;
       }
@@ -132,10 +225,38 @@ class PrinterService {
           sendBuffer = String.fromCharCode.apply(null, new Uint8Array(data));
         }
 
-        this.socket.write(sendBuffer, 'binary', () => {
+        const byteLen = sendBuffer.length;
+        let callbackFired = false;
+        log(`Writing ${byteLen} byte(s) to socket...`, 'info');
+
+        // Guard: if the write callback never fires (some printers accept the
+        // bytes but never ack the write) don't hang the whole print flow.
+        const writeTimeout = setTimeout(() => {
+          if (!callbackFired) {
+            log('Write not acknowledged within 5000ms — continuing anyway', 'error');
+            resolve(true);
+          }
+        }, 5000);
+
+        const flushedToKernel = this.socket.write(sendBuffer, 'binary', (err) => {
+          callbackFired = true;
+          clearTimeout(writeTimeout);
+          if (err) {
+            const msg = (err && err.message) ? err.message : String(err);
+            log(`Write callback error: ${msg}`, 'error');
+            reject(new Error(`Failed to send data: ${msg}`));
+            return;
+          }
+          log(`Write acknowledged — ${byteLen} byte(s) handed to printer`, 'success');
           resolve(true);
         });
+
+        if (flushedToKernel === false) {
+          log('Socket send buffer full — waiting for drain...', 'info');
+          this.socket.once('drain', () => log('Socket drained', 'info'));
+        }
       } catch (error) {
+        log(`Exception while sending: ${error.message}`, 'error');
         reject(new Error(`Failed to send data: ${error.message}`));
       }
     });
@@ -328,6 +449,30 @@ class PrinterService {
     }
   }
 
+  // Hex preview of up to the first 32 bytes of a printer response, for logging.
+  _previewBytes(chunk) {
+    try {
+      let arr;
+      if (chunk instanceof Uint8Array) {
+        arr = chunk;
+      } else if (typeof chunk === 'string') {
+        arr = new Uint8Array(chunk.length);
+        for (let i = 0; i < chunk.length; i++) arr[i] = chunk.charCodeAt(i) & 0xFF;
+      } else {
+        arr = new Uint8Array(chunk);
+      }
+      const max = Math.min(arr.length, 32);
+      let hex = '';
+      for (let i = 0; i < max; i++) {
+        hex += (arr[i] < 16 ? '0' : '') + arr[i].toString(16);
+        if (i < max - 1) hex += ' ';
+      }
+      return hex + (arr.length > max ? ' …' : '');
+    } catch (e) {
+      return '(unreadable)';
+    }
+  }
+
   // Main function to print order label
   async printOrderLabel(orderData) {
     try {
@@ -385,33 +530,56 @@ class PrinterService {
     }
   }
 
-  // Print to IP with detailed logging
+  // Print to IP with detailed step-by-step logging.
+  // `addLog(message, type)` receives every step so the on-screen log can trace
+  // exactly how far a job got. Unlike the old version this reports a FAILURE
+  // when the socket errors or the printer resets the connection, instead of
+  // always claiming success once the bytes were handed to the OS.
   async printToIPWithLogs(ipAddress, port, orderData, addLog) {
+    const log = (msg, type = 'info') => { try { addLog(msg, type); } catch (e) {} };
+    const targetPort = port || DEFAULT_PRINTER_PORT;
+    const t0 = Date.now();
+    const elapsed = () => `${Date.now() - t0}ms`;
+
     try {
-      addLog(`Attempting connection to ${ipAddress}:${port || DEFAULT_PRINTER_PORT}...`, 'info');
+      log(`Attempting connection to ${ipAddress}:${targetPort}...`, 'info');
+      await this.connectToPrinter(ipAddress, targetPort, log);
+      log(`Connected to printer successfully (+${elapsed()})`, 'success');
 
-      await this.connectToPrinter(ipAddress, port || DEFAULT_PRINTER_PORT);
-      addLog('Connected to printer successfully', 'success');
-
-      addLog('Creating print commands...', 'info');
+      log('Building ESC/POS label commands...', 'info');
       const commands = this.createLabelCommands(orderData);
-      addLog(`Print data size: ${commands.length} bytes`, 'info');
+      log(`Print data size: ${commands.length} bytes`, 'info');
 
-      addLog('Sending data to printer...', 'info');
-      await this.sendData(commands);
-      addLog('Data sent to printer', 'success');
+      log('Sending data to printer...', 'info');
+      await this.sendData(commands, log);
+      log(`Data sent to printer (+${elapsed()})`, 'success');
 
-      addLog('Waiting for printer to process...', 'info');
-      await new Promise(resolve => setTimeout(resolve, 500));
+      log('Waiting for printer to process (700ms)...', 'info');
+      await new Promise(resolve => setTimeout(resolve, 700));
 
-      addLog('Disconnecting...', 'info');
-      await this.disconnect();
-      addLog('Disconnected', 'info');
+      // If the printer rejected / reset the connection while (or right after)
+      // receiving the data, we already captured it — surface it as a failure.
+      if (this._flowError) {
+        log(`Printer aborted the connection: ${this._flowError}`, 'error');
+        log('The label most likely did NOT print. Check printer model / paper / status.', 'error');
+        await this.disconnect(log, false);
+        return { success: false, message: `Printer aborted: ${this._flowError}` };
+      }
 
+      log('Flushing and disconnecting...', 'info');
+      await this.disconnect(log, true);
+
+      // A clean FIN from us can still race a late reset from the printer.
+      if (this._flowError) {
+        log(`Printer reported an error during close: ${this._flowError}`, 'error');
+        return { success: false, message: `Printer error: ${this._flowError}` };
+      }
+
+      log(`Print flow finished cleanly (+${elapsed()})`, 'success');
       return { success: true, message: 'Label printed successfully!' };
     } catch (error) {
-      addLog(`Connection/Print error: ${error.message}`, 'error');
-      await this.disconnect();
+      log(`Connection/Print error: ${error.message}`, 'error');
+      try { await this.disconnect(log, false); } catch (e) {}
       return { success: false, message: error.message };
     }
   }
