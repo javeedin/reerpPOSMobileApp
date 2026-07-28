@@ -2161,10 +2161,10 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
 
 // Label size presets (mm) for TSPL thermal label printers.
 const LABEL_PRESETS = [
+  { key: '75x75', label: '75×75', widthMm: 75, heightMm: 75 },
   { key: '100x150', label: '100×150', widthMm: 100, heightMm: 150 },
   { key: '60x40', label: '60×40', widthMm: 60, heightMm: 40 },
   { key: '50x30', label: '50×30', widthMm: 50, heightMm: 30 },
-  { key: '40x30', label: '40×30', widthMm: 40, heightMm: 30 },
 ];
 
 // QR Code Print Modal Component - Compact Version with Scanner and Log
@@ -2179,7 +2179,7 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const [showPreview, setShowPreview] = useState(true);
   // Printer language + label size (persisted). Defaults to ESC/POS so existing
   // Epson/receipt printers keep working; switch to TSPL for label printers.
-  const [prefs, setPrefs] = useState({ printerType: 'escpos', labelWidthMm: 100, labelHeightMm: 150, labelGapMm: 3 });
+  const [prefs, setPrefs] = useState({ printerType: 'escpos', labelWidthMm: 75, labelHeightMm: 75, labelGapMm: 3 });
 
   useEffect(() => {
     let mounted = true;

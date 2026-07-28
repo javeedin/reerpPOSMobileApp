@@ -71,7 +71,7 @@ class PrinterService {
   // existing printers keep working; TSPL is for thermal label printers
   // (e.g. Ocom OCBP-401DT) that do not understand ESC/POS.
   async getPrinterPrefs() {
-    const defaults = { printerType: 'escpos', labelWidthMm: 100, labelHeightMm: 150, labelGapMm: 3 };
+    const defaults = { printerType: 'escpos', labelWidthMm: 75, labelHeightMm: 75, labelGapMm: 3 };
     try {
       const raw = await AsyncStorage.getItem(PRINTER_PREFS_KEY);
       const parsed = raw ? JSON.parse(raw) : {};
@@ -481,10 +481,12 @@ class PrinterService {
 
   // Create TSPL commands for a QR label — for thermal LABEL printers
   // (Ocom OCBP-401DT and similar) that speak TSPL/TSPL2, not ESC/POS.
-  // opts: { widthMm, heightMm, gapMm }. Returns a Uint8Array of ASCII bytes.
+  // Everything is placed to fit inside ONE physical label: vehicle (lorry/bay)
+  // at the top, QR pushed up just below it, then the order details squeezed
+  // directly under the QR — all centered. opts: { widthMm, heightMm, gapMm }.
   createLabelCommandsTSPL(orderData, opts = {}) {
-    const widthMm = Number(opts.widthMm) || 100;
-    const heightMm = Number(opts.heightMm) || 150;
+    const widthMm = Number(opts.widthMm) || 75;
+    const heightMm = Number(opts.heightMm) || 75;
     const gapMm = (opts.gapMm != null && !isNaN(Number(opts.gapMm))) ? Number(opts.gapMm) : 3;
     const dpmm = 8; // 203 dpi ≈ 8 dots/mm
     const widthDots = Math.round(widthMm * dpmm);
@@ -497,14 +499,6 @@ class PrinterService {
       .replace(/\\/g, '/')
       .trim();
 
-    const margin = 16;
-    // Scale the QR module size to the label width (a numeric order fits in
-    // roughly 25 modules); clamp to a sensible printable range.
-    let cell = Math.floor((widthDots * 0.45) / 25);
-    if (cell < 3) cell = 3;
-    if (cell > 8) cell = 8;
-    const qrSizeDots = cell * 25;
-
     const cmds = [];
     cmds.push(`SIZE ${widthMm} mm,${heightMm} mm`);
     cmds.push(`GAP ${gapMm} mm,0 mm`);
@@ -512,30 +506,50 @@ class PrinterService {
     cmds.push('REFERENCE 0,0');
     cmds.push('CLS');
 
-    const qrData = clean(orderData.orderNumber || 'NO-ORDER');
-    cmds.push(`QRCODE ${margin},${margin},M,${cell},A,0,"${qrData}"`);
+    const margin = 12; // ~1.5mm — pushes the QR up towards the top
+    let y = margin;
 
-    // Text block below the QR. Font "3" (16x24) on wider labels, "2" on small.
+    // Built-in TSPL fonts are fixed-width, so plain TEXT can be centered by
+    // computing X from the string length. "3" = 16x24 dots, "2" = 12x20.
     const font = widthMm >= 50 ? '3' : '2';
-    const lineH = widthMm >= 50 ? 32 : 26;
-    let y = margin + qrSizeDots + 16;
+    const charW = font === '3' ? 16 : 12;
+    const charH = font === '3' ? 24 : 20;
 
-    const addLine = (text, big) => {
-      const t = clean(text);
+    const centerText = (text, mul) => {
+      let t = clean(text);
       if (!t) return;
-      const mul = big ? 2 : 1;
-      if (y + lineH * mul > heightDots) return; // don't run off the label
-      cmds.push(`TEXT ${margin},${y},"${font}",0,${mul},${mul},"${t}"`);
-      y += lineH * mul;
+      const maxChars = Math.floor((widthDots - 8) / (charW * mul));
+      if (maxChars > 0 && t.length > maxChars) t = t.substring(0, Math.max(1, maxChars - 1)) + '.';
+      const lineH = charH * mul + 6;
+      if (y + lineH > heightDots) return; // never run off the label
+      const textW = t.length * charW * mul;
+      const x = Math.max(0, Math.round((widthDots - textW) / 2));
+      cmds.push(`TEXT ${x},${y},"${font}",0,${mul},${mul},"${t}"`);
+      y += lineH;
     };
 
+    // 1) Vehicle (lorry + bay) at the very top.
     const lorry = orderData.lorry || '';
     const bay = orderData.loadingBy || '';
-    if (lorry || bay) addLine(`${lorry} ${bay}`.trim(), false);
-    addLine(orderData.orderNumber || 'N/A', true);
-    if (orderData.orderDate) addLine(orderData.orderDate, false);
-    if (orderData.accountName) addLine(orderData.accountName, false);
-    if (orderData.picker) addLine(`Picker: ${orderData.picker}`, false);
+    if (lorry || bay) centerText(`${lorry} ${bay}`.trim(), 1);
+
+    // 2) QR pushed up, centered. Estimate module count from data length to size
+    //    and centre it (auto mode picks the real version at print time).
+    const qrData = clean(orderData.orderNumber || 'NO-ORDER');
+    const estModules = qrData.length <= 14 ? 21 : qrData.length <= 26 ? 25 : 29;
+    let cell = Math.floor((heightDots * 0.42) / estModules);
+    if (cell < 3) cell = 3;
+    if (cell > 10) cell = 10; // TSPL spec max cell width
+    const qrPix = estModules * cell;
+    const qrX = Math.max(0, Math.round((widthDots - qrPix) / 2));
+    cmds.push(`QRCODE ${qrX},${y},M,${cell},A,0,"${qrData}"`);
+    y += qrPix + 8; // squeeze the text right under the QR
+
+    // 3) Order details squeezed directly below the QR.
+    centerText(orderData.orderNumber || 'N/A', 2); // order number, larger
+    if (orderData.orderDate) centerText(orderData.orderDate, 1);
+    if (orderData.accountName) centerText(orderData.accountName, 1);
+    if (orderData.picker) centerText(`Picker: ${orderData.picker}`, 1);
 
     cmds.push('PRINT 1,1');
 
