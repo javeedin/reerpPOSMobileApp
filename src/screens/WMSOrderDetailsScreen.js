@@ -2159,6 +2159,14 @@ const LotsModal = ({ visible, onClose, item, lots, onhandItem, isLoading, onSele
   );
 };
 
+// Label size presets (mm) for TSPL thermal label printers.
+const LABEL_PRESETS = [
+  { key: '100x150', label: '100×150', widthMm: 100, heightMm: 150 },
+  { key: '60x40', label: '60×40', widthMm: 60, heightMm: 40 },
+  { key: '50x30', label: '50×30', widthMm: 50, heightMm: 30 },
+  { key: '40x30', label: '40×30', widthMm: 40, heightMm: 30 },
+];
+
 // QR Code Print Modal Component - Compact Version with Scanner and Log
 const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const [isPrinting, setIsPrinting] = useState(false);
@@ -2169,6 +2177,23 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
   const [logs, setLogs] = useState([]);
   const [printSuccess, setPrintSuccess] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
+  // Printer language + label size (persisted). Defaults to ESC/POS so existing
+  // Epson/receipt printers keep working; switch to TSPL for label printers.
+  const [prefs, setPrefs] = useState({ printerType: 'escpos', labelWidthMm: 100, labelHeightMm: 150, labelGapMm: 3 });
+
+  useEffect(() => {
+    let mounted = true;
+    printerService.getPrinterPrefs().then((p) => { if (mounted && p) setPrefs(p); }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  const updatePrefs = (patch) => {
+    setPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      printerService.savePrinterPrefs(next);
+      return next;
+    });
+  };
 
   const orderNumber = order?.source_order_number || order?.order_number || 'N/A';
   const orderDate = order?.assignment_date
@@ -2226,7 +2251,10 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
       addLog('Connecting to printer...', 'info');
 
       try {
-        const result = await printerService.printToIPWithLogs(parsed.ipAddress, parsed.port, orderData, addLog);
+        const result = await printerService.printToIPWithLogs(parsed.ipAddress, parsed.port, orderData, addLog, {
+          printerType: prefs.printerType,
+          label: { widthMm: prefs.labelWidthMm, heightMm: prefs.labelHeightMm, gapMm: prefs.labelGapMm },
+        });
 
         if (result.success) {
           addLog('Print job completed successfully!', 'success');
@@ -2476,6 +2504,46 @@ const QRCodePrintModal = ({ visible, onClose, order, pickerName }) => {
               <Text style={{ fontSize: 13, color: '#555', fontWeight: '500' }}>Loading Bay:</Text>
               <Text style={{ fontSize: 13, color: '#1565C0', fontWeight: '700', flex: 1 }}>{loadingBay}</Text>
             </View>
+          </View>
+
+          {/* Printer Type selector (ESC/POS for Epson, TSPL for label printers) */}
+          <View style={styles.printerTypeSection}>
+            <Text style={styles.printerTypeLabel}>Printer Type</Text>
+            <View style={styles.printerTypeRow}>
+              <TouchableOpacity
+                style={[styles.printerTypeBtn, prefs.printerType === 'escpos' && styles.printerTypeBtnActive]}
+                onPress={() => updatePrefs({ printerType: 'escpos' })}
+              >
+                <Text style={[styles.printerTypeBtnText, prefs.printerType === 'escpos' && styles.printerTypeBtnTextActive]}>Epson (ESC/POS)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.printerTypeBtn, prefs.printerType === 'tspl' && styles.printerTypeBtnActive]}
+                onPress={() => updatePrefs({ printerType: 'tspl' })}
+              >
+                <Text style={[styles.printerTypeBtnText, prefs.printerType === 'tspl' && styles.printerTypeBtnTextActive]}>Label (TSPL)</Text>
+              </TouchableOpacity>
+            </View>
+
+            {prefs.printerType === 'tspl' && (
+              <>
+                <Text style={[styles.printerTypeLabel, { marginTop: 10 }]}>Label Size (mm)</Text>
+                <View style={styles.labelSizeRow}>
+                  {LABEL_PRESETS.map((p) => {
+                    const active = prefs.labelWidthMm === p.widthMm && prefs.labelHeightMm === p.heightMm;
+                    return (
+                      <TouchableOpacity
+                        key={p.key}
+                        style={[styles.labelSizeBtn, active && styles.labelSizeBtnActive]}
+                        onPress={() => updatePrefs({ labelWidthMm: p.widthMm, labelHeightMm: p.heightMm })}
+                      >
+                        <Text style={[styles.labelSizeBtnText, active && styles.labelSizeBtnTextActive]}>{p.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={styles.printerTypeHint}>Set this to your actual loaded label size, or the print may mis-feed.</Text>
+              </>
+            )}
           </View>
 
           {/* Print to Label Button - Opens Scanner */}
@@ -8765,6 +8833,73 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  printerTypeSection: {
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  printerTypeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 6,
+  },
+  printerTypeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  printerTypeBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CFD8DC',
+    backgroundColor: '#F5F7F9',
+  },
+  printerTypeBtnActive: {
+    borderColor: '#1565C0',
+    backgroundColor: '#E3F2FD',
+  },
+  printerTypeBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#607D8B',
+  },
+  printerTypeBtnTextActive: {
+    color: '#1565C0',
+  },
+  labelSizeRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  labelSizeBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CFD8DC',
+    backgroundColor: '#F5F7F9',
+  },
+  labelSizeBtnActive: {
+    borderColor: '#1565C0',
+    backgroundColor: '#E3F2FD',
+  },
+  labelSizeBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#607D8B',
+  },
+  labelSizeBtnTextActive: {
+    color: '#1565C0',
+  },
+  printerTypeHint: {
+    fontSize: 11,
+    color: '#90A4AE',
+    marginTop: 6,
   },
 });
 

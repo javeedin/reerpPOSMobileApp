@@ -11,6 +11,7 @@ try {
 }
 
 const PRINTER_STORAGE_KEY = '@fcpos_printer_settings';
+const PRINTER_PREFS_KEY = '@fcpos_printer_prefs'; // printer language + label size
 const DEFAULT_PRINTER_PORT = 9100; // Standard RAW printing port
 
 // ESC/POS Commands
@@ -62,6 +63,41 @@ class PrinterService {
     } catch (error) {
       console.error('Error removing printer:', error);
       return false;
+    }
+  }
+
+  // Printer preferences: which command language to send and (for label
+  // printers) the label size. ESC/POS (Epson/receipt) is the default so
+  // existing printers keep working; TSPL is for thermal label printers
+  // (e.g. Ocom OCBP-401DT) that do not understand ESC/POS.
+  async getPrinterPrefs() {
+    const defaults = { printerType: 'escpos', labelWidthMm: 100, labelHeightMm: 150, labelGapMm: 3 };
+    try {
+      const raw = await AsyncStorage.getItem(PRINTER_PREFS_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return {
+        printerType: parsed.printerType === 'tspl' ? 'tspl' : 'escpos',
+        labelWidthMm: Number(parsed.labelWidthMm) || defaults.labelWidthMm,
+        labelHeightMm: Number(parsed.labelHeightMm) || defaults.labelHeightMm,
+        labelGapMm: (parsed.labelGapMm != null && !isNaN(Number(parsed.labelGapMm)))
+          ? Number(parsed.labelGapMm)
+          : defaults.labelGapMm,
+      };
+    } catch (error) {
+      console.error('Error getting printer prefs:', error);
+      return defaults;
+    }
+  }
+
+  async savePrinterPrefs(prefs) {
+    try {
+      const current = await this.getPrinterPrefs();
+      const merged = { ...current, ...(prefs || {}) };
+      await AsyncStorage.setItem(PRINTER_PREFS_KEY, JSON.stringify(merged));
+      return merged;
+    } catch (error) {
+      console.error('Error saving printer prefs:', error);
+      return null;
     }
   }
 
@@ -443,6 +479,72 @@ class PrinterService {
     return new Uint8Array(commands);
   }
 
+  // Create TSPL commands for a QR label — for thermal LABEL printers
+  // (Ocom OCBP-401DT and similar) that speak TSPL/TSPL2, not ESC/POS.
+  // opts: { widthMm, heightMm, gapMm }. Returns a Uint8Array of ASCII bytes.
+  createLabelCommandsTSPL(orderData, opts = {}) {
+    const widthMm = Number(opts.widthMm) || 100;
+    const heightMm = Number(opts.heightMm) || 150;
+    const gapMm = (opts.gapMm != null && !isNaN(Number(opts.gapMm))) ? Number(opts.gapMm) : 3;
+    const dpmm = 8; // 203 dpi ≈ 8 dots/mm
+    const widthDots = Math.round(widthMm * dpmm);
+    const heightDots = Math.round(heightMm * dpmm);
+
+    // Sanitize text placed inside TSPL double-quoted strings.
+    const clean = (s) => String(s == null ? '' : s)
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/"/g, "'")
+      .replace(/\\/g, '/')
+      .trim();
+
+    const margin = 16;
+    // Scale the QR module size to the label width (a numeric order fits in
+    // roughly 25 modules); clamp to a sensible printable range.
+    let cell = Math.floor((widthDots * 0.45) / 25);
+    if (cell < 3) cell = 3;
+    if (cell > 8) cell = 8;
+    const qrSizeDots = cell * 25;
+
+    const cmds = [];
+    cmds.push(`SIZE ${widthMm} mm,${heightMm} mm`);
+    cmds.push(`GAP ${gapMm} mm,0 mm`);
+    cmds.push('DIRECTION 1');
+    cmds.push('REFERENCE 0,0');
+    cmds.push('CLS');
+
+    const qrData = clean(orderData.orderNumber || 'NO-ORDER');
+    cmds.push(`QRCODE ${margin},${margin},M,${cell},A,0,"${qrData}"`);
+
+    // Text block below the QR. Font "3" (16x24) on wider labels, "2" on small.
+    const font = widthMm >= 50 ? '3' : '2';
+    const lineH = widthMm >= 50 ? 32 : 26;
+    let y = margin + qrSizeDots + 16;
+
+    const addLine = (text, big) => {
+      const t = clean(text);
+      if (!t) return;
+      const mul = big ? 2 : 1;
+      if (y + lineH * mul > heightDots) return; // don't run off the label
+      cmds.push(`TEXT ${margin},${y},"${font}",0,${mul},${mul},"${t}"`);
+      y += lineH * mul;
+    };
+
+    const lorry = orderData.lorry || '';
+    const bay = orderData.loadingBy || '';
+    if (lorry || bay) addLine(`${lorry} ${bay}`.trim(), false);
+    addLine(orderData.orderNumber || 'N/A', true);
+    if (orderData.orderDate) addLine(orderData.orderDate, false);
+    if (orderData.accountName) addLine(orderData.accountName, false);
+    if (orderData.picker) addLine(`Picker: ${orderData.picker}`, false);
+
+    cmds.push('PRINT 1,1');
+
+    const text = cmds.join('\r\n') + '\r\n';
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xFF;
+    return bytes;
+  }
+
   addText(commands, text) {
     for (let i = 0; i < text.length; i++) {
       commands.push(text.charCodeAt(i));
@@ -535,9 +637,10 @@ class PrinterService {
   // exactly how far a job got. Unlike the old version this reports a FAILURE
   // when the socket errors or the printer resets the connection, instead of
   // always claiming success once the bytes were handed to the OS.
-  async printToIPWithLogs(ipAddress, port, orderData, addLog) {
+  async printToIPWithLogs(ipAddress, port, orderData, addLog, options = {}) {
     const log = (msg, type = 'info') => { try { addLog(msg, type); } catch (e) {} };
     const targetPort = port || DEFAULT_PRINTER_PORT;
+    const printerType = (options.printerType || 'escpos').toLowerCase() === 'tspl' ? 'tspl' : 'escpos';
     const t0 = Date.now();
     const elapsed = () => `${Date.now() - t0}ms`;
 
@@ -546,8 +649,20 @@ class PrinterService {
       await this.connectToPrinter(ipAddress, targetPort, log);
       log(`Connected to printer successfully (+${elapsed()})`, 'success');
 
-      log('Building ESC/POS label commands...', 'info');
-      const commands = this.createLabelCommands(orderData);
+      let commands;
+      if (printerType === 'tspl') {
+        const lbl = options.label || {};
+        const w = Number(lbl.widthMm) || 100;
+        const h = Number(lbl.heightMm) || 150;
+        const g = (lbl.gapMm != null && !isNaN(Number(lbl.gapMm))) ? Number(lbl.gapMm) : 3;
+        log(`Printer language: TSPL (thermal label printer)`, 'info');
+        log(`Building TSPL label ${w}x${h} mm, gap ${g} mm...`, 'info');
+        commands = this.createLabelCommandsTSPL(orderData, { widthMm: w, heightMm: h, gapMm: g });
+      } else {
+        log(`Printer language: ESC/POS (Epson / receipt)`, 'info');
+        log('Building ESC/POS label commands...', 'info');
+        commands = this.createLabelCommands(orderData);
+      }
       log(`Print data size: ${commands.length} bytes`, 'info');
 
       log('Sending data to printer...', 'info');
