@@ -510,10 +510,11 @@ class PrinterService {
     let y = margin;
 
     // Built-in TSPL fonts are fixed-width, so plain TEXT can be centered by
-    // computing X from the string length. "3" = 16x24 dots, "2" = 12x20.
-    const font = widthMm >= 50 ? '3' : '2';
-    const charW = font === '3' ? 16 : 12;
-    const charH = font === '3' ? 24 : 20;
+    // computing X from the string length. Default font uses 16x24 dots for spacing calc.
+    // Note: font specification omitted from TSPL TEXT command to use printer's default font,
+    // as different printers use different font IDs/names. Printer defaults handle sizing.
+    const charW = 16;
+    const charH = 24;
 
     const centerText = (text, mul) => {
       let t = clean(text);
@@ -524,7 +525,8 @@ class PrinterService {
       if (y + lineH > heightDots) return; // never run off the label
       const textW = t.length * charW * mul;
       const x = Math.max(0, Math.round((widthDots - textW) / 2));
-      cmds.push(`TEXT ${x},${y},"${font}",0,${mul},${mul},"${t}"`);
+      // Use empty font spec to let printer use its default font (fixes TEXT command recognition)
+      cmds.push(`TEXT ${x},${y},,0,${mul},${mul},"${t}"`);
       y += lineH;
     };
 
