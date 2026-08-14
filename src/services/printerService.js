@@ -530,28 +530,35 @@ class PrinterService {
       y += lineH;
     };
 
-    // 1) Vehicle (lorry + bay) at the very top.
+    // QR code at top, centered
+    const qrData = clean(orderData.orderNumber || 'NO-ORDER');
+    const estModules = qrData.length <= 14 ? 21 : qrData.length <= 26 ? 25 : 29;
+    let cell = Math.floor((heightDots * 0.35) / estModules); // reduced to fit text below
+    if (cell < 3) cell = 3;
+    if (cell > 10) cell = 10;
+    const qrPix = estModules * cell;
+    const qrX = Math.max(0, Math.round((widthDots - qrPix) / 2));
+    cmds.push(`QRCODE ${qrX},${y},M,${cell},A,0,"${qrData}"`);
+    y += qrPix + 12;
+
+    // Separator line
+    const LINE_WIDTH = 24;
+    const separator = '-'.repeat(LINE_WIDTH);
+    centerText(separator, 1);
+
+    // Lorry and Bay on same line (if present)
     const lorry = orderData.lorry || '';
     const bay = orderData.loadingBy || '';
     if (lorry || bay) centerText(`${lorry} ${bay}`.trim(), 1);
 
-    // 2) QR pushed up, centered. Estimate module count from data length to size
-    //    and centre it (auto mode picks the real version at print time).
-    const qrData = clean(orderData.orderNumber || 'NO-ORDER');
-    const estModules = qrData.length <= 14 ? 21 : qrData.length <= 26 ? 25 : 29;
-    let cell = Math.floor((heightDots * 0.42) / estModules);
-    if (cell < 3) cell = 3;
-    if (cell > 10) cell = 10; // TSPL spec max cell width
-    const qrPix = estModules * cell;
-    const qrX = Math.max(0, Math.round((widthDots - qrPix) / 2));
-    cmds.push(`QRCODE ${qrX},${y},M,${cell},A,0,"${qrData}"`);
-    y += qrPix + 8; // squeeze the text right under the QR
-
-    // 3) Order details squeezed directly below the QR.
-    centerText(orderData.orderNumber || 'N/A', 2); // order number, larger
+    // Order details (match Epson format)
+    centerText(orderData.orderNumber || 'N/A', 1); // order number
     if (orderData.orderDate) centerText(orderData.orderDate, 1);
     if (orderData.accountName) centerText(orderData.accountName, 1);
     if (orderData.picker) centerText(`Picker: ${orderData.picker}`, 1);
+
+    // Separator line
+    centerText(separator, 1);
 
     cmds.push('PRINT 1,1');
 
