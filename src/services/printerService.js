@@ -525,8 +525,8 @@ class PrinterService {
       if (y + lineH > heightDots) return; // never run off the label
       const textW = t.length * charW * mul;
       const x = Math.max(0, Math.round((widthDots - textW) / 2));
-      // Use empty font spec to let printer use its default font (fixes TEXT command recognition)
-      cmds.push(`TEXT ${x},${y},,0,${mul},${mul},"${t}"`);
+      // Use font 0 (printer default) to ensure TEXT command is recognized correctly
+      cmds.push(`TEXT ${x},${y},0,0,${mul},${mul},"${t}"`);
       y += lineH;
     };
 
