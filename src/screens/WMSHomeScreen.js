@@ -1100,7 +1100,7 @@ const WMSHomeScreen = ({ navigation }) => {
           )}
           <View style={styles.headerText}>
             <View style={styles.headerTitleRow}>
-              <Text style={styles.headerTitle}>WMS 1.1.5</Text>
+              <Text style={styles.headerTitle}>WMS 1.1.6</Text>
               {currentInstance ? (
                 <View style={[styles.instanceBadge, currentInstance === 'PROD' ? styles.instanceBadgeProd : styles.instanceBadgeTest]}>
                   <Text style={styles.instanceBadgeText}>{currentInstance}</Text>
