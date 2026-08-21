@@ -506,7 +506,7 @@ class PrinterService {
     cmds.push('REFERENCE 0,0');
     cmds.push('CLS');
 
-    const margin = 12; // ~1.5mm — pushes the QR up towards the top
+    const margin = 6; // ~0.75mm — pushes the QR up towards the top
     let y = margin;
 
     // Built-in TSPL fonts are fixed-width, so plain TEXT can be centered by
