@@ -76,9 +76,41 @@ const getPriceListStorageKey = (priceListName) => {
 
 // Dynamic instance support - Fusion URLs + query param helper
 import { getInstance, getFusionBaseUrl, appendInstanceParam } from './api';
-const FUSION_CREDENTIALS = {
-  username: 'shaik',
-  password: 'fusion1234',
+
+// Helper function to get Fusion credentials from AsyncStorage
+// Credentials should be stored by the app during login
+export const getFusionCredentials = async () => {
+  try {
+    const stored = await AsyncStorage.getItem('fusion_credentials');
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('[getFusionCredentials] Error retrieving credentials:', error);
+  }
+  return null;
+};
+
+// Helper function to store Fusion credentials in AsyncStorage
+export const setFusionCredentials = async (username, password) => {
+  try {
+    await AsyncStorage.setItem('fusion_credentials', JSON.stringify({ username, password }));
+    return true;
+  } catch (error) {
+    console.error('[setFusionCredentials] Error storing credentials:', error);
+    return false;
+  }
+};
+
+// Helper function to clear Fusion credentials from AsyncStorage
+export const clearFusionCredentials = async () => {
+  try {
+    await AsyncStorage.removeItem('fusion_credentials');
+    return true;
+  } catch (error) {
+    console.error('[clearFusionCredentials] Error clearing credentials:', error);
+    return false;
+  }
 };
 
 // Batch size for fetching data
@@ -939,8 +971,14 @@ export const syncOnhand = async (onProgress, userWarehouse, userSubinventory) =>
     const queryUrl = `${fusionBaseUrl}/inventoryOnhandBalances?q=OrganizationCode=${organizationCode};SubinventoryCode=${subinventoryCode}&limit=500`;
     console.log('Fetching onhand from:', queryUrl);
 
+    // Get Fusion credentials from AsyncStorage
+    const credentials = await getFusionCredentials();
+    if (!credentials || !credentials.username || !credentials.password) {
+      throw new Error('Fusion credentials not found. Please log in first.');
+    }
+
     // Create Basic Auth header (using cross-platform base64 encoding)
-    const authHeader = 'Basic ' + base64Encode(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+    const authHeader = 'Basic ' + base64Encode(`${credentials.username}:${credentials.password}`);
     console.log('[syncOnhand] Auth header created successfully');
 
     let allItems = [];
@@ -1023,7 +1061,13 @@ export const fetchLotDetails = async (lotsHref) => {
       return { success: false, error: 'No lots URL provided' };
     }
 
-    const authHeader = 'Basic ' + base64Encode(`${FUSION_CREDENTIALS.username}:${FUSION_CREDENTIALS.password}`);
+    // Get Fusion credentials from AsyncStorage
+    const credentials = await getFusionCredentials();
+    if (!credentials || !credentials.username || !credentials.password) {
+      return { success: false, error: 'Fusion credentials not found. Please log in first.' };
+    }
+
+    const authHeader = 'Basic ' + base64Encode(`${credentials.username}:${credentials.password}`);
 
     const response = await axios.get(lotsHref, {
       headers: {
