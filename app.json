@@ -2,7 +2,7 @@
   "expo": {
     "name": "FCPos",
     "slug": "reerp-pos-mobile-app",
-    "version": "1.1.7",
+    "version": "1.1.8",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": false,
@@ -25,7 +25,7 @@
         "backgroundColor": "#0A1628"
       },
       "package": "com.fcpos.app",
-      "versionCode": 17,
+      "versionCode": 18,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
