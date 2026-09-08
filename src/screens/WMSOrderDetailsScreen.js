@@ -132,6 +132,10 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
   const [checkedBogoIds, setCheckedBogoIds] = useState(new Set());
   const [bogoResults, setBogoResults] = useState([]); // [{itemId, label, status, error}]
 
+  // Onhand & available lots lookup (Check Onhand button)
+  const [onhandLoading, setOnhandLoading] = useState(false);
+  const [onhandInfo, setOnhandInfo] = useState(null); // { items, lots, error }
+
   useEffect(() => {
     if (bogoSetItems && bogoSetItems.length > 0) {
       setCheckedBogoIds(new Set(bogoSetItems.map(i => getItemId(i))));
@@ -358,6 +362,48 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     await onConfirm(nonLotPayload);
   };
 
+  // Fetch live onhand + available lots from Fusion for this item (same source as
+  // the line-card "Search" lots feature: inventoryOnhandBalances + child lots).
+  const handleCheckOnhand = async () => {
+    setOnhandLoading(true);
+    setOnhandInfo(null);
+    try {
+      const organizationCode = item.organization_name || order?.organization_name || 'GIC';
+      const subinventoryCode = item.subinventory_code || order?.subinventory_code || 'DUTY PAID';
+      const itemNumber = item.item_number;
+
+      const onhandResult = await fetchItemOnhand(organizationCode, subinventoryCode, itemNumber);
+      if (!onhandResult.success || !onhandResult.items || onhandResult.items.length === 0) {
+        setOnhandInfo({ items: [], lots: [], error: onhandResult.error || 'No onhand found for this item' });
+        return;
+      }
+
+      const allLots = [];
+      await Promise.all(
+        onhandResult.items.map(async (oh) => {
+          if (!oh.lotsHref) return;
+          const lotsResult = await fetchItemLots(oh.lotsHref);
+          if (lotsResult.success && lotsResult.lots) allLots.push(...lotsResult.lots);
+        })
+      );
+
+      // Deduplicate by lot number, summing qty across locations
+      const lotMap = new Map();
+      allLots.forEach(lot => {
+        const existing = lotMap.get(lot.lotNumber);
+        lotMap.set(lot.lotNumber, existing
+          ? { ...existing, quantity: (parseInt(existing.quantity) || 0) + (parseInt(lot.quantity) || 0) }
+          : { ...lot });
+      });
+      setOnhandInfo({ items: onhandResult.items, lots: Array.from(lotMap.values()), error: null });
+    } catch (error) {
+      console.error('[WMSOrderDetails] Error checking onhand in confirm modal:', error);
+      setOnhandInfo({ items: [], lots: [], error: error.message || 'Failed to fetch onhand' });
+    } finally {
+      setOnhandLoading(false);
+    }
+  };
+
   // Build payloads for any item (used by BOGO multi-confirm)
   const buildPayloadsForItem = (anItem) => {
     const aRawId = anItem.id || anItem.source_delivery_detail_id || anItem.delivery_detail_id || '';
@@ -552,6 +598,8 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
     setAllCompleted(false);
     setShowDetails(false);
     setBogoResults([]);
+    setOnhandLoading(false);
+    setOnhandInfo(null);
     if (bogoSetItems) setCheckedBogoIds(new Set(bogoSetItems.map(i => getItemId(i))));
     onClose();
   };
@@ -810,6 +858,119 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
               </View>
             </View>
             )}
+
+            {/* Onhand & Available Lots checker */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  backgroundColor: '#E3F2FD',
+                  borderWidth: 1,
+                  borderColor: '#1565C0',
+                  borderRadius: 8,
+                  paddingVertical: 9,
+                }}
+                onPress={handleCheckOnhand}
+                disabled={onhandLoading || isRunningSequence}
+              >
+                {onhandLoading ? (
+                  <ActivityIndicator size="small" color="#1565C0" />
+                ) : (
+                  <Ionicons name="cube-outline" size={17} color="#1565C0" />
+                )}
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#1565C0' }}>
+                  {onhandLoading ? 'Checking Onhand...' : onhandInfo ? 'Refresh Onhand & Lots' : 'Check Onhand & Lots'}
+                </Text>
+              </TouchableOpacity>
+
+              {onhandInfo && !onhandLoading && (
+                <View style={{ marginTop: 8, backgroundColor: '#F5F9FF', borderRadius: 8, borderWidth: 1, borderColor: '#BBDEFB', padding: 10 }}>
+                  {onhandInfo.error ? (
+                    <Text style={{ fontSize: 12, color: '#C62828' }}>{onhandInfo.error}</Text>
+                  ) : (
+                    <>
+                      {(() => {
+                        const totalOnhand = onhandInfo.items.reduce((s, oh) => s + (parseInt(oh.primaryQuantity) || 0), 0);
+                        const uom = onhandInfo.items[0]?.primaryUomCode || '';
+                        const org = onhandInfo.items[0]?.organizationCode || '';
+                        const subinv = onhandInfo.items[0]?.subinventoryCode || '';
+                        const requestedQty = previewTotalQty;
+                        const enough = totalOnhand >= requestedQty;
+                        return (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                            <View>
+                              <Text style={{ fontSize: 11, color: '#666' }}>{org}{subinv ? ` • ${subinv}` : ''}</Text>
+                              <Text style={{ fontSize: 15, fontWeight: '800', color: enough ? '#2E7D32' : '#C62828', marginTop: 2 }}>
+                                Onhand: {totalOnhand}{uom ? ` ${uom}` : ''}
+                              </Text>
+                            </View>
+                            <View style={{ backgroundColor: enough ? '#E8F5E9' : '#FFEBEE', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: enough ? '#2E7D32' : '#C62828' }}>
+                                {enough ? `Covers required qty (${requestedQty})` : `Short for required qty (${requestedQty})`}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      })()}
+
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#1565C0', marginTop: 8, marginBottom: 4 }}>
+                        Available Lots ({onhandInfo.lots.length})
+                      </Text>
+                      {onhandInfo.lots.length === 0 ? (
+                        <Text style={{ fontSize: 12, color: '#999' }}>No lots found (item may not be lot controlled)</Text>
+                      ) : (
+                        onhandInfo.lots.map((lot, li) => {
+                          const selectedLotSet = new Set(
+                            [lotNumber, ...((bogoSetItems || []).map(b => b.lot_number))].filter(Boolean).map(String)
+                          );
+                          const isSelectedLot = selectedLotSet.has(String(lot.lotNumber));
+                          const lotDays = getDaysToExpiry(lot.expirationDate);
+                          const lotColor = getExpiryColor(lotDays);
+                          return (
+                            <View
+                              key={`onhand-lot-${lot.lotNumber}-${li}`}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                paddingVertical: 6,
+                                paddingHorizontal: 8,
+                                borderRadius: 6,
+                                marginBottom: 3,
+                                backgroundColor: isSelectedLot ? '#E8F5E9' : '#FFFFFF',
+                                borderWidth: 1,
+                                borderColor: isSelectedLot ? '#4CAF50' : '#E0E0E0',
+                              }}
+                            >
+                              <View style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#333' }}>{lot.lotNumber}</Text>
+                                  {isSelectedLot && (
+                                    <View style={{ backgroundColor: '#4CAF50', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                                      <Text style={{ fontSize: 9, fontWeight: '700', color: '#FFF' }}>SELECTED</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                {lot.expirationDate ? (
+                                  <Text style={{ fontSize: 11, color: lotColor, marginTop: 1 }}>
+                                    Exp: {new Date(lot.expirationDate).toLocaleDateString()}
+                                    {lotDays !== null ? (lotDays < 0 ? ` (expired ${Math.abs(lotDays)}d ago)` : ` (${lotDays}d)`) : ''}
+                                  </Text>
+                                ) : null}
+                              </View>
+                              <Text style={{ fontSize: 13, fontWeight: '800', color: '#1565C0' }}>Qty: {lot.quantity}</Text>
+                            </View>
+                          );
+                        })
+                      )}
+                    </>
+                  )}
+                </View>
+              )}
+            </View>
 
             {/* Processing Status View */}
             {(isRunningSequence || step1Completed || step2Completed || sequenceError || isRetrying || bogoResults.length > 0) ? (
