@@ -3627,8 +3627,10 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   const isStaged = /^staged/i.test(item.line_status || '');
   const isInterfaced = /^interfaced$/i.test(item.line_status || '');
 
-  // Show Confirm and Cancel buttons only when picked_qty = 0 and not cancelled/staged/interfaced
-  const showPickButtons = pickedQty === 0 && !isCancelled && !isImpliedPicked && !isStaged && !isInterfaced;
+  // Show Confirm and Cancel buttons only when picked_qty = 0 and not shipped/cancelled/staged/interfaced.
+  // isShipped must be checked here: after S2V (Pick & Ship) only shipped_status flips locally,
+  // and without this guard the Confirm button stays tappable and creates duplicate transactions.
+  const showPickButtons = pickedQty === 0 && !isShipped && !isCancelled && !isImpliedPicked && !isStaged && !isInterfaced;
   // Show Ship Confirm button when picked but not shipped (Store orders only; staged uses header button)
   const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled && !isImpliedPicked;
   // Cancel button only shows in pending state (within showPickButtons)
@@ -5286,15 +5288,28 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
 
   // Open confirm pick modal with item details (BOGO-aware)
   const handleConfirmPick = (item, groupItems) => {
+    // Never re-open the confirm flow for a line that is already shipped or picked —
+    // re-confirming (esp. Store S2V) would create duplicate transactions.
+    if (item.shipped_status === 'YES' || (parseInt(item.picked_qty) || 0) > 0) {
+      Alert.alert(
+        'Already Processed',
+        item.shipped_status === 'YES'
+          ? 'This line has already been shipped. It cannot be confirmed again.'
+          : 'This line has already been picked. It cannot be confirmed again.'
+      );
+      return;
+    }
+
     setConfirmPickItem(item);
 
     const notCancelled = (gi) =>
       gi.cancelled_status !== 'YES' &&
       (gi.cancel_status || '').toUpperCase() !== 'CANCELLED' &&
       !/^cancel/i.test(gi.line_status || '');
-    // Pending = not yet picked and not auto-picked (staged).
+    // Pending = not yet picked, not shipped, and not auto-picked (staged).
     const isPending = (gi) =>
       (parseInt(gi.picked_qty) || 0) === 0 &&
+      gi.shipped_status !== 'YES' &&
       !/^staged/i.test(gi.line_status || '') &&
       notCancelled(gi);
 
@@ -5731,15 +5746,20 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
       }
 
       if (result.success) {
-        // Update local state to reflect shipped status
+        // Update local state to reflect shipped status. Also mark the line as picked:
+        // in the S2V flow updatePickedQty succeeded server-side but local picked_qty is
+        // still 0, which would leave the Confirm button visible (duplicate transactions).
+        // Match by object reference too so lines with a blank id still update.
         const itemId = getItemId(item);
         setLines(prev =>
           prev.map(line =>
-            getItemId(line) === itemId && itemId !== ''
+            (line === item || (itemId !== '' && getItemId(line) === itemId))
               ? {
                   ...line,
                   shipped_status: 'YES',
                   shipped_date: new Date().toISOString(),
+                  pick_confirm_status: 'YES',
+                  picked_qty: (parseInt(line.picked_qty) || 0) > 0 ? line.picked_qty : (line.qty || '0'),
                 }
               : line
           )
