@@ -3796,8 +3796,6 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
   // isShipped must be checked here: after S2V (Pick & Ship) only shipped_status flips locally,
   // and without this guard the Confirm button stays tappable and creates duplicate transactions.
   const showPickButtons = pickedQty === 0 && !isShipped && !isCancelled && !isImpliedPicked && !isStaged && !isInterfaced;
-  // Show Ship Confirm button when picked but not shipped (Store orders only; staged uses header button)
-  const showShipButtons = pickedQty > 0 && !isShipped && !isCancelled && !isImpliedPicked;
   // Cancel button only shows in pending state (within showPickButtons)
 
   // Use the "id" field directly as-is
@@ -3993,25 +3991,9 @@ const LineItemCard = ({ item, transactionType, onConfirmPick, onCancelPick, onSh
         </View>
       )}
 
-      {/* Ship Action Buttons - show when picked and not shipped, Store only; staged handled at header level */}
-      {showShipButtons && isStoreTransfer && !isStaged && (
-        <View style={styles.actionButtonsRow}>
-          <TouchableOpacity
-            style={[styles.shipConfirmButton, { flex: 1 }]}
-            onPress={() => onShipConfirm(item, linesId)}
-            disabled={isShipping || !linesId}
-          >
-            {isShipping ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="airplane" size={20} color="#FFF" />
-                <Text style={styles.shipConfirmButtonText}>Ship Confirm</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Per-line Ship Confirm button removed for Store transfers: the S2V confirm
+          (Pick & Ship) already ships the line in the same action, so a separate
+          ship step would double-process it. */}
 
       {/* Mark for Cancel Button removed - no buttons needed after picking is done */}
 
@@ -6473,13 +6455,8 @@ const WMSOrderDetailsScreen = ({ navigation, route }) => {
             )}
             <Text style={styles.shipAllButtonText}>Sync</Text>
           </TouchableOpacity>
-          {/* Ship Confirm All Button - Only for Store transactions */}
-          {summary.pickedLines > 0 && (order?.transaction_type || '').toLowerCase().includes('store') && (
-            <TouchableOpacity style={styles.shipAllButton} onPress={handleOpenBulkShipConfirm}>
-              <Ionicons name="airplane" size={16} color="#FFF" />
-              <Text style={styles.shipAllButtonText}>Ship All</Text>
-            </TouchableOpacity>
-          )}
+          {/* Store "Ship All" header button removed: S2V confirm (Pick & Ship) ships
+              each line as part of the confirm, so no separate bulk ship step exists. */}
           {/* Sales Ship Confirm Button - Sales Orders when all lines are picked/staged and not yet shipped */}
           {lines.length > 0 && summary.pendingLines === 0 && summary.shippedLines < lines.length && !(order?.transaction_type || '').toLowerCase().includes('store') && !lines.every(l => /^interfaced$/i.test(l.line_status || '')) && (
             <TouchableOpacity style={[styles.shipAllButton, { backgroundColor: '#7B1FA2' }]} onPress={handleShipConfirmWithSync}>
