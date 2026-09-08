@@ -284,7 +284,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
 
       // Step 1: Update Picked Qty
       setCurrentStep(1);
-      const updateResult = await updatePickedQty(linesId, instanceUpper, parseInt(pickedQty) || 0);
+      const updateResult = await updatePickedQty(linesId, instanceUpper, parseInt(pickedQty) || 0, pickerName || '');
       if (!updateResult || !updateResult.success) {
         setSequenceError(updateResult?.error || 'Update picked qty failed');
         return;
@@ -482,7 +482,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
 
         try {
           if (isStoreTransaction) {
-            const updateResult = await updatePickedQty(p.linesId, instanceUpper, parseInt(p.pickedQty) || 0);
+            const updateResult = await updatePickedQty(p.linesId, instanceUpper, parseInt(p.pickedQty) || 0, pickerName || '');
             if (!updateResult?.success) {
               setBogoResults(prev => prev.map(r => r.itemId === id ? { ...r, status: 'error', error: updateResult?.error || 'Update qty failed' } : r));
               anyError = true;
@@ -935,7 +935,7 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                           <View style={styles.jsonPreviewContainer}>
                             <Text style={styles.jsonPreviewTitle}>Request Payload:</Text>
                             <View style={styles.jsonCodeBlock}>
-                              <Text style={styles.jsonCodeText}>{JSON.stringify({ p_lid: linesId, p_instance_name: instanceUpper, p_pickedQty: parseInt(pickedQty) || 0 }, null, 2)}</Text>
+                              <Text style={styles.jsonCodeText}>{JSON.stringify({ p_lid: linesId, p_instance_name: instanceUpper, p_pickedQty: parseInt(pickedQty) || 0, p_pickedBy: pickerName || '' }, null, 2)}</Text>
                             </View>
                           </View>
 
@@ -966,6 +966,10 @@ const ConfirmPickModal = ({ visible, onClose, onConfirm, onLotBasedConfirm, onSh
                           <View style={styles.fieldRow}>
                             <Text style={styles.fieldLabel}>p_pickedQty:</Text>
                             <Text style={styles.fieldValue}>{pickedQty}</Text>
+                          </View>
+                          <View style={styles.fieldRow}>
+                            <Text style={styles.fieldLabel}>p_pickedBy:</Text>
+                            <Text style={styles.fieldValue}>{pickerName || '(empty)'}</Text>
                           </View>
                         </>
                       ) : effectiveIsLotBased ? (

@@ -539,9 +539,10 @@ export const confirmPickPending = async (payload) => {
  * @param {string|number} linesId - Lines ID (P_LID)
  * @param {string} instanceName - Instance name (e.g. 'TEST' or 'PROD')
  * @param {number} pickedQty - Picked quantity
+ * @param {string} pickedBy - App user name of the picker
  * @returns {Promise<Object>} Result with success flag and data
  */
-export const updatePickedQty = async (linesId, instanceName, pickedQty) => {
+export const updatePickedQty = async (linesId, instanceName, pickedQty, pickedBy) => {
   try {
     if (!linesId) {
       return { success: false, error: 'Lines ID (p_lid) is required', data: null };
@@ -552,6 +553,7 @@ export const updatePickedQty = async (linesId, instanceName, pickedQty) => {
       p_lid: linesId,
       p_instance_name: instanceName || 'TEST',
       p_pickedQty: parseInt(pickedQty) || 0,
+      p_pickedBy: pickedBy || '',
     };
 
     console.log('[WMSService] Update picked qty:', url);
